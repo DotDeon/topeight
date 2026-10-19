@@ -96,11 +96,11 @@ Then push the functions with `npx convex deploy`.
 ## 8. Never set these in production
 
 - `OPENSPACE_TEST_FIXTURES` turns on end-to-end test fixtures that create accounts without email checks. Never set it on a public deployment.
-- `OPENSPACE_ALLOW_SEED` allows the demo seed to run. Never leave it set.
+- Never set `OPENSPACE_ALLOW_SEED` in production. It allows the demo seed to run.
 
 ## 9. Seed demo content (optional)
 
-The seed creates 8 fans, 5 artists, tracks, shows, comments and bulletins so a fresh copy looks alive. The accounts have no email, so nobody can sign in as them. Use it on a dev or staging deployment, or on a new site you are about to launch.
+The seed creates 8 fans, 5 artists, tracks, shows, comments and bulletins so a fresh copy looks alive. The accounts have no email, so nobody can sign in as them. Use it only on a local or staging deployment. Never seed production.
 
 1. Upload the seed media. Set the `R2_*` variables in your shell, then run `node scripts/seed-media.mjs`. This uploads three silent MP3s and a small avatar for each seed user. Run it with `--dry-run` to only generate files.
 2. `npx convex env set OPENSPACE_ALLOW_SEED 1`

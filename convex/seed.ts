@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx } from "./_generated/server";
+import rosterUsernames from "../scripts/seed-roster.json";
 import { friendshipPair } from "./lib/friendships";
 
 /**
@@ -11,8 +12,8 @@ import { friendshipPair } from "./lib/friendships";
  * Tracks and photos point at fixed R2 keys that `scripts/seed-media.mjs` uploads.
  */
 
-// Byte size of scripts/seed-audio/silence-N.mp3.
-const SILENCE_BYTES = 12427;
+// Byte size of scripts/seed-audio/silence-N.mp3. A test checks it against the files.
+export const SILENCE_BYTES = 12427;
 
 type Interests = NonNullable<Doc<"profiles">["interests"]>;
 
@@ -260,6 +261,9 @@ const FANS: SeedProfile[] = [
 
 const ROSTER = [...ARTISTS, ...FANS];
 
+/** Usernames shared with scripts/seed-media.mjs, which uploads each one's avatar. */
+export const ROSTER_USERNAMES: string[] = rosterUsernames;
+
 /** [profile, author, text]. Plain text, nothing that needs a link. */
 const COMMENTS: Array<[string, string, string]> = [
   ["lowveld", "jess", "Long Road Home has been on repeat all week. Please play Cape Town."],
@@ -337,7 +341,14 @@ export const run = internalMutation({
       };
       const existing = await findByUsername(ctx, p.username);
       if (existing !== null) {
-        if (existing.isHouse) throw new ConvexError(`"${p.username}" is the house account`);
+        // Only touch profiles this seed made. A real member who took the name stays untouched.
+        const owner = await ctx.db.get(existing.userId);
+        const isSeed =
+          !existing.isHouse &&
+          owner !== null &&
+          !owner.email &&
+          (!existing.photoKey || existing.photoKey.startsWith("seed/"));
+        if (!isSeed) continue;
         await ctx.db.patch(existing._id, fields);
         ids.set(p.username, existing._id);
       } else {
@@ -358,6 +369,7 @@ export const run = internalMutation({
         ids.set(p.username, id);
       }
     }
+    const seeded = (username: string) => ids.has(username);
     const id = (username: string): Id<"profiles"> => {
       const found = ids.get(username);
       if (!found) throw new ConvexError(`Unknown seed user ${username}`);
@@ -365,7 +377,7 @@ export const run = internalMutation({
     };
 
     // Tracks and shows. Shows are replaced each run so dates stay relative to today.
-    for (const p of ARTISTS) {
+    for (const p of ARTISTS.filter((a) => seeded(a.username))) {
       const profileId = id(p.username);
       const oldTracks = await ctx.db
         .query("tracks")
@@ -395,10 +407,11 @@ export const run = internalMutation({
     }
 
     // Friendships: every artist with every other artist, every fan with every
-    // artist, and each fan with the next two fans in the list.
+    // artist, and every fan with every other fan.
     const pairs = new Set<string>();
     const wanted: Array<[string, string]> = [];
     const add = (x: string, y: string) => {
+      if (!seeded(x) || !seeded(y)) return;
       const key = [x, y].sort().join(":");
       if (x === y || pairs.has(key)) return;
       pairs.add(key);
@@ -406,10 +419,7 @@ export const run = internalMutation({
     };
     for (const a of ARTISTS) for (const b of ARTISTS) add(a.username, b.username);
     for (const f of FANS) for (const a of ARTISTS) add(f.username, a.username);
-    FANS.forEach((f, i) => {
-      add(f.username, FANS[(i + 1) % FANS.length].username);
-      add(f.username, FANS[(i + 2) % FANS.length].username);
-    });
+    for (const a of FANS) for (const b of FANS) add(a.username, b.username);
     for (const [x, y] of wanted) {
       const pair = friendshipPair(id(x), id(y));
       const exists = await ctx.db
@@ -420,13 +430,14 @@ export const run = internalMutation({
     }
 
     // Top 8: the first eight friends in roster order.
-    for (const p of ROSTER) {
+    for (const p of ROSTER.filter((r) => seeded(r.username))) {
       const friends = ROSTER.filter((o) => pairs.has([p.username, o.username].sort().join(":")));
       await ctx.db.patch(id(p.username), { top8: friends.slice(0, 8).map((f) => id(f.username)) });
     }
 
     // Comments and bulletins, matched on their text so reruns add nothing new.
     for (const [profile, author, body] of COMMENTS) {
+      if (!seeded(profile) || !seeded(author)) continue;
       const profileId = id(profile);
       const authorId = id(author);
       const rows = await ctx.db
@@ -438,6 +449,7 @@ export const run = internalMutation({
       }
     }
     for (const [author, body] of BULLETINS) {
+      if (!seeded(author)) continue;
       const authorId = id(author);
       const rows = await ctx.db
         .query("bulletins")

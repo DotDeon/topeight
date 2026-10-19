@@ -1,7 +1,9 @@
 /// <reference types="vite/client" />
+import { readFileSync, statSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { internal } from "../../convex/_generated/api";
-import { setup } from "./helpers";
+import { ROSTER_USERNAMES, SILENCE_BYTES } from "../../convex/seed";
+import { addProfile, setup } from "./helpers";
 
 describe("seed.run", () => {
   beforeEach(() => {
@@ -67,6 +69,53 @@ describe("seed.run", () => {
     expect(dupes.total).toBeGreaterThan(20);
     expect(dupes.unique).toBe(dupes.total);
     expect(dupes.ordered).toBe(true);
+  });
+
+  test("fans are a full mesh", async () => {
+    const t = setup();
+    await t.mutation(internal.seed.run, {});
+    const n = await t.run(async (ctx) => {
+      const fans = (await ctx.db.query("profiles").collect()).filter((p) => p.kind === "fan");
+      return { fans: fans.length, rows: (await ctx.db.query("friendships").collect()).length };
+    });
+    // 8 fans choose 2 = 28, 5 artists choose 2 = 10, 8 x 5 fan-artist = 40.
+    expect(n.rows).toBe(28 + 10 + 40);
+  });
+
+  test("track size and roster match the files", async () => {
+    for (const n of [1, 2, 3]) {
+      expect(statSync(`scripts/seed-audio/silence-${n}.mp3`).size).toBe(SILENCE_BYTES);
+    }
+    const t = setup();
+    await t.mutation(internal.seed.run, {});
+    const names = await t.run(async (ctx) =>
+      (await ctx.db.query("profiles").collect()).map((p) => p.username).sort(),
+    );
+    expect(names).toEqual([...ROSTER_USERNAMES].sort());
+    expect(JSON.parse(readFileSync("scripts/seed-roster.json", "utf8"))).toEqual(ROSTER_USERNAMES);
+  });
+
+  test("leaves a real member with a seed username untouched", async () => {
+    const t = setup();
+    const real = await addProfile(t, "jess", { headline: "Real Jess", photoKey: "uploads/real.png" });
+    await t.mutation(internal.seed.run, {});
+    const after = await t.run(async (ctx) => {
+      const jess = await ctx.db.get(real);
+      const friendships = (await ctx.db.query("friendships").collect()).filter(
+        (f) => f.a === real || f.b === real,
+      );
+      const comments = (await ctx.db.query("comments").collect()).filter(
+        (c) => c.profileId === real || c.authorId === real,
+      );
+      const others = (await ctx.db.query("profiles").collect()).filter((p) => p.top8.includes(real));
+      return { jess, friendships: friendships.length, comments: comments.length, others: others.length };
+    });
+    expect(after.jess?.headline).toBe("Real Jess");
+    expect(after.jess?.displayName).toBe("JESS");
+    expect(after.jess?.photoKey).toBe("uploads/real.png");
+    expect(after.friendships).toBe(0);
+    expect(after.comments).toBe(0);
+    expect(after.others).toBe(0);
   });
 
   test("throws unless OPENSPACE_ALLOW_SEED is 1", async () => {

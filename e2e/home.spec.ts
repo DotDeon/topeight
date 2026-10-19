@@ -11,9 +11,10 @@ test("logged-out homepage shows login, sign up and the cool boxes", async ({ pag
   await expect(page.getByText("OpenSpace Announcements")).toBeVisible();
   await expect(page.getByText("Upcoming Shows")).toBeVisible();
   await expect(page.getByText("Welcome to OpenSpace.")).toBeVisible();
-  // Empty database shows an empty state, a seeded one shows the demo members.
+  // Empty database shows an empty state, a seeded one shows profile links.
+  const people = page.locator("section", { has: page.getByRole("heading", { name: "Cool New People" }) });
   await expect(
-    page.getByText("No new people yet").or(page.getByRole("link", { name: "Aisha" })),
+    people.getByText("No new people yet").or(people.locator('a[href^="/"]').first()),
   ).toBeVisible();
 });
 

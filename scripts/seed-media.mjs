@@ -17,11 +17,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const audioDir = join(here, "seed-audio");
 const avatarDir = join(tmpdir(), "openspace-seed-avatars");
 
-// Keep in sync with SEED_USERNAMES in convex/seed.ts.
-const USERNAMES = [
-  "lowveld", "nightjar", "papermoons", "djfynbos", "thestatickids",
-  "jess", "marco", "thandi", "kyle", "ren", "lerato", "pieter", "aisha",
-];
+// One roster for this script and convex/seed.ts.
+const USERNAMES = JSON.parse(readFileSync(join(here, "seed-roster.json"), "utf8"));
 const COLOURS = [
   [0, 51, 153], [102, 152, 203], [255, 102, 0], [153, 0, 102], [0, 102, 68],
   [102, 51, 153], [180, 60, 40], [40, 110, 140],

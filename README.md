@@ -2,8 +2,6 @@
 
 # OpenSpace
 
-Created in [T3 Code](https://t3.codes).
-
 ## What OpenSpace is
 
 OpenSpace is an open source rebuild of 2006-era MySpace. It has the classic 800 pixel layout, a Top 8, profile comments, bulletins and artist pages with music players and show dates. Members can restyle their profile with CSS, and artists can add their own HTML, CSS and JavaScript. It runs on Next.js 16 and Convex.
