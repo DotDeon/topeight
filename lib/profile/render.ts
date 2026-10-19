@@ -1,3 +1,4 @@
+import { BRIDGE_ACTIONS, BRIDGE_PAGES, type BridgePage } from "@/lib/bridge-protocol";
 import { tokenizeComment } from "@/lib/validation";
 import { PROFILE_CSS } from "./profile-css";
 
@@ -144,8 +145,9 @@ function photo(url: string | null, className: string): string {
   return `<img class="${className}" src="${escapeHtml(src)}" alt="">`;
 }
 
-function navLink(target: string, label: string): string {
-  return `<a href="#" data-openspace-navigate="${escapeHtml(target)}">${label}</a>`;
+function navLink(username: string, label: string, page?: BridgePage): string {
+  const pageAttr = page ? ` data-openspace-page="${page}"` : "";
+  return `<a href="#" data-openspace-navigate="${escapeHtml(username)}"${pageAttr}>${label}</a>`;
 }
 
 function actionLink(action: string, label: string): string {
@@ -281,7 +283,7 @@ function renderRight(p: PublicProfile): string {
     )
     .join("");
   parts.push(
-    `<div class="section-title">${name}'s Friend Space</div><div class="top8"><div class="top8-count"><b>${name} has ${formatCount(p.friendCount)} friends.</b></div>${friends}<div class="top8-all">${navLink(`${p.username}/friends`, `View All of ${name}'s Friends`)}</div></div>`,
+    `<div class="section-title">${name}'s Friend Space</div><div class="top8"><div class="top8-count"><b>${name} has ${formatCount(p.friendCount)} friends.</b></div>${friends}<div class="top8-all">${navLink(p.username, `View All of ${name}'s Friends`, "friends")}</div></div>`,
   );
 
   const shown = p.comments.slice(0, MAX_COMMENTS);
@@ -292,7 +294,7 @@ function renderRight(p: PublicProfile): string {
     )
     .join("");
   parts.push(
-    `<div class="section-title">${name}'s Friends Comments</div><div class="comments"><div class="comments-head"><b>Displaying ${shown.length} of ${formatCount(Math.max(p.commentCount, shown.length))} comments</b> ( ${navLink(`${p.username}/comments`, "View All")} | ${actionLink("addComment", "Add Comment")} )</div>${comments}</div>`,
+    `<div class="section-title">${name}'s Friends Comments</div><div class="comments"><div class="comments-head"><b>Displaying ${shown.length} of ${formatCount(Math.max(p.commentCount, shown.length))} comments</b> ( ${navLink(p.username, "View All", "comments")} | ${actionLink("addComment", "Add Comment")} )</div>${comments}</div>`,
   );
 
   return `<div class="profile-right">${parts.join("\n")}</div>`;
@@ -305,18 +307,21 @@ function renderRight(p: PublicProfile): string {
  * custom code. It holds its own references, so artist code replacing
  * window.openspace does not change what the Contacting box links do.
  */
-function bridgeScript(mainOrigin: string): string {
+export function bridgeScript(mainOrigin: string): string {
   return `(function () {
   var ORIGIN = ${scriptJson(mainOrigin)};
-  var ACTIONS = ["addFriend", "addComment", "report", "block", "forward", "message"];
+  var ACTIONS = ${scriptJson(BRIDGE_ACTIONS)};
+  var PAGES = ${scriptJson(BRIDGE_PAGES)};
   function post(msg) { try { window.parent.postMessage(msg, ORIGIN); } catch (e) {} }
   function request(action) {
     if (ACTIONS.indexOf(action) === -1) return;
     post({ type: "openspace:action", action: action });
   }
-  function navigate(username) {
+  function navigate(username, page) {
     if (typeof username !== "string" || !username) return;
-    post({ type: "openspace:navigate", username: username });
+    var msg = { type: "openspace:navigate", username: username };
+    if (PAGES.indexOf(page) !== -1) msg.page = page;
+    post(msg);
   }
   window.openspace = { request: request, navigate: navigate };
   document.addEventListener("click", function (e) {
@@ -327,19 +332,47 @@ function bridgeScript(mainOrigin: string): string {
     e.preventDefault();
     var action = el.getAttribute("data-openspace-action");
     if (action !== null) request(action);
-    else navigate(el.getAttribute("data-openspace-navigate"));
+    else navigate(el.getAttribute("data-openspace-navigate"), el.getAttribute("data-openspace-page"));
   });
+
+  // Height of the content, not the viewport: body's offset from the top of
+  // the document (its margin, including collapsed child margins), plus
+  // body.scrollHeight (padding box plus any overflowing descendants; in
+  // standards mode this is the body box, never the viewport), plus the
+  // bottom margin.
+  function measure() {
+    var b = document.body;
+    var top = b.getBoundingClientRect().top + (window.scrollY || 0);
+    var bottom = parseFloat(getComputedStyle(b).marginBottom) || 0;
+    return Math.ceil(top + b.scrollHeight + bottom);
+  }
+  var lastHeight = -1;
+  var lastViewport = -1;
   var queued = false;
   function sendSize() {
     queued = false;
-    post({ type: "openspace:resize", height: Math.ceil(document.documentElement.scrollHeight) });
+    if (!document.body) return;
+    var height = measure();
+    var viewport = window.innerHeight;
+    if (lastHeight >= 0) {
+      if (Math.abs(height - lastHeight) < 2) return;
+      // Content that grew by exactly what the viewport grew is sized from
+      // the viewport (min-height: 100vh and friends). Posting it would loop.
+      if (viewport !== lastViewport && Math.abs(height - lastHeight - (viewport - lastViewport)) < 2) return;
+    }
+    lastHeight = height;
+    lastViewport = viewport;
+    post({ type: "openspace:resize", height: height });
   }
   function schedule() {
     if (queued) return;
     queued = true;
     requestAnimationFrame(sendSize);
   }
-  if (typeof ResizeObserver === "function") new ResizeObserver(schedule).observe(document.documentElement);
+  document.addEventListener("DOMContentLoaded", function () {
+    if (typeof ResizeObserver === "function") new ResizeObserver(schedule).observe(document.body);
+    schedule();
+  });
   window.addEventListener("load", schedule);
 })();`;
 }

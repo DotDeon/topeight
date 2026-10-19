@@ -18,7 +18,12 @@ export const BRIDGE_ACTIONS = [
 
 export type BridgeAction = (typeof BRIDGE_ACTIONS)[number];
 
+/** Sub-pages of a profile that a navigate message may ask for. */
+export const BRIDGE_PAGES = ["friends", "comments"] as const;
+
+export type BridgePage = (typeof BRIDGE_PAGES)[number];
+
 export type BridgeMessage =
   | { type: "openspace:action"; action: BridgeAction }
-  | { type: "openspace:navigate"; username: string }
+  | { type: "openspace:navigate"; username: string; page?: BridgePage }
   | { type: "openspace:resize"; height: number };
