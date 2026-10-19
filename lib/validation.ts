@@ -81,6 +81,7 @@ export function ageOn(birthDate: string, today: Date): number {
 }
 
 const URL_PATTERN = /https?:\/\/[^\s<>"']+/gi;
+const TRAILING_PUNCT = /[.,;:!?)]+$/;
 const WWW_PATTERN = /(^|[^\w./@-])www\.[a-z0-9-]+(\.[a-z0-9-]+)+/i;
 const IMAGE_EXT = /\.(jpe?g|png|gif|webp)(\?[^\s]*)?$/i;
 
@@ -113,7 +114,8 @@ export function tokenizeComment(text: string): CommentToken[] {
   };
   for (const match of text.matchAll(URL_PATTERN)) {
     const start = match.index ?? 0;
-    const url = match[0];
+    // Sentence punctuation after a link is not part of it.
+    const url = match[0].replace(TRAILING_PUNCT, "");
     push(text.slice(last, start));
     if (!isHttpUrl(url)) push(url);
     else if (IMAGE_EXT.test(new URL(url).pathname)) tokens.push({ type: "image", url });

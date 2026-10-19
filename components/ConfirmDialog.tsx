@@ -22,10 +22,13 @@ export function ConfirmDialog({
   request,
   target,
   onClose,
+  onResult,
 }: {
   request: ConfirmRequest | null;
   target: ActionTarget;
   onClose: (outcome: "cancelled" | "done") => void;
+  /** Called with the text the dialog shows after an action ran. */
+  onResult?: (action: BridgeAction, text: string) => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [lastAction, setLastAction] = useState<BridgeAction | null>(null);
@@ -57,6 +60,7 @@ export function ConfirmDialog({
           key={request.id}
           action={request.action}
           target={target}
+          onResult={onResult}
           onRan={(a) => {
             outcome.current = "done";
             setLastAction(a);
@@ -72,10 +76,12 @@ function DialogBody({
   action,
   target,
   onRan,
+  onResult,
   onDismiss,
 }: {
   action: BridgeAction;
   target: ActionTarget;
+  onResult?: (action: BridgeAction, text: string) => void;
   onRan: (action: BridgeAction) => void;
   onDismiss: () => void;
 }) {
@@ -84,6 +90,8 @@ function DialogBody({
   const [phase, setPhase] = useState<"ask" | "running" | "done">("ask");
   const [result, setResult] = useState("");
   const [armed, setArmed] = useState(false);
+  const [text, setText] = useState("");
+  const textOk = !spec.input || text.trim() !== "";
 
   useEffect(() => {
     const timer = setTimeout(() => setArmed(true), ARM_DELAY_MS);
@@ -91,14 +99,17 @@ function DialogBody({
   }, []);
 
   async function confirm() {
-    if (!spec.run || phase !== "ask") return;
+    if (!spec.run || phase !== "ask" || !textOk) return;
     setPhase("running");
+    let outcome: string;
     try {
-      setResult(await spec.run(target, client));
+      outcome = await spec.run(target, client, text.trim());
     } catch (e) {
-      setResult(e instanceof Error ? e.message : "Something went wrong.");
+      outcome = e instanceof Error ? e.message : "Something went wrong.";
     }
+    setResult(outcome);
     setPhase("done");
+    onResult?.(action, outcome);
     onRan(action);
   }
 
@@ -109,6 +120,19 @@ function DialogBody({
       </h4>
       <div className={styles.inner}>
         <p className={styles.question}>{spec.question(target.displayName)}</p>
+        {spec.input && phase !== "done" && (
+          <label className={styles.field}>
+            {spec.input.label}
+            <textarea
+              className={styles.textarea}
+              value={text}
+              rows={5}
+              maxLength={spec.input.maxLength}
+              disabled={phase === "running"}
+              onChange={(e) => setText(e.target.value)}
+            />
+          </label>
+        )}
         {phase === "done" && (
           <p className={styles.result} role="status">
             {result}
@@ -120,7 +144,7 @@ function DialogBody({
               <button
                 type="button"
                 className={styles.btn}
-                disabled={!armed || phase === "running"}
+                disabled={!armed || phase === "running" || !textOk}
                 onClick={confirm}
               >
                 Confirm

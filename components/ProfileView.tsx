@@ -6,7 +6,7 @@ import { api } from "@/convex/_generated/api";
 import type { BridgeAction } from "@/lib/bridge-protocol";
 import { BRIDGE_RESET_MS, BridgeGate } from "@/lib/bridgeGate";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
-import { PROFILE_ACTIONS } from "./profileActions";
+import { COMMENT_POSTED, PROFILE_ACTIONS } from "./profileActions";
 import { ProfileFrame } from "./ProfileFrame";
 import { TrustedStrip } from "./TrustedStrip";
 
@@ -14,6 +14,7 @@ import { TrustedStrip } from "./TrustedStrip";
 export function ProfileView({ username, displayName }: { username: string; displayName: string }) {
   const [request, setRequest] = useState<ConfirmRequest | null>(null);
   const [throttled, setThrottled] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const nextId = useRef(1);
   const open = useRef<{ action: BridgeAction; fromBridge: boolean } | null>(null);
   const gate = useRef(new BridgeGate());
@@ -82,8 +83,15 @@ export function ProfileView({ username, displayName }: { username: string; displ
   return (
     <>
       <TrustedStrip displayName={displayName} onAction={onStripAction} throttled={throttled} />
-      <ProfileFrame username={username} displayName={displayName} onAction={onBridgeAction} />
-      <ConfirmDialog request={request} target={target} onClose={onClose} />
+      <ProfileFrame username={username} displayName={displayName} onAction={onBridgeAction} reloadKey={reloadKey} />
+      <ConfirmDialog
+        request={request}
+        target={target}
+        onClose={onClose}
+        onResult={(action, text) => {
+          if (action === "addComment" && text === COMMENT_POSTED) setReloadKey((k) => k + 1);
+        }}
+      />
     </>
   );
 }

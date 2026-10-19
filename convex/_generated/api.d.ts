@@ -9,6 +9,8 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as bulletins from "../bulletins.js";
+import type * as comments from "../comments.js";
 import type * as home from "../home.js";
 import type * as http from "../http.js";
 import type * as lib_access from "../lib/access.js";
@@ -19,6 +21,7 @@ import type * as lib_limits from "../lib/limits.js";
 import type * as lib_media from "../lib/media.js";
 import type * as lib_otp from "../lib/otp.js";
 import type * as lib_password from "../lib/password.js";
+import type * as lib_posting from "../lib/posting.js";
 import type * as profiles from "../profiles.js";
 import type * as shows from "../shows.js";
 import type * as social from "../social.js";
@@ -32,6 +35,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  bulletins: typeof bulletins;
+  comments: typeof comments;
   home: typeof home;
   http: typeof http;
   "lib/access": typeof lib_access;
@@ -42,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   "lib/media": typeof lib_media;
   "lib/otp": typeof lib_otp;
   "lib/password": typeof lib_password;
+  "lib/posting": typeof lib_posting;
   profiles: typeof profiles;
   shows: typeof shows;
   social: typeof social;

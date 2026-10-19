@@ -17,12 +17,17 @@ export type ProfileAction = {
    * text the dialog shows next. Absent means the feature is coming soon and
    * the dialog has no Confirm button.
    */
-  run?: (target: ActionTarget, client: ConvexReactClient) => Promise<string>;
+  run?: (target: ActionTarget, client: ConvexReactClient, text: string) => Promise<string>;
+  /** When set, the dialog asks for text first and passes it to `run`. */
+  input?: { label: string; maxLength: number };
 };
+
+/** What the Add Comment dialog says when the comment went through. */
+export const COMMENT_POSTED = "Comment posted";
 
 export const COMING_SOON = "Coming soon. This feature arrives in a later update.";
 
-// Task 9 swaps in comments, Task 13 reports.
+// Task 13 swaps in reporting.
 const comingSoon = async () => COMING_SOON;
 
 /** Runs a social mutation on the profile being viewed and turns the outcome into dialog text. */
@@ -57,9 +62,19 @@ const block = (target: ActionTarget, client: ConvexReactClient) =>
     return `${target.displayName} is blocked`;
   });
 
+const addComment = (target: ActionTarget, client: ConvexReactClient, text: string) =>
+  runSocial(target, client, "Log in to comment", async (id) => {
+    await client.mutation(api.comments.add, { profileId: id, body: text });
+    return COMMENT_POSTED;
+  });
+
 export const PROFILE_ACTIONS: Record<BridgeAction, ProfileAction> = {
   addFriend: { label: "Add to Friends", question: (n) => `Add ${n} to your friends?`, run: addFriend },
-  addComment: { label: "Add Comment", question: (n) => `Add a comment to ${n}'s profile?`, run: comingSoon },
+  addComment: {
+    label: "Add Comment", question: (n) => `Add a comment to ${n}'s profile?`,
+    run: addComment,
+    input: { label: "Your comment", maxLength: 2000 },
+  },
   report: { label: "Report", question: (n) => `Report ${n}'s profile?`, run: comingSoon },
   block: { label: "Block", question: (n) => `Block ${n}?`, run: block },
   forward: { label: "Forward to Friend", question: () => "Forward to Friend is coming soon." },

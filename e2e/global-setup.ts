@@ -14,4 +14,5 @@ export default function globalSetup() {
   const convex = (...args: string[]) => execFileSync("npx", ["convex", ...args], { stdio: "inherit" });
   convex("env", "set", ...envFile, "OPENSPACE_TEST_FIXTURES", "1");
   convex("run", ...envFile, "testing:seedSandboxFixture", JSON.stringify({ mainOrigin: `http://localhost:${port}` }));
+  convex("run", ...envFile, "testing:seedCommenterFixture", JSON.stringify({ password: process.env.E2E_COMMENTER_PASSWORD ?? "e2e-Commenter-pw-1" }));
 }

@@ -1,0 +1,70 @@
+.form {
+  margin: 0 0 10px;
+}
+
+.form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  margin: 2px 0 4px;
+}
+
+.error {
+  margin-left: 8px;
+  color: #c00;
+}
+
+.head {
+  margin: 0 0 6px;
+}
+
+.comment {
+  display: flex;
+  border-bottom: 1px solid #fff;
+}
+
+.who {
+  width: 110px;
+  flex: none;
+  padding: 6px;
+  text-align: center;
+  background: #ffcc99;
+  overflow-wrap: anywhere;
+}
+
+.what {
+  flex: 1;
+  min-width: 0;
+  padding: 6px;
+  background: #d5e8fb;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.date {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: bold;
+}
+
+.del {
+  margin-left: 8px;
+  font-weight: normal;
+}
+
+.more {
+  margin-top: 8px;
+}
+
+.muted {
+  color: #666;
+}
+
+.bulletin {
+  margin-bottom: 8px;
+}
+
+.bulletin .what {
+  background: #fff;
+  border: 1px solid #b1d0f0;
+}

@@ -16,10 +16,13 @@ export function ProfileFrame({
   username,
   displayName,
   onAction,
+  reloadKey = 0,
 }: {
   username: string;
   displayName: string;
   onAction: (action: BridgeAction) => void;
+  /** Bump this to load the profile document again, for example after a new comment. */
+  reloadKey?: number;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(INITIAL_HEIGHT);
@@ -44,6 +47,10 @@ export function ProfileFrame({
   useEffect(() => {
     if (ref.current && ref.current.src !== src) ref.current.src = src;
   }, [src]);
+
+  useEffect(() => {
+    if (reloadKey > 0 && ref.current) ref.current.src = src;
+  }, [reloadKey, src]);
 
   return (
     <iframe

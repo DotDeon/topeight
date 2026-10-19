@@ -20,6 +20,12 @@ describe("validation", () => {
     expect(ageOn("2013-10-20", new Date("2026-10-19"))).toBe(12);
     expect(ageOn("2013-10-19", new Date("2026-10-19"))).toBe(13);
   });
+  test("trailing punctuation is not part of a url", () => {
+    expect(tokenizeComment("look https://x.com/a.gif.")).toEqual([
+      { type: "text", value: "look " }, { type: "image", url: "https://x.com/a.gif" }, { type: "text", value: "." }]);
+    expect(tokenizeComment("(see https://x.com/page), ok")).toEqual([
+      { type: "text", value: "(see " }, { type: "link", url: "https://x.com/page" }, { type: "text", value: "), ok" }]);
+  });
   test("links and images", () => {
     expect(containsLink("see www.spam.biz")).toBe(true);
     expect(containsLink("see you in cape town")).toBe(false);
