@@ -1,0 +1,446 @@
+import { tokenizeComment } from "@/lib/validation";
+import { PROFILE_CSS } from "./profile-css";
+
+/** Same shape as convex/lib/cards.ts PublicCard, re-declared to keep lib/ free of convex/. */
+export type PublicCard = {
+  username: string;
+  displayName: string;
+  photoUrl: string | null;
+  kind: "fan" | "artist";
+};
+
+export type PublicProfile = {
+  username: string;
+  displayName: string;
+  kind: "fan" | "artist";
+  headline: string;
+  location: string;
+  gender?: string;
+  genre?: string;
+  aboutMe: string;
+  whoIdLikeToMeet: string;
+  interests?: {
+    general: string;
+    music: string;
+    movies: string;
+    television: string;
+    books: string;
+    heroes: string;
+  };
+  band?: {
+    members: string;
+    influences: string;
+    soundsLike: string;
+    recordLabel: string;
+    labelType: string;
+  };
+  photoUrl: string | null;
+  profileViews: number;
+  lastLoginAt: number;
+  memberSince: number;
+  friendCount: number;
+  top8: PublicCard[];
+  comments: Array<{ author: PublicCard; body: string; createdAt: number }>;
+  commentCount: number;
+  latestBulletin: { body: string; createdAt: number } | null;
+  tracks: Array<{ title: string; url: string; autoplay: boolean }>;
+  shows: Array<{ date: string; venue: string; city: string }>;
+  custom: { css: string; html: string; js: string };
+};
+
+export type RenderOptions = { mainOrigin: string };
+
+const MAX_COMMENTS = 10;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// ---------------------------------------------------------------- escaping
+
+const HTML_ESCAPES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
+/** Escapes text for HTML element content and double-quoted attribute values. */
+export function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch]);
+}
+
+/** JSON that is safe inside an inline <script>: no `<`, `>`, `&`, U+2028 or U+2029. */
+export function scriptJson(value: unknown): string {
+  return JSON.stringify(value).replace(
+    /[<>&\u2028\u2029]/g,
+    (ch) => "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0"),
+  );
+}
+
+/**
+ * Stops custom CSS from closing its <style> element. Every `</` becomes `<\/`,
+ * which covers `</style` in any case. CSS reads `\/` as `/` in strings, URLs
+ * and identifiers, so valid stylesheets keep their meaning.
+ */
+function neutraliseStyle(css: string): string {
+  return css.replace(/<\//g, "<\\/");
+}
+
+/** Stops custom JS from closing its <script> element. */
+function neutraliseScript(js: string): string {
+  return js.replace(/<\/(script)/gi, "<\\/$1");
+}
+
+/** Escaped text with newlines kept as line breaks. */
+function textHtml(value: string): string {
+  return escapeHtml(value).replace(/\r?\n/g, "<br>");
+}
+
+/** Only http(s) URLs may appear in src attributes we write. */
+function safeUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" || u.protocol === "http:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------- formatting
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** "19 Oct 2026 9:14 PM", always UTC. */
+export function formatDate(ms: number): string {
+  const d = new Date(ms);
+  const h = d.getUTCHours();
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()} ${hour12}:${pad2(d.getUTCMinutes())} ${h < 12 ? "AM" : "PM"}`;
+}
+
+/** "18/10/2026", always UTC. */
+function formatDay(ms: number): string {
+  const d = new Date(ms);
+  return `${pad2(d.getUTCDate())}/${pad2(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+}
+
+/** "2026-10-24" to "24 Oct 2026". Anything else is shown as given. */
+function formatShowDate(value: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return value;
+  const month = MONTHS[Number(m[2]) - 1];
+  return month ? `${m[3]} ${month} ${m[1]}` : value;
+}
+
+function formatCount(n: number): string {
+  return String(Math.max(0, Math.trunc(n))).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+// ---------------------------------------------------------------- pieces
+
+function photo(url: string | null, className: string): string {
+  const src = safeUrl(url);
+  if (!src) return `<div class="${className} default-photo">No Photo</div>`;
+  return `<img class="${className}" src="${escapeHtml(src)}" alt="">`;
+}
+
+function navLink(target: string, label: string): string {
+  return `<a href="#" data-openspace-navigate="${escapeHtml(target)}">${label}</a>`;
+}
+
+function actionLink(action: string, label: string): string {
+  return `<a href="#" data-openspace-action="${action}">${label}</a>`;
+}
+
+/** Plain text with image URLs as <img> and other http(s) URLs as links. */
+function richText(body: string): string {
+  return tokenizeComment(body)
+    .map((token) => {
+      if (token.type === "text") return textHtml(token.value);
+      const url = escapeHtml(token.url);
+      if (token.type === "image") return `<img src="${url}" alt="">`;
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+    })
+    .join("");
+}
+
+function detailsRows(rows: Array<[string, string | undefined]>): string {
+  return rows
+    .filter(([, v]) => v && v.trim())
+    .map(([k, v]) => `<tr><td class="k">${escapeHtml(k)}</td><td class="v">${textHtml(v!)}</td></tr>`)
+    .join("");
+}
+
+function renderPlayer(p: PublicProfile, name: string): string {
+  const tracks = p.tracks.filter((t) => safeUrl(t.url));
+  if (p.kind !== "artist" || tracks.length === 0) return "";
+  const autoplay = tracks.findIndex((t) => t.autoplay);
+  const first = autoplay >= 0 ? autoplay : 0;
+  const items = tracks
+    .map(
+      (t, i) =>
+        `<li><button type="button" class="player-track${i === first ? " current" : ""}" data-index="${i}" data-src="${escapeHtml(t.url)}"><span><span class="mark">&#9654; </span>${escapeHtml(t.title)}</span><span class="dur"></span></button></li>`,
+    )
+    .join("");
+  return `<div class="player" id="openspace-player-ui" data-autoplay="${autoplay}">
+<b>${name}</b> &middot; music player
+<audio id="openspace-player" preload="metadata" src="${escapeHtml(tracks[first].url)}"></audio>
+<div class="player-controls"><button type="button" class="player-play">Play</button><button type="button" class="player-mute">Mute</button><span class="player-time">0:00</span></div>
+<div class="player-bar"><i></i></div>
+<ul class="player-tracks">${items}</ul>
+</div>`;
+}
+
+function renderLeft(p: PublicProfile, opts: RenderOptions): string {
+  const name = escapeHtml(p.displayName);
+  const isArtist = p.kind === "artist";
+  const facts = [
+    p.headline ? `"${escapeHtml(p.headline)}"` : "",
+    isArtist ? escapeHtml(p.genre ?? "") : escapeHtml(p.gender ?? ""),
+    textHtml(p.location),
+    `Profile Views: ${formatCount(p.profileViews)}`,
+    `Last Login: ${formatDay(p.lastLoginAt)}`,
+  ].filter(Boolean);
+
+  let host = opts.mainOrigin;
+  try {
+    host = new URL(opts.mainOrigin).host;
+  } catch {
+    /* keep as given */
+  }
+
+  const details = isArtist
+    ? `<div class="details"><h5>${name}'s General Info</h5><table>${detailsRows([
+        ["Member Since", formatDay(p.memberSince)],
+        ["Band Members", p.band?.members],
+        ["Influences", p.band?.influences],
+        ["Sounds Like", p.band?.soundsLike],
+        ["Record Label", p.band?.recordLabel],
+        ["Type of Label", p.band?.labelType],
+      ])}</table></div>`
+    : `<div class="details"><h5>${name}'s Interests</h5><table>${detailsRows([
+        ["Member Since", formatDay(p.memberSince)],
+        ["General", p.interests?.general],
+        ["Music", p.interests?.music],
+        ["Movies", p.interests?.movies],
+        ["Television", p.interests?.television],
+        ["Books", p.interests?.books],
+        ["Heroes", p.interests?.heroes],
+      ])}</table></div>`;
+
+  return `<div class="profile-left">
+<h1 class="name">${name}</h1>
+<div class="basic">${photo(p.photoUrl, "photo-main")}<div class="basic-info">${facts.join("<br><br>")}</div></div>
+<div class="view-my">View My: <span class="soon" title="Coming soon">Pics</span> | <span class="soon" title="Coming soon">Videos</span></div>
+${renderPlayer(p, name)}
+<div class="contact"><h5>Contacting ${name}</h5><table>
+<tr><td>&#9993; ${actionLink("message", "Send Message")}</td><td>&#10010; ${actionLink("addFriend", "Add to Friends")}</td></tr>
+<tr><td>&#10148; ${actionLink("forward", "Forward to Friend")}</td><td>&#9733; <span class="soon" title="Coming soon">Add to Favorites</span></td></tr>
+<tr><td>&#9888; ${actionLink("report", "Report")}</td><td>&#10006; ${actionLink("block", "Block User")}</td></tr>
+</table></div>
+<div class="profile-url"><b>OpenSpace URL:</b><br>${escapeHtml(host)}/${escapeHtml(p.username)}</div>
+${details}
+</div>`;
+}
+
+function renderRight(p: PublicProfile): string {
+  const name = escapeHtml(p.displayName);
+  const isArtist = p.kind === "artist";
+  const parts: string[] = [`<div class="extended">${name} is in your extended network</div>`];
+
+  if (isArtist && p.shows.length > 0) {
+    const rows = p.shows
+      .map(
+        (s) =>
+          `<tr><td>${escapeHtml(formatShowDate(s.date))}</td><td>${escapeHtml(s.venue)}</td><td>${escapeHtml(s.city)}</td></tr>`,
+      )
+      .join("");
+    parts.push(
+      `<div class="section-title">Upcoming Shows</div><div class="blurb shows"><table>${rows}</table></div>`,
+    );
+  }
+
+  if (p.latestBulletin) {
+    parts.push(
+      `<div class="section-title">${name}'s Latest Bulletin</div><div class="blurb bulletin"><b>${formatDate(p.latestBulletin.createdAt)}</b><br>${richText(p.latestBulletin.body)}</div>`,
+    );
+  }
+
+  const customHtml = isArtist ? p.custom.html : "";
+  let blurbs = `<b>About me:</b><br>${textHtml(p.aboutMe)}${customHtml}`;
+  if (!isArtist || p.whoIdLikeToMeet.trim()) {
+    blurbs += `<br><br><b>Who I'd like to meet:</b><br>${textHtml(p.whoIdLikeToMeet)}`;
+  }
+  parts.push(`<div class="section-title">${name}'s Blurbs</div><div class="blurb about">${blurbs}</div>`);
+
+  const friends = p.top8
+    .slice(0, 8)
+    .map(
+      (f) =>
+        `<div class="top8-friend">${navLink(f.username, `${photo(f.photoUrl, "photo")}${escapeHtml(f.displayName)}`)}</div>`,
+    )
+    .join("");
+  parts.push(
+    `<div class="section-title">${name}'s Friend Space</div><div class="top8"><div class="top8-count"><b>${name} has ${formatCount(p.friendCount)} friends.</b></div>${friends}<div class="top8-all">${navLink(`${p.username}/friends`, `View All of ${name}'s Friends`)}</div></div>`,
+  );
+
+  const shown = p.comments.slice(0, MAX_COMMENTS);
+  const comments = shown
+    .map(
+      (c) =>
+        `<div class="comment"><div class="comment-who">${navLink(c.author.username, escapeHtml(c.author.displayName))}${navLink(c.author.username, photo(c.author.photoUrl, "photo"))}</div><div class="comment-what"><b>${formatDate(c.createdAt)}</b><br>${richText(c.body)}</div></div>`,
+    )
+    .join("");
+  parts.push(
+    `<div class="section-title">${name}'s Friends Comments</div><div class="comments"><div class="comments-head"><b>Displaying ${shown.length} of ${formatCount(Math.max(p.commentCount, shown.length))} comments</b> ( ${navLink(`${p.username}/comments`, "View All")} | ${actionLink("addComment", "Add Comment")} )</div>${comments}</div>`,
+  );
+
+  return `<div class="profile-right">${parts.join("\n")}</div>`;
+}
+
+// ---------------------------------------------------------------- scripts
+
+/**
+ * In-iframe half of the bridge (see lib/bridge-protocol.ts). Runs before any
+ * custom code. It holds its own references, so artist code replacing
+ * window.openspace does not change what the Contacting box links do.
+ */
+function bridgeScript(mainOrigin: string): string {
+  return `(function () {
+  var ORIGIN = ${scriptJson(mainOrigin)};
+  var ACTIONS = ["addFriend", "addComment", "report", "block", "forward", "message"];
+  function post(msg) { try { window.parent.postMessage(msg, ORIGIN); } catch (e) {} }
+  function request(action) {
+    if (ACTIONS.indexOf(action) === -1) return;
+    post({ type: "openspace:action", action: action });
+  }
+  function navigate(username) {
+    if (typeof username !== "string" || !username) return;
+    post({ type: "openspace:navigate", username: username });
+  }
+  window.openspace = { request: request, navigate: navigate };
+  document.addEventListener("click", function (e) {
+    var t = e.target;
+    if (!(t instanceof Element)) return;
+    var el = t.closest("[data-openspace-action],[data-openspace-navigate]");
+    if (!el) return;
+    e.preventDefault();
+    var action = el.getAttribute("data-openspace-action");
+    if (action !== null) request(action);
+    else navigate(el.getAttribute("data-openspace-navigate"));
+  });
+  var queued = false;
+  function sendSize() {
+    queued = false;
+    post({ type: "openspace:resize", height: Math.ceil(document.documentElement.scrollHeight) });
+  }
+  function schedule() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(sendSize);
+  }
+  if (typeof ResizeObserver === "function") new ResizeObserver(schedule).observe(document.documentElement);
+  window.addEventListener("load", schedule);
+})();`;
+}
+
+/** Player behaviour. Does nothing when the document has no player. */
+const PLAYER_SCRIPT = `document.addEventListener("DOMContentLoaded", function () {
+  var ui = document.getElementById("openspace-player-ui");
+  var audio = document.getElementById("openspace-player");
+  if (!ui || !audio) return;
+  var playBtn = ui.querySelector(".player-play");
+  var muteBtn = ui.querySelector(".player-mute");
+  var bar = ui.querySelector(".player-bar");
+  var fill = ui.querySelector(".player-bar i");
+  var time = ui.querySelector(".player-time");
+  var items = Array.prototype.slice.call(ui.querySelectorAll(".player-track"));
+  var autoplay = Number(ui.getAttribute("data-autoplay"));
+  var current = Math.max(0, autoplay);
+  function fmt(s) {
+    if (!isFinite(s) || s < 0) return "0:00";
+    s = Math.floor(s);
+    return Math.floor(s / 60) + ":" + (s % 60 < 10 ? "0" : "") + (s % 60);
+  }
+  function select(i, play) {
+    if (i < 0 || i >= items.length) return;
+    items[current].classList.remove("current");
+    current = i;
+    items[current].classList.add("current");
+    audio.src = items[current].getAttribute("data-src");
+    if (play) audio.play().catch(function () {});
+  }
+  playBtn.addEventListener("click", function () {
+    if (audio.paused) audio.play().catch(function () {}); else audio.pause();
+  });
+  muteBtn.addEventListener("click", function () { audio.muted = !audio.muted; });
+  bar.addEventListener("click", function (e) {
+    if (!isFinite(audio.duration)) return;
+    var r = bar.getBoundingClientRect();
+    audio.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * audio.duration;
+  });
+  items.forEach(function (item, i) {
+    item.addEventListener("click", function () { select(i, true); });
+  });
+  audio.addEventListener("play", function () { playBtn.textContent = "Pause"; });
+  audio.addEventListener("pause", function () { playBtn.textContent = "Play"; });
+  audio.addEventListener("volumechange", function () { muteBtn.textContent = audio.muted ? "Unmute" : "Mute"; });
+  audio.addEventListener("loadedmetadata", function () {
+    items[current].querySelector(".dur").textContent = fmt(audio.duration);
+  });
+  audio.addEventListener("timeupdate", function () {
+    var d = audio.duration;
+    fill.style.width = isFinite(d) && d > 0 ? (audio.currentTime / d) * 100 + "%" : "0";
+    time.textContent = fmt(audio.currentTime) + (isFinite(d) ? " / " + fmt(d) : "");
+  });
+  audio.addEventListener("ended", function () {
+    if (current + 1 < items.length) select(current + 1, true);
+  });
+  if (autoplay >= 0) {
+    var armed = true;
+    document.addEventListener("pointerdown", function (e) {
+      if (!armed) return;
+      armed = false;
+      if (e.target instanceof Node && ui.contains(e.target)) return;
+      if (audio.paused) audio.play().catch(function () {});
+    }, true);
+  }
+});`;
+
+// ---------------------------------------------------------------- document
+
+/**
+ * Full HTML document for a profile, served from the usercontent origin into
+ * a sandboxed iframe. OpenSpace scripts sit in <head> so custom HTML in the
+ * body cannot swallow them. Fans get custom CSS only.
+ */
+export function renderProfileDocument(p: PublicProfile, opts: RenderOptions): string {
+  const isArtist = p.kind === "artist";
+  const customJs = isArtist ? p.custom.js : "";
+  // custom is left out: it is already in the document and can be 100 KB.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { custom, ...data } = p;
+  const publicData = { ...data, comments: p.comments.slice(0, MAX_COMMENTS) };
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(p.displayName)} | OpenSpace</title>
+<style>${PROFILE_CSS}</style>
+<style>${neutraliseStyle(p.custom.css)}</style>
+<script>
+window.OPENSPACE = ${scriptJson(publicData)};
+${bridgeScript(opts.mainOrigin)}
+${PLAYER_SCRIPT}
+</script>
+</head>
+<body>
+<div class="profile">
+${renderLeft(p, opts)}
+${renderRight(p)}
+</div>
+${customJs ? `<script>\n${neutraliseScript(customJs)}\n</script>\n` : ""}</body>
+</html>
+`;
+}

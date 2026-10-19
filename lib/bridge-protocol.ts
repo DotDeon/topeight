@@ -1,0 +1,24 @@
+/**
+ * Messages a profile document (sandboxed iframe on the usercontent origin)
+ * posts to its parent page on the main origin. The in-iframe sender lives in
+ * lib/profile/render.ts; the parent receiver is lib/bridge.ts (Task 7).
+ *
+ * Everything here arrives from untrusted artist code, so the parent must
+ * check event.origin is "null" (opaque sandbox origin), event.source is the
+ * profile iframe, and validate every field before acting.
+ */
+export const BRIDGE_ACTIONS = [
+  "addFriend",
+  "addComment",
+  "report",
+  "block",
+  "forward",
+  "message",
+] as const;
+
+export type BridgeAction = (typeof BRIDGE_ACTIONS)[number];
+
+export type BridgeMessage =
+  | { type: "openspace:action"; action: BridgeAction }
+  | { type: "openspace:navigate"; username: string }
+  | { type: "openspace:resize"; height: number };
