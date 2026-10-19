@@ -25,6 +25,7 @@ import type * as lib_posting from "../lib/posting.js";
 import type * as lib_r2 from "../lib/r2.js";
 import type * as media from "../media.js";
 import type * as profiles from "../profiles.js";
+import type * as search from "../search.js";
 import type * as shows from "../shows.js";
 import type * as social from "../social.js";
 import type * as testing from "../testing.js";
@@ -53,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   "lib/r2": typeof lib_r2;
   media: typeof media;
   profiles: typeof profiles;
+  search: typeof search;
   shows: typeof shows;
   social: typeof social;
   testing: typeof testing;

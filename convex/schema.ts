@@ -48,7 +48,11 @@ export default defineSchema({
   })
     .index("by_username", ["username"])
     .index("by_user", ["userId"])
-    .index("by_kind_creation", ["kind"]),
+    .index("by_kind_creation", ["kind"])
+    .searchIndex("search_name", {
+      searchField: "displayName",
+      filterFields: ["kind", "banned"],
+    }),
 
   friendRequests: defineTable({
     from: v.id("profiles"),
