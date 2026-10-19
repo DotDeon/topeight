@@ -3,6 +3,7 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { MAX_SCAN } from "../../convex/lib/limits";
 import schema from "../../convex/schema";
 
 const modules = import.meta.glob("../../convex/**/*.*s");
@@ -85,6 +86,13 @@ describe("coolNewPeople", () => {
     });
   });
 
+  test("stops scanning after MAX_SCAN rows", async () => {
+    const t = setup();
+    await addProfile(t, "old");
+    for (let i = 0; i < MAX_SCAN; i++) await addProfile(t, `x${i}`, { photoKey: undefined });
+    expect(await t.query(api.home.coolNewPeople, {})).toEqual([]);
+  });
+
   test("returns [] when nobody has a photo", async () => {
     const t = setup();
     await addProfile(t, "nophoto", { photoKey: undefined });
@@ -108,6 +116,17 @@ describe("coolNewMusic", () => {
     await withTrack("bannedband", { banned: true });
     const cards = await t.query(api.home.coolNewMusic, {});
     expect(cards.map((c) => c.username)).toEqual(["band6", "band5", "band4", "band3", "band2"]);
+  });
+
+  test("stops scanning after MAX_SCAN rows", async () => {
+    const t = setup();
+    const track = (profileId: Id<"profiles">) =>
+      t.run((ctx) =>
+        ctx.db.insert("tracks", { profileId, title: "x", key: "k.mp3", size: 1, order: 0, autoplay: false }),
+      );
+    await track(await addProfile(t, "old", { kind: "artist" }));
+    for (let i = 0; i < MAX_SCAN; i++) await addProfile(t, `x${i}`, { kind: "artist" });
+    expect(await t.query(api.home.coolNewMusic, {})).toEqual([]);
   });
 
   test("allows artists without a photo", async () => {
@@ -141,12 +160,52 @@ describe("shows.upcoming", () => {
     expect(rows[0].artist.username).toBe("band");
     expect(await t.query(api.shows.upcoming, { limit: 2 })).toHaveLength(2);
   });
+
+  test("clamps limit to 1..20", async () => {
+    const t = setup();
+    const band = await addProfile(t, "band", { kind: "artist" });
+    for (let i = 0; i < 25; i++) {
+      await t.run((ctx) =>
+        ctx.db.insert("shows", { profileId: band, date: "2026-11-01", venue: "V", city: "C" }),
+      );
+    }
+    expect(await t.query(api.shows.upcoming, { limit: 0 })).toHaveLength(1);
+    expect(await t.query(api.shows.upcoming, { limit: -5 })).toHaveLength(1);
+    expect(await t.query(api.shows.upcoming, { limit: 1000 })).toHaveLength(20);
+  });
+
+  test("stops scanning after MAX_SCAN rows", async () => {
+    const t = setup();
+    const banned = await addProfile(t, "gone", { kind: "artist", banned: true });
+    const band = await addProfile(t, "band", { kind: "artist" });
+    for (let i = 0; i < MAX_SCAN; i++) {
+      await t.run((ctx) =>
+        ctx.db.insert("shows", { profileId: banned, date: "2026-10-20", venue: "V", city: "C" }),
+      );
+    }
+    await t.run((ctx) =>
+      ctx.db.insert("shows", { profileId: band, date: "2026-10-21", venue: "V", city: "C" }),
+    );
+    expect(await t.query(api.shows.upcoming, { limit: 5 })).toEqual([]);
+  });
 });
 
 describe("dashboard", () => {
-  test("requires sign in", async () => {
+  test("is null when signed out, unverified, profileless or banned", async () => {
     const t = setup();
-    await expect(t.query(api.home.dashboard, {})).rejects.toThrow("Not signed in");
+    expect(await t.query(api.home.dashboard, {})).toBeNull();
+    const unverified = await addProfile(t, "unv");
+    await t.run(async (ctx) => {
+      const p = await ctx.db.get(unverified);
+      await ctx.db.patch(p!.userId, { emailVerificationTime: undefined });
+    });
+    expect(await (await signedIn(t, unverified)).query(api.home.dashboard, {})).toBeNull();
+    const bannedId = await addProfile(t, "ban", { banned: true });
+    expect(await (await signedIn(t, bannedId)).query(api.home.dashboard, {})).toBeNull();
+    const userId = await t.run((ctx) =>
+      ctx.db.insert("users", { email: "np@example.com", emailVerificationTime: Date.now() }),
+    );
+    expect(await t.withIdentity({ subject: `${userId}|s` }).query(api.home.dashboard, {})).toBeNull();
   });
 
   test("returns me, pending requests and friend bulletins within 10 days", async () => {
@@ -176,7 +235,7 @@ describe("dashboard", () => {
     await post(me, "mine");
     await post(pal, "second");
 
-    const dash = await (await signedIn(t, me)).query(api.home.dashboard, {});
+    const dash = (await (await signedIn(t, me)).query(api.home.dashboard, {}))!;
     expect(dash.me.username).toBe("me");
     expect(dash.pendingRequests.map((c) => c.username)).toEqual(["asker"]);
     expect(dash.bulletins.map((b) => b.body)).toEqual(["second", "first"]);

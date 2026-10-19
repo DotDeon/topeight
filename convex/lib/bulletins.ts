@@ -22,24 +22,29 @@ export async function friendBulletins(
   { limit }: { limit: number },
 ): Promise<BulletinView[]> {
   const cutoff = Date.now() - BULLETIN_WINDOW_MS;
-  const views: BulletinView[] = [];
-  for (const friendId of await friendIds(ctx, profileId)) {
-    const author = await ctx.db.get(friendId);
-    if (author === null || author.banned) continue;
-    const posts = await ctx.db
-      .query("bulletins")
-      .withIndex("by_author", (q) => q.eq("authorId", friendId).gte("_creationTime", cutoff))
-      .order("desc")
-      .filter((q) => q.eq(q.field("hidden"), false))
-      .take(limit);
-    for (const post of posts) {
-      views.push({
-        id: post._id,
-        author: toPublicCard(author),
-        body: post.body,
-        createdAt: post._creationTime,
-      });
-    }
-  }
-  return views.sort((x, y) => y.createdAt - x.createdAt).slice(0, limit);
+  // Reads one query per friend, in parallel. A fan-out feed table is the long-term fix.
+  const perFriend = await Promise.all(
+    (await friendIds(ctx, profileId)).map(async (friendId) => {
+      const author = await ctx.db.get(friendId);
+      if (author === null || author.banned) return [];
+      const posts = await ctx.db
+        .query("bulletins")
+        .withIndex("by_author", (q) => q.eq("authorId", friendId).gte("_creationTime", cutoff))
+        .order("desc")
+        .filter((q) => q.eq(q.field("hidden"), false))
+        .take(limit);
+      return posts.map(
+        (post): BulletinView => ({
+          id: post._id,
+          author: toPublicCard(author),
+          body: post.body,
+          createdAt: post._creationTime,
+        }),
+      );
+    }),
+  );
+  return perFriend
+    .flat()
+    .sort((x, y) => y.createdAt - x.createdAt)
+    .slice(0, limit);
 }

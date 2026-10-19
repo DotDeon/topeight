@@ -1,7 +1,9 @@
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { query } from "./_generated/server";
-import { requireProfile } from "./lib/access";
+import { profileForUser } from "./lib/access";
 import { friendBulletins } from "./lib/bulletins";
 import { toPublicCard, type PublicCard } from "./lib/cards";
+import { MAX_SCAN } from "./lib/limits";
 
 const CARD_COUNT = 5;
 const DASHBOARD_BULLETINS = 5;
@@ -11,8 +13,12 @@ export const coolNewPeople = query({
   args: {},
   handler: async (ctx): Promise<PublicCard[]> => {
     const cards: PublicCard[] = [];
-    const fans = ctx.db.query("profiles").withIndex("by_kind_creation", (q) => q.eq("kind", "fan")).order("desc");
-    for await (const p of fans) {
+    const fans = await ctx.db
+      .query("profiles")
+      .withIndex("by_kind_creation", (q) => q.eq("kind", "fan"))
+      .order("desc")
+      .take(MAX_SCAN);
+    for (const p of fans) {
       if (p.banned || p.isHouse || !p.photoKey) continue;
       cards.push(toPublicCard(p));
       if (cards.length === CARD_COUNT) break;
@@ -26,8 +32,12 @@ export const coolNewMusic = query({
   args: {},
   handler: async (ctx): Promise<PublicCard[]> => {
     const cards: PublicCard[] = [];
-    const artists = ctx.db.query("profiles").withIndex("by_kind_creation", (q) => q.eq("kind", "artist")).order("desc");
-    for await (const p of artists) {
+    const artists = await ctx.db
+      .query("profiles")
+      .withIndex("by_kind_creation", (q) => q.eq("kind", "artist"))
+      .order("desc")
+      .take(MAX_SCAN);
+    for (const p of artists) {
       if (p.banned || p.isHouse) continue;
       const track = await ctx.db
         .query("tracks")
@@ -41,11 +51,16 @@ export const coolNewMusic = query({
   },
 });
 
-/** Signed-in homepage data. Throws when signed out, so clients skip it then. */
+/** Signed-in homepage data, or null when signed out, unverified, without a profile or banned. */
 export const dashboard = query({
   args: {},
   handler: async (ctx) => {
-    const me = await requireProfile(ctx);
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) return null;
+    const user = await ctx.db.get(userId);
+    if (user === null || user.emailVerificationTime === undefined) return null;
+    const me = await profileForUser(ctx, userId);
+    if (me === null || me.banned) return null;
     const pending = await ctx.db
       .query("friendRequests")
       .withIndex("by_to_status", (q) => q.eq("to", me._id).eq("status", "pending"))

@@ -11,14 +11,27 @@ import styles from "./Home.module.css";
 function useDashboard() {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const dashboard = useQuery(api.home.dashboard, isAuthenticated ? {} : "skip");
-  return { isLoading, isAuthenticated, dashboard };
+  const me = useQuery(api.profiles.me, isAuthenticated ? {} : "skip");
+  return { isLoading, isAuthenticated, dashboard, me };
 }
 
 /** Top of the right column. Member Login when signed out, the member's own panel when in. */
 export function MemberPanel() {
-  const { isLoading, isAuthenticated, dashboard } = useDashboard();
+  const { isLoading, isAuthenticated, dashboard, me: profile } = useDashboard();
   if (isLoading) return null;
   if (!isAuthenticated) return <LoginBox />;
+  if (dashboard === null) {
+    return (
+      <>
+        {profile === null && (
+          <Box title="Welcome">
+            <Link href="/signup">Finish setting up your profile</Link>
+          </Box>
+        )}
+        <LoginBox />
+      </>
+    );
+  }
   if (dashboard === undefined) return <Box title="Welcome">Loading...</Box>;
   const { me, pendingRequests } = dashboard;
   return (
@@ -49,7 +62,7 @@ export function MemberPanel() {
 /** Friends' bulletins, shown only when signed in. */
 export function HomeBulletins() {
   const { isAuthenticated, dashboard } = useDashboard();
-  if (!isAuthenticated || dashboard === undefined) return null;
+  if (!isAuthenticated || !dashboard) return null;
   const { bulletins } = dashboard;
   return (
     <Box title="Bulletins From Friends" color="blue">
