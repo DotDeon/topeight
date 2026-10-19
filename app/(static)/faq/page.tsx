@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export const metadata = { title: "FAQ - OpenSpace" };
 
 export default function FaqPage() {
@@ -21,7 +23,7 @@ export default function FaqPage() {
       </p>
       <h2>How do I report something?</h2>
       <p>
-        Use the Report link on any profile. See <a href="/safety">Safety Tips</a> for more.
+        Use the Report link on any profile. See <Link href="/safety">Safety Tips</Link> for more.
       </p>
     </div>
   );

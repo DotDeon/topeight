@@ -27,6 +27,7 @@ import type * as media from "../media.js";
 import type * as moderation from "../moderation.js";
 import type * as profiles from "../profiles.js";
 import type * as search from "../search.js";
+import type * as seed from "../seed.js";
 import type * as shows from "../shows.js";
 import type * as social from "../social.js";
 import type * as testing from "../testing.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   moderation: typeof moderation;
   profiles: typeof profiles;
   search: typeof search;
+  seed: typeof seed;
   shows: typeof shows;
   social: typeof social;
   testing: typeof testing;

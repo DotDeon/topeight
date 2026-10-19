@@ -1,26 +1,110 @@
-# Deploying OpenSpace
+# Deploying your own OpenSpace
 
-## R2 bucket CORS
+You need four free accounts: Convex (database and backend), Cloudflare (R2 file storage), Resend (email) and Vercel (hosting). You also need two domains. Allow about an hour.
 
-Browsers upload photos and tracks straight to R2 with a signed PUT URL, so the
-bucket's CORS policy must allow PUT from your main site origin
-(`NEXT_PUBLIC_MAIN_ORIGIN`). Profiles play tracks and show photos from
-`NEXT_PUBLIC_R2_PUBLIC_URL`, which also needs GET. In the Cloudflare dashboard,
-open the bucket, then Settings, then CORS policy, and add:
+## 1. Pick two domains
+
+OpenSpace serves the trusted site and user-written profile code from two different origins.
+
+- Main origin, for example `https://openspace.example.com`. Sign-in, edit pages and the trusted profile strip live here.
+- Usercontent origin, for example `https://openspace-profiles.net`. Only the sandboxed profile documents live here.
+
+> **Warning.** The usercontent domain must be a different registrable domain from the main one. A subdomain such as `profiles.openspace.example.com` is not enough. Browsers share cookies between subdomains of one registrable domain, and the whole point of the split is that artist JavaScript can never see a session cookie. Buy a second domain.
+
+## 2. Create the Convex project
+
+1. Fork or clone the repo and run `npm install`.
+2. Run `npx convex dev` once and create a new project when asked. Stop it when the first push finishes.
+3. In the Convex dashboard, create a production deployment, or run `npx convex deploy` to create one.
+4. Generate the Convex Auth keys with `npx @convex-dev/auth`, or follow the manual setup in the Convex Auth docs. You need `JWT_PRIVATE_KEY` and `JWKS`.
+
+## 3. Create the R2 bucket
+
+1. In the Cloudflare dashboard, open R2 and create a bucket. The name goes in `R2_BUCKET`.
+2. Make the bucket publicly readable. Either attach a custom domain such as `https://media.example.com` under Settings, Custom Domains, or turn on the `r2.dev` URL. The URL goes in `NEXT_PUBLIC_R2_PUBLIC_URL`. A custom domain is the better choice for production because `r2.dev` is rate limited.
+3. Under R2, Manage API Tokens, create an API token with Object Read and Write on this bucket. Copy the token value, the access key ID and the secret access key. Note the S3 endpoint, which looks like `https://<account-id>.r2.cloudflarestorage.com`.
+4. Open the bucket, then Settings, then CORS policy, and add:
 
 ```json
 [
   {
     "AllowedOrigins": ["https://openspace.example.com"],
-    "AllowedMethods": ["GET", "PUT"],
-    "AllowedHeaders": ["Content-Type"]
+    "AllowedMethods": ["PUT", "GET"],
+    "AllowedHeaders": ["content-type", "if-none-match"],
+    "MaxAgeSeconds": 3600
   }
 ]
 ```
 
-Replace the origin with your `NEXT_PUBLIC_MAIN_ORIGIN`. For local development
-add `http://localhost:3000` as well.
+Replace the origin with your main origin. Add `http://localhost:3000` if you want uploads to work from a local copy.
 
-The Convex deployment needs `R2_TOKEN`, `R2_ACCESS_KEY_ID`,
-`R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT`, `R2_BUCKET` and
-`NEXT_PUBLIC_R2_PUBLIC_URL`. Set each with `npx convex env set NAME value`.
+`content-type` is required because the browser sends a `Content-Type` header on every upload, and the upload URL is signed for that exact type. Without it the preflight request fails and every upload is blocked. `if-none-match` is required because the browser sends `If-None-Match: *` so an upload can never overwrite an existing object. That header is signed into the upload URL too, and the browser blocks the request if CORS does not allow it.
+
+## 4. Set up Resend
+
+1. In Resend, add your sending domain and add the DNS records it shows you.
+2. Wait for the domain to verify, then create an API key. That is `AUTH_RESEND_KEY`.
+3. Choose a from address on that domain, for example `OpenSpace <noreply@example.com>`. That is `AUTH_EMAIL_FROM`.
+
+Without `AUTH_RESEND_KEY`, verification and reset codes are printed to the Convex logs instead of emailed. That is fine for a private test and wrong for a public site.
+
+## 5. Set the Convex environment variables
+
+Set each one on the production deployment with `npx convex env set NAME value` (add `--prod` if your CLI is pointed at the dev deployment).
+
+These go on Convex:
+
+| Variable | Value |
+| --- | --- |
+| `JWT_PRIVATE_KEY` | From step 2 |
+| `JWKS` | From step 2 |
+| `SITE_URL` | Your main origin |
+| `ADMIN_EMAILS` | Comma-separated emails of admins |
+| `HOUSE_USERNAME` | Username of the account every new member befriends, for example `openspace` |
+| `HOUSE_DISPLAY_NAME` | Its display name, for example `OpenSpace` |
+| `AUTH_RESEND_KEY` | From step 4 |
+| `AUTH_EMAIL_FROM` | From step 4 |
+| `R2_TOKEN` | From step 3 |
+| `R2_ACCESS_KEY_ID` | From step 3 |
+| `R2_SECRET_ACCESS_KEY` | From step 3 |
+| `R2_ENDPOINT` | From step 3 |
+| `R2_BUCKET` | From step 3 |
+| `NEXT_PUBLIC_R2_PUBLIC_URL` | The public bucket URL, no trailing slash needed |
+
+Then push the functions with `npx convex deploy`.
+
+## 6. Create the Vercel project
+
+1. Import the repo into Vercel. The framework is detected as Next.js.
+2. Add these environment variables for Production (and Preview if you use it):
+
+| Variable | Value |
+| --- | --- |
+| `NEXT_PUBLIC_MAIN_ORIGIN` | Your main origin, for example `https://openspace.example.com` |
+| `NEXT_PUBLIC_USERCONTENT_ORIGIN` | Your usercontent origin, for example `https://openspace-profiles.net` |
+| `NEXT_PUBLIC_CONVEX_URL` | The production Convex URL, ending in `.convex.cloud` |
+
+3. Under Settings, Domains, attach both domains to this same project. Do not make a second project. The app tells the two apart by hostname and serves the profile documents only on the usercontent host.
+4. Set the build command to `npx convex deploy --cmd 'npm run build'` if you want Vercel to push Convex functions on each deploy. That needs a `CONVEX_DEPLOY_KEY` env var from the Convex dashboard. Skip it if you run `npx convex deploy` by hand.
+5. Deploy. Open the main origin, sign up and check that a profile loads inside its frame.
+
+## 7. Admins and the house account
+
+- Anyone whose verified email is in `ADMIN_EMAILS` can use `/admin` to review reports and ban accounts.
+- The house account is created the first time someone signs up, from `HOUSE_USERNAME` and `HOUSE_DISPLAY_NAME`. Every member starts with it as a friend and as their first Top 8 entry. Pick a username nobody else wants, because a member who already holds that username blocks signup until you change it.
+
+## 8. Never set these in production
+
+- `OPENSPACE_TEST_FIXTURES` turns on end-to-end test fixtures that create accounts without email checks. Never set it on a public deployment.
+- `OPENSPACE_ALLOW_SEED` allows the demo seed to run. Never leave it set.
+
+## 9. Seed demo content (optional)
+
+The seed creates 8 fans, 5 artists, tracks, shows, comments and bulletins so a fresh copy looks alive. The accounts have no email, so nobody can sign in as them. Use it on a dev or staging deployment, or on a new site you are about to launch.
+
+1. Upload the seed media. Set the `R2_*` variables in your shell, then run `node scripts/seed-media.mjs`. This uploads three silent MP3s and a small avatar for each seed user. Run it with `--dry-run` to only generate files.
+2. `npx convex env set OPENSPACE_ALLOW_SEED 1`
+3. `npx convex run seed:run`
+4. `npx convex env remove OPENSPACE_ALLOW_SEED`
+
+Running the seed again is safe. It updates the demo profiles and refreshes the show dates.

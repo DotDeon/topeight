@@ -11,8 +11,10 @@ test("logged-out homepage shows login, sign up and the cool boxes", async ({ pag
   await expect(page.getByText("OpenSpace Announcements")).toBeVisible();
   await expect(page.getByText("Upcoming Shows")).toBeVisible();
   await expect(page.getByText("Welcome to OpenSpace.")).toBeVisible();
-  // Empty database: empty states, not broken boxes.
-  await expect(page.getByText("No new people yet")).toBeVisible();
+  // Empty database shows an empty state, a seeded one shows the demo members.
+  await expect(
+    page.getByText("No new people yet").or(page.getByRole("link", { name: "Aisha" })),
+  ).toBeVisible();
 });
 
 test("a wrong password shows an error on the homepage", async ({ page }) => {
