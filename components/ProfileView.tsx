@@ -6,7 +6,7 @@ import { api } from "@/convex/_generated/api";
 import type { BridgeAction } from "@/lib/bridge-protocol";
 import { BRIDGE_RESET_MS, BridgeGate } from "@/lib/bridgeGate";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
-import { COMMENT_POSTED, PROFILE_ACTIONS } from "./profileActions";
+import { PROFILE_ACTIONS } from "./profileActions";
 import { ProfileFrame } from "./ProfileFrame";
 import { TrustedStrip } from "./TrustedStrip";
 
@@ -88,8 +88,8 @@ export function ProfileView({ username, displayName }: { username: string; displ
         request={request}
         target={target}
         onClose={onClose}
-        onResult={(action, text) => {
-          if (action === "addComment" && text === COMMENT_POSTED) setReloadKey((k) => k + 1);
+        onResult={(action, result) => {
+          if (result.ok && action === "addComment") setReloadKey((k) => k + 1);
         }}
       />
     </>

@@ -1,6 +1,8 @@
 "use client";
 
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
+import { useState } from "react";
 import Link from "next/link";
 import { Box } from "@/components/Box";
 import { api } from "@/convex/_generated/api";
@@ -9,15 +11,28 @@ import { Photo } from "./PhotoGrid";
 import { PostBody } from "./PostBody";
 import styles from "./Posts.module.css";
 
+const STATUS_TEXT = {
+  unverified: "Verify your email first",
+  "no-profile": "Finish setting up your profile",
+  suspended: "Your account has been suspended",
+} as const;
+
+function errorText(e: unknown): string {
+  return e instanceof ConvexError && typeof e.data === "string" ? e.data : "Something went wrong.";
+}
+
 function Feed() {
   const feed = useQuery(api.bulletins.feed, {});
   const me = useQuery(api.profiles.me, {});
   const remove = useMutation(api.bulletins.remove);
+  const [error, setError] = useState("");
   if (feed === undefined) return <p className={styles.muted}>Loading...</p>;
-  if (feed.length === 0) return <p className={styles.muted}>No bulletins from the last 10 days</p>;
+  if (feed.status !== "ok") return <p className={styles.muted}>{STATUS_TEXT[feed.status]}</p>;
+  if (feed.bulletins.length === 0) return <p className={styles.muted}>No bulletins from the last 10 days</p>;
   return (
     <>
-      {feed.map((b) => (
+      {error && <p className={styles.error} role="alert">{error}</p>}
+      {feed.bulletins.map((b) => (
         <div className={`${styles.comment} ${styles.bulletin}`} key={b.id} data-bulletin="">
           <div className={styles.who}>
             <Link href={`/${b.author.username}`}>
@@ -29,7 +44,10 @@ function Feed() {
             <span className={styles.date}>
               {new Date(b.createdAt).toISOString().slice(0, 16).replace("T", " ")} UTC
               {me && me.username === b.author.username && (
-                <button type="button" className={styles.del} onClick={() => void remove({ bulletinId: b.id }).catch(() => {})}>
+                <button type="button" className={styles.del} onClick={() => {
+                    setError("");
+                    remove({ bulletinId: b.id }).catch((e) => setError(errorText(e)));
+                  }}>
                   Delete
                 </button>
               )}

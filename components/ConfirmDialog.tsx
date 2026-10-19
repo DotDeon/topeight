@@ -3,7 +3,7 @@
 import { useConvex } from "convex/react";
 import { useEffect, useRef, useState } from "react";
 import type { BridgeAction } from "@/lib/bridge-protocol";
-import { PROFILE_ACTIONS, type ActionTarget } from "./profileActions";
+import { PROFILE_ACTIONS, type ActionResult, type ActionTarget } from "./profileActions";
 import styles from "./ConfirmDialog.module.css";
 
 /** Confirm stays disabled this long after opening, so a click already on its way lands nowhere. */
@@ -28,7 +28,7 @@ export function ConfirmDialog({
   target: ActionTarget;
   onClose: (outcome: "cancelled" | "done") => void;
   /** Called with the text the dialog shows after an action ran. */
-  onResult?: (action: BridgeAction, text: string) => void;
+  onResult?: (action: BridgeAction, result: ActionResult) => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [lastAction, setLastAction] = useState<BridgeAction | null>(null);
@@ -81,7 +81,7 @@ function DialogBody({
 }: {
   action: BridgeAction;
   target: ActionTarget;
-  onResult?: (action: BridgeAction, text: string) => void;
+  onResult?: (action: BridgeAction, result: ActionResult) => void;
   onRan: (action: BridgeAction) => void;
   onDismiss: () => void;
 }) {
@@ -101,15 +101,20 @@ function DialogBody({
   async function confirm() {
     if (!spec.run || phase !== "ask" || !textOk) return;
     setPhase("running");
-    let outcome: string;
+    let outcome: ActionResult;
     try {
       outcome = await spec.run(target, client, text.trim());
     } catch (e) {
-      outcome = e instanceof Error ? e.message : "Something went wrong.";
+      outcome = { ok: false, text: e instanceof Error ? e.message : "Something went wrong." };
     }
-    setResult(outcome);
-    setPhase("done");
+    setResult(outcome.text);
     onResult?.(action, outcome);
+    // A failed text action keeps what was typed so the visitor can fix it and try again.
+    if (!outcome.ok && spec.input) {
+      setPhase("ask");
+      return;
+    }
+    setPhase("done");
     onRan(action);
   }
 
@@ -132,6 +137,11 @@ function DialogBody({
               onChange={(e) => setText(e.target.value)}
             />
           </label>
+        )}
+        {phase === "ask" && result !== "" && (
+          <p className={styles.result} role="alert">
+            {result}
+          </p>
         )}
         {phase === "done" && (
           <p className={styles.result} role="status">

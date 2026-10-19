@@ -70,6 +70,22 @@ describe("comments.add", () => {
     await f.mutation(api.comments.add, { profileId: owner, body: "see https://a.com" });
   });
 
+  test("rejected comments do not use up the hourly quota", async () => {
+    const t = setup();
+    const owner = await addProfile(t, "owner");
+    const fresh = await addProfile(t, "fresh");
+    const blocker = await addProfile(t, "blocker");
+    await block(t, blocker, fresh);
+    const f = await as(t, fresh);
+    for (let i = 0; i < 35; i++) {
+      await expect(f.mutation(api.comments.add, { profileId: owner, body: " " })).rejects.toThrow("can't be empty");
+      await expect(f.mutation(api.comments.add, { profileId: owner, body: "https://a.com" })).rejects.toThrow("New accounts");
+      await expect(f.mutation(api.comments.add, { profileId: blocker, body: "hi" })).rejects.toThrow("Not allowed");
+    }
+    for (let i = 0; i < 30; i++) await f.mutation(api.comments.add, { profileId: owner, body: `c${i}` });
+    await expect(f.mutation(api.comments.add, { profileId: owner, body: "one more" })).rejects.toThrow("Slow down");
+  });
+
   test("the 31st comment in an hour is refused", async () => {
     const { t, owner, guest } = await pair();
     const g = await as(t, guest);

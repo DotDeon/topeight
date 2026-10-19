@@ -5,15 +5,21 @@ import { friendshipPair } from "./lib/friendships";
 import { hashPassword } from "./lib/password";
 
 /**
- * Fixture for e2e/sandbox.spec.ts. internalMutation only: clients cannot call
- * it, only `npx convex run` with deploy credentials.
+ * Fixtures for the e2e specs. internalMutation only: clients cannot call
+ * them, only `npx convex run` with deploy credentials. e2e/global-setup.ts
+ * runs them, and only against a local Convex backend.
+ *
+ * seedSandboxFixture feeds e2e/sandbox.spec.ts, seedCommenterFixture feeds
+ * e2e/comments.spec.ts.
  *
  * `sandboxtest` is an artist whose custom JS tries to break out of the
  * sandbox and writes what happened into document.title as JSON.
  * `sandboxfan` is a fan with custom CSS, a friend of sandboxtest.
  *
- * Runs only when the deployment has OPENSPACE_TEST_FIXTURES=1, and never
- * touches a profile whose user has an email (fixture users have none).
+ * Runs only when the deployment has OPENSPACE_TEST_FIXTURES=1 (global-setup
+ * sets it, global-teardown unsets it), and never touches a profile whose user
+ * has an email (these fixture users have none). The commenter fixture is the
+ * one exception, see below.
  */
 
 function probeJs(mainOrigin: string): string {
@@ -219,6 +225,11 @@ export const seedCommenterFixture = internalMutation({
       for (const c of comments) await ctx.db.delete(c._id);
       return null;
     }
+    const taken = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", COMMENTER_EMAIL))
+      .first();
+    if (taken !== null) throw new ConvexError(`${COMMENTER_EMAIL} already exists and is not the fixture; refusing to touch it`);
     const userId = await ctx.db.insert("users", { name: "E2E Commenter", email: COMMENTER_EMAIL, emailVerificationTime: Date.now() });
     await ctx.db.insert("authAccounts", {
       userId,

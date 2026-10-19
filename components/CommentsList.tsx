@@ -1,6 +1,7 @@
 "use client";
 
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@/convex/_generated/api";
@@ -17,9 +18,16 @@ function formatDate(ms: number): string {
 function Page({ username, cursor, onMore }: { username: string; cursor: string | null; onMore: (c: string) => void }) {
   const res = useQuery(api.comments.list, { username, cursor });
   const remove = useMutation(api.comments.remove);
+  const [error, setError] = useState("");
   if (res === undefined) return <p className={styles.muted}>Loading...</p>;
   return (
     <>
+      {error && (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      )}
+      {res.page.length === 0 && cursor === null && res.isDone && <p className={styles.muted}>No comments yet.</p>}
       {res.page.map((c) => (
         <div className={styles.comment} key={c.id} data-comment="">
           <div className={styles.who}>
@@ -35,7 +43,12 @@ function Page({ username, cursor, onMore }: { username: string; cursor: string |
                 <button
                   type="button"
                   className={styles.del}
-                  onClick={() => void remove({ commentId: c.id as Id<"comments"> }).catch(() => {})}
+                  onClick={() => {
+                    setError("");
+                    remove({ commentId: c.id as Id<"comments"> }).catch((e) =>
+                      setError(e instanceof ConvexError && typeof e.data === "string" ? e.data : "Something went wrong."),
+                    );
+                  }}
                 >
                   Delete
                 </button>

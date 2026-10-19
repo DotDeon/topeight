@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireProfile } from "./lib/access";
+import { getAuthUserId } from "@convex-dev/auth/server";
+import { profileForUser, requireProfile } from "./lib/access";
 import { BULLETIN_WINDOW_MS, friendBulletins, type BulletinView } from "./lib/bulletins";
 import { toPublicCard } from "./lib/cards";
 import { rateLimiter } from "./lib/limits";
@@ -35,11 +36,24 @@ export const remove = mutation({
   },
 });
 
-/** Friends' bulletins plus my own from the last 10 days, newest first, at most 50. */
+export type FeedStatus = "ok" | "unverified" | "no-profile" | "suspended";
+
+/**
+ * Friends' bulletins plus my own from the last 10 days, newest first, at most 50.
+ * A signed-in user who cannot post yet gets an empty feed and a status the page
+ * can explain. Signed-out callers are refused.
+ */
 export const feed = query({
   args: {},
-  handler: async (ctx): Promise<BulletinView[]> => {
-    const me = await requireProfile(ctx);
+  handler: async (ctx): Promise<{ status: FeedStatus; bulletins: BulletinView[] }> => {
+    const userId = await getAuthUserId(ctx);
+    const user = userId === null ? null : await ctx.db.get(userId);
+    if (user === null) throw new ConvexError("Not signed in");
+    if (user.emailVerificationTime === undefined) return { status: "unverified", bulletins: [] };
+    const me = await profileForUser(ctx, user._id);
+    if (me === null) return { status: "no-profile", bulletins: [] };
+    if (me.banned) return { status: "suspended", bulletins: [] };
+
     const theirs = await friendBulletins(ctx, me._id, { limit: FEED_LIMIT });
     const cutoff = Date.now() - BULLETIN_WINDOW_MS;
     const mine = (
@@ -50,6 +64,7 @@ export const feed = query({
         .filter((q) => q.eq(q.field("hidden"), false))
         .take(FEED_LIMIT)
     ).map((b): BulletinView => ({ id: b._id, author: toPublicCard(me), body: b.body, createdAt: b._creationTime }));
-    return [...theirs, ...mine].sort((x, y) => y.createdAt - x.createdAt).slice(0, FEED_LIMIT);
+    const bulletins = [...theirs, ...mine].sort((x, y) => y.createdAt - x.createdAt).slice(0, FEED_LIMIT);
+    return { status: "ok", bulletins };
   },
 });

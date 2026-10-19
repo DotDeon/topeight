@@ -7,6 +7,9 @@ import type { BridgeAction } from "@/lib/bridge-protocol";
 /** Who the action is about. Later tasks add what their mutations need. */
 export type ActionTarget = { username: string; displayName: string };
 
+/** What an action did: `ok` is true only when it went through, `text` is what the dialog shows. */
+export type ActionResult = { ok: boolean; text: string };
+
 export type ProfileAction = {
   /** Button and link text. */
   label: string;
@@ -17,18 +20,16 @@ export type ProfileAction = {
    * text the dialog shows next. Absent means the feature is coming soon and
    * the dialog has no Confirm button.
    */
-  run?: (target: ActionTarget, client: ConvexReactClient, text: string) => Promise<string>;
+  run?: (target: ActionTarget, client: ConvexReactClient, text: string) => Promise<ActionResult>;
   /** When set, the dialog asks for text first and passes it to `run`. */
   input?: { label: string; maxLength: number };
 };
 
-/** What the Add Comment dialog says when the comment went through. */
-export const COMMENT_POSTED = "Comment posted";
 
 export const COMING_SOON = "Coming soon. This feature arrives in a later update.";
 
 // Task 13 swaps in reporting.
-const comingSoon = async () => COMING_SOON;
+const comingSoon = async (): Promise<ActionResult> => ({ ok: false, text: COMING_SOON });
 
 /** Runs a social mutation on the profile being viewed and turns the outcome into dialog text. */
 async function runSocial(
@@ -36,17 +37,17 @@ async function runSocial(
   client: ConvexReactClient,
   loggedOut: string,
   go: (id: Id<"profiles">) => Promise<string>,
-): Promise<string> {
+): Promise<ActionResult> {
   try {
     const id = await client.query(api.social.profileIdByUsername, { username: target.username });
-    if (id === null) return "Profile not found";
-    return await go(id);
+    if (id === null) return { ok: false, text: "Profile not found" };
+    return { ok: true, text: await go(id) };
   } catch (e) {
     const message = e instanceof ConvexError && typeof e.data === "string" ? e.data : "Something went wrong.";
-    if (message === "Not signed in") return loggedOut;
-    if (message === "Email not verified") return "Verify your email first";
-    if (message === "No profile") return "Finish setting up your profile";
-    return message;
+    if (message === "Not signed in") return { ok: false, text: loggedOut };
+    if (message === "Email not verified") return { ok: false, text: "Verify your email first" };
+    if (message === "No profile") return { ok: false, text: "Finish setting up your profile" };
+    return { ok: false, text: message };
   }
 }
 
@@ -65,7 +66,7 @@ const block = (target: ActionTarget, client: ConvexReactClient) =>
 const addComment = (target: ActionTarget, client: ConvexReactClient, text: string) =>
   runSocial(target, client, "Log in to comment", async (id) => {
     await client.mutation(api.comments.add, { profileId: id, body: text });
-    return COMMENT_POSTED;
+    return "Comment posted";
   });
 
 export const PROFILE_ACTIONS: Record<BridgeAction, ProfileAction> = {

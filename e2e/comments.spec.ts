@@ -3,9 +3,10 @@ import { expect, test } from "@playwright/test";
 const port = Number(process.env.PORT ?? 3000);
 const USERCONTENT = process.env.NEXT_PUBLIC_USERCONTENT_ORIGIN ?? `http://127.0.0.1:${port}`;
 const EMAIL = "e2e-commenter@fixture.invalid";
-const PASSWORD = process.env.E2E_COMMENTER_PASSWORD ?? "e2e-Commenter-pw-1";
 
 test("a signed-in user comments from the trusted strip, then deletes it on the comments page", async ({ page }) => {
+  const PASSWORD = process.env.E2E_COMMENTER_PASSWORD;
+  if (!PASSWORD) throw new Error("E2E_COMMENTER_PASSWORD is set by e2e/global-setup.ts");
   const body = `e2e hello ${Date.now()}`;
 
   await page.goto("/");
