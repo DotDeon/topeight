@@ -1,0 +1,152 @@
+import { describe, expect, test } from "vitest";
+import { BRIDGE_ACTIONS } from "@/lib/bridge-protocol";
+import { clampFrameHeight, navigatePath, parseBridgeMessage } from "@/lib/bridge";
+
+const frame = { name: "profile-frame" };
+const ev = (data: unknown, extra: Partial<{ origin: string; source: unknown }> = {}) => ({
+  origin: "null",
+  source: frame,
+  data,
+  ...extra,
+});
+
+describe("parseBridgeMessage: sender checks", () => {
+  test("accepts a message from the frame with the opaque origin", () => {
+    expect(parseBridgeMessage(ev({ type: "openspace:action", action: "addFriend" }), frame)).toEqual({
+      type: "openspace:action",
+      action: "addFriend",
+    });
+  });
+
+  test.each([
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://evil.example",
+    "",
+    "undefined",
+  ])("rejects origin %j", (origin) => {
+    expect(parseBridgeMessage(ev({ type: "openspace:action", action: "addFriend" }, { origin }), frame)).toBeNull();
+  });
+
+  test("rejects a message from any other source", () => {
+    const msg = { type: "openspace:action", action: "addFriend" };
+    expect(parseBridgeMessage(ev(msg, { source: { name: "other" } }), frame)).toBeNull();
+    expect(parseBridgeMessage(ev(msg, { source: null }), frame)).toBeNull();
+    expect(parseBridgeMessage(ev(msg, { source: undefined }), frame)).toBeNull();
+  });
+
+  test("rejects everything when there is no frame yet", () => {
+    const msg = { type: "openspace:action", action: "addFriend" };
+    expect(parseBridgeMessage(ev(msg, { source: null }), null)).toBeNull();
+    expect(parseBridgeMessage(ev(msg, { source: undefined }), undefined)).toBeNull();
+  });
+});
+
+describe("parseBridgeMessage: payload checks", () => {
+  test.each([null, undefined, "openspace:action", 42, [], true])("rejects non-object data %j", (data) => {
+    expect(parseBridgeMessage(ev(data), frame)).toBeNull();
+  });
+
+  test.each(["openspace:evil", "openspace:login", "", "OPENSPACE:ACTION", undefined])(
+    "rejects unknown type %j",
+    (type) => {
+      expect(parseBridgeMessage(ev({ type, action: "addFriend" }), frame)).toBeNull();
+    },
+  );
+
+  test("accepts every known action and nothing else", () => {
+    for (const action of BRIDGE_ACTIONS) {
+      expect(parseBridgeMessage(ev({ type: "openspace:action", action }), frame)).toEqual({
+        type: "openspace:action",
+        action,
+      });
+    }
+    for (const action of ["deleteAccount", "toString", "__proto__", "constructor", "", 1, null]) {
+      expect(parseBridgeMessage(ev({ type: "openspace:action", action }), frame)).toBeNull();
+    }
+  });
+
+  test("drops extra fields", () => {
+    const parsed = parseBridgeMessage(
+      ev({ type: "openspace:action", action: "block", target: "someone-else" }),
+      frame,
+    );
+    expect(parsed).toEqual({ type: "openspace:action", action: "block" });
+  });
+
+  test("accepts finite heights up to 50000", () => {
+    for (const height of [0, 1, 150.5, 4000, 50000]) {
+      expect(parseBridgeMessage(ev({ type: "openspace:resize", height }), frame)).toEqual({
+        type: "openspace:resize",
+        height,
+      });
+    }
+  });
+
+  test.each(["800", null, undefined, NaN, Infinity, -Infinity, -1, 50001, 1e9, {}])(
+    "rejects height %j",
+    (height) => {
+      expect(parseBridgeMessage(ev({ type: "openspace:resize", height }), frame)).toBeNull();
+    },
+  );
+
+  test("accepts navigate to a valid username, normalised", () => {
+    expect(parseBridgeMessage(ev({ type: "openspace:navigate", username: "Lowveld" }), frame)).toEqual({
+      type: "openspace:navigate",
+      username: "lowveld",
+    });
+  });
+
+  test("accepts navigate with a known page", () => {
+    for (const page of ["friends", "comments"]) {
+      expect(
+        parseBridgeMessage(ev({ type: "openspace:navigate", username: "lowveld", page }), frame),
+      ).toEqual({ type: "openspace:navigate", username: "lowveld", page });
+    }
+  });
+
+  test.each([
+    "../admin",
+    "lowveld/../../admin",
+    "https://evil.example",
+    "//evil.example",
+    "admin",
+    "edit",
+    "a",
+    "",
+    "lowveld?x=1",
+    "low veld",
+    42,
+    null,
+  ])("rejects navigate username %j", (username) => {
+    expect(parseBridgeMessage(ev({ type: "openspace:navigate", username }), frame)).toBeNull();
+  });
+
+  test.each(["edit", "../admin", "", "friends/x", 1, null])("rejects navigate page %j", (page) => {
+    expect(
+      parseBridgeMessage(ev({ type: "openspace:navigate", username: "lowveld", page }), frame),
+    ).toBeNull();
+  });
+});
+
+describe("clampFrameHeight", () => {
+  test("clamps to 150..20000 and rounds up", () => {
+    expect(clampFrameHeight(0)).toBe(150);
+    expect(clampFrameHeight(149)).toBe(150);
+    expect(clampFrameHeight(800.2)).toBe(801);
+    expect(clampFrameHeight(20000)).toBe(20000);
+    expect(clampFrameHeight(49999)).toBe(20000);
+  });
+});
+
+describe("navigatePath", () => {
+  test("builds main-origin paths only", () => {
+    expect(navigatePath({ type: "openspace:navigate", username: "lowveld" })).toBe("/lowveld");
+    expect(navigatePath({ type: "openspace:navigate", username: "lowveld", page: "friends" })).toBe(
+      "/lowveld/friends",
+    );
+    expect(navigatePath({ type: "openspace:navigate", username: "lowveld", page: "comments" })).toBe(
+      "/lowveld/comments",
+    );
+  });
+});

@@ -1,53 +1,9 @@
 import { BRIDGE_ACTIONS, BRIDGE_PAGES, type BridgePage } from "@/lib/bridge-protocol";
 import { tokenizeComment } from "@/lib/validation";
 import { PROFILE_CSS } from "./profile-css";
+import type { PublicProfile } from "./types";
 
-/** Same shape as convex/lib/cards.ts PublicCard, re-declared to keep lib/ free of convex/. */
-export type PublicCard = {
-  username: string;
-  displayName: string;
-  photoUrl: string | null;
-  kind: "fan" | "artist";
-};
-
-export type PublicProfile = {
-  username: string;
-  displayName: string;
-  kind: "fan" | "artist";
-  headline: string;
-  location: string;
-  gender?: string;
-  genre?: string;
-  aboutMe: string;
-  whoIdLikeToMeet: string;
-  interests?: {
-    general: string;
-    music: string;
-    movies: string;
-    television: string;
-    books: string;
-    heroes: string;
-  };
-  band?: {
-    members: string;
-    influences: string;
-    soundsLike: string;
-    recordLabel: string;
-    labelType: string;
-  };
-  photoUrl: string | null;
-  profileViews: number;
-  lastLoginAt: number;
-  memberSince: number;
-  friendCount: number;
-  top8: PublicCard[];
-  comments: Array<{ author: PublicCard; body: string; createdAt: number }>;
-  commentCount: number;
-  latestBulletin: { body: string; createdAt: number } | null;
-  tracks: Array<{ title: string; url: string; autoplay: boolean }>;
-  shows: Array<{ date: string; venue: string; city: string }>;
-  custom: { css: string; html: string; js: string };
-};
+export type { PublicCard, PublicProfile } from "./types";
 
 export type RenderOptions = { mainOrigin: string };
 
@@ -135,6 +91,13 @@ function formatShowDate(value: string): string {
 
 function formatCount(n: number): string {
   return String(Math.max(0, Math.trunc(n))).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+/** getPublicProfile counts at most 1001 comments; anything over 1000 shows as "1000+". */
+const MAX_COUNTED_COMMENTS = 1000;
+
+function formatCommentTotal(n: number): string {
+  return n > MAX_COUNTED_COMMENTS ? `${MAX_COUNTED_COMMENTS}+` : formatCount(n);
 }
 
 // ---------------------------------------------------------------- pieces
@@ -294,7 +257,7 @@ function renderRight(p: PublicProfile): string {
     )
     .join("");
   parts.push(
-    `<div class="section-title">${name}'s Friends Comments</div><div class="comments"><div class="comments-head"><b>Displaying ${shown.length} of ${formatCount(Math.max(p.commentCount, shown.length))} comments</b> ( ${navLink(p.username, "View All", "comments")} | ${actionLink("addComment", "Add Comment")} )</div>${comments}</div>`,
+    `<div class="section-title">${name}'s Friends Comments</div><div class="comments"><div class="comments-head"><b>Displaying ${shown.length} of ${formatCommentTotal(Math.max(p.commentCount, shown.length))} comments</b> ( ${navLink(p.username, "View All", "comments")} | ${actionLink("addComment", "Add Comment")} )</div>${comments}</div>`,
   );
 
   return `<div class="profile-right">${parts.join("\n")}</div>`;

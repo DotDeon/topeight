@@ -1,0 +1,26 @@
+.strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -8px -8px 8px;
+  padding: 4px 8px;
+  background: #d5e8fb;
+  border-bottom: 1px solid #6698cb;
+}
+
+.name {
+  font-weight: bold;
+  color: #003399;
+}
+
+.actions {
+  display: flex;
+  gap: 4px;
+}
+
+.btn {
+  font: inherit;
+  padding: 1px 6px;
+  cursor: pointer;
+}

@@ -225,6 +225,11 @@ describe("renderProfileDocument (hardening)", () => {
     expect(html).toContain("Displaying 10 of 12 comments");
   });
 
+  test("a comment count over 1000 shows as 1000+", () => {
+    expect(renderProfileDocument(fan({ commentCount: 1000 }), opts)).toContain("Displaying 0 of 1,000 comments");
+    expect(renderProfileDocument(fan({ commentCount: 1001 }), opts)).toContain("Displaying 0 of 1000+ comments");
+  });
+
   test("no tracks means no player", () => {
     expect(renderProfileDocument(artist({ tracks: [] }), opts)).not.toContain('id="openspace-player"');
     expect(renderProfileDocument(fan({ tracks: [t("x")] }), opts)).not.toContain(

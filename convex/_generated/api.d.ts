@@ -21,6 +21,7 @@ import type * as lib_otp from "../lib/otp.js";
 import type * as lib_password from "../lib/password.js";
 import type * as profiles from "../profiles.js";
 import type * as shows from "../shows.js";
+import type * as testing from "../testing.js";
 
 import type {
   ApiFromModules,
@@ -42,6 +43,7 @@ declare const fullApi: ApiFromModules<{
   "lib/password": typeof lib_password;
   profiles: typeof profiles;
   shows: typeof shows;
+  testing: typeof testing;
 }>;
 
 /**
