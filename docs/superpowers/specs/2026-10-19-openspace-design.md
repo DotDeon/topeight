@@ -26,8 +26,9 @@ The project is open source, so anyone can read the code and run their own copy.
   artist's own HTML, CSS and JavaScript.
 - Artist pages have all four of: a music player with uploaded tracks, Top 8 and
   friend requests, a comments wall, and shows and bulletins.
-- Stack: Next.js hosted on Vercel, with Convex for the database, logins and file
-  storage.
+- Stack: Next.js hosted on Vercel, with Convex for the database and logins, and Cloudflare R2 for
+  uploaded files (MP3s and photos). R2 was the owner's call on 2026-10-19,
+  because it has 10 GB free and charges nothing for downloads.
 - The name is OpenSpace, and the code is open source.
 - Approved from the mockup: a default first friend in everyone's Top 8 (the
   "Tom" role), and Report and Block links in every profile's Contacting box.
@@ -119,8 +120,9 @@ Artist profiles add:
 
 ### Music
 
-- An artist can upload up to 10 MP3 tracks, 5 MB each (owner decision; about 5 minutes at 128 kbps), stored in Convex file
-  storage.
+- An artist can upload up to 10 MP3 tracks, 5 MB each (owner decision; about 5 minutes at 128 kbps), stored in Cloudflare R2.
+  Files upload straight from the browser to R2 with a short-lived signed URL
+  and play from a public R2 bucket domain. Profile photos use the same path.
 - The artist sets track order and picks which one autoplays.
 - Visitors see a play/pause, a progress bar, the track list and a mute control.
   Because browsers block autoplay with sound until the visitor interacts, the
@@ -198,7 +200,8 @@ This is the most important technical part.
 - README covers: what it is, screenshots, running locally, deploying your own
   copy to Vercel and Convex, setting both domains, setting admins and the house
   account.
-- `.env.example` lists every setting. Nothing owner-specific is committed.
+- `.env.example` lists every setting, including the R2 bucket, keys and public
+  bucket URL. Nothing owner-specific is committed.
 - Seed script that creates demo fans, demo artists with silent sample tracks,
   shows and comments, so a fresh copy looks alive.
 
