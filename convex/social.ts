@@ -20,13 +20,15 @@ async function addFriendship(ctx: MutationCtx, x: Id<"profiles">, y: Id<"profile
   await ctx.db.insert("friendships", friendshipPair(x, y));
 }
 
-/** Pending requests between two profiles, in both directions. */
-async function pendingBetween(ctx: MutationCtx, x: Id<"profiles">, y: Id<"profiles">) {
-  const [xy, yx] = await Promise.all([
-    ctx.db.query("friendRequests").withIndex("by_pair", (q) => q.eq("from", x).eq("to", y)).collect(),
-    ctx.db.query("friendRequests").withIndex("by_pair", (q) => q.eq("from", y).eq("to", x)).collect(),
-  ]);
-  return [...xy, ...yx].filter((r) => r.status === "pending");
+const DECLINE_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_REQUEST_ROWS = 50;
+
+/** The pending request from `from` to `to`, if any. */
+async function pendingFrom(ctx: MutationCtx, from: Id<"profiles">, to: Id<"profiles">) {
+  return await ctx.db
+    .query("friendRequests")
+    .withIndex("by_pair_status", (q) => q.eq("from", from).eq("to", to).eq("status", "pending"))
+    .first();
 }
 
 async function dropFromTop8(ctx: MutationCtx, owner: Doc<"profiles">, removed: Id<"profiles">) {
@@ -71,15 +73,26 @@ export const sendFriendRequest = mutation({
     if (await isBlockedEitherWay(ctx, me._id, to)) throw new ConvexError("Not allowed");
     if (await areFriends(ctx, me._id, to)) throw new ConvexError("Already friends");
 
-    const pending = await pendingBetween(ctx, me._id, to);
-    if (pending.some((r) => r.from === me._id)) throw new ConvexError("Request already sent");
+    if ((await pendingFrom(ctx, me._id, to)) !== null) throw new ConvexError("Request already sent");
+
+    // A declined sender waits 7 days before asking the same person again.
+    const declined = await ctx.db
+      .query("friendRequests")
+      .withIndex("by_pair_status", (q) => q.eq("from", me._id).eq("to", to).eq("status", "declined"))
+      .first();
+    if (declined !== null) {
+      if (Date.now() - (declined.respondedAt ?? 0) < DECLINE_COOLDOWN_MS) {
+        throw new ConvexError("Request already sent");
+      }
+      await ctx.db.delete(declined._id);
+    }
 
     const { ok } = await rateLimiter.limit(ctx, "friendRequest", { key: me._id });
     if (!ok) throw new ConvexError("Slow down");
 
-    const theirs = pending.find((r) => r.from === to);
-    if (theirs) {
-      await ctx.db.patch(theirs._id, { status: "accepted" });
+    const theirs = await pendingFrom(ctx, to, me._id);
+    if (theirs !== null) {
+      await ctx.db.delete(theirs._id);
       await addFriendship(ctx, me._id, to);
       return "accepted";
     }
@@ -96,11 +109,15 @@ export const respondFriendRequest = mutation({
     const req = await ctx.db.get(requestId);
     if (req === null || req.to !== me._id) throw new ConvexError("Not allowed");
     if (req.status !== "pending") return null;
-    if (accept) {
-      if (await isBlockedEitherWay(ctx, me._id, req.from)) throw new ConvexError("Not allowed");
-      await addFriendship(ctx, me._id, req.from);
+    if (!accept) {
+      await ctx.db.patch(requestId, { status: "declined", respondedAt: Date.now() });
+      return null;
     }
-    await ctx.db.patch(requestId, { status: accept ? "accepted" : "declined" });
+    const sender = await ctx.db.get(req.from);
+    if (sender === null || sender.banned) throw new ConvexError("Profile not found");
+    if (await isBlockedEitherWay(ctx, me._id, req.from)) throw new ConvexError("Not allowed");
+    await addFriendship(ctx, me._id, req.from);
+    await ctx.db.delete(requestId);
     return null;
   },
 });
@@ -110,6 +127,7 @@ export const removeFriend = mutation({
   returns: v.null(),
   handler: async (ctx, { other }) => {
     const me = await requireProfile(ctx);
+    if (other === me._id) throw new ConvexError("Not allowed");
     const them = await loadOther(ctx, other);
     if (them.isHouse) throw new ConvexError("Not allowed");
     await removeFriendship(ctx, me, them);
@@ -150,7 +168,16 @@ export const block = mutation({
     if (existing === null) await ctx.db.insert("blocks", { blocker: me._id, blocked: other });
 
     await removeFriendship(ctx, me, them);
-    for (const r of await pendingBetween(ctx, me._id, other)) await ctx.db.delete(r._id);
+    for (const [from, to] of [
+      [me._id, other],
+      [other, me._id],
+    ] as const) {
+      const rows = await ctx.db
+        .query("friendRequests")
+        .withIndex("by_pair", (q) => q.eq("from", from).eq("to", to))
+        .take(MAX_REQUEST_ROWS);
+      for (const r of rows) await ctx.db.delete(r._id);
+    }
     return null;
   },
 });

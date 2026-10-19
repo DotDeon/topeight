@@ -151,6 +151,91 @@ describe("friend requests", () => {
   });
 });
 
+async function pendingId(t: T, who: Id<"profiles">) {
+  const dash = await (await as(t, who)).query(api.home.dashboard, {});
+  return dash!.pendingRequests[0].requestId;
+}
+
+describe("request lifecycle", () => {
+  test("accepting deletes the request row", async () => {
+    const t = setup();
+    const a = await addProfile(t, "alice");
+    const b = await addProfile(t, "bob");
+    await (await as(t, a)).mutation(api.social.sendFriendRequest, { to: b });
+    await (await as(t, b)).mutation(api.social.respondFriendRequest, { requestId: await pendingId(t, b), accept: true });
+    expect(await t.run((ctx) => ctx.db.query("friendRequests").collect())).toHaveLength(0);
+    expect(await friendsRows(t)).toHaveLength(1);
+  });
+
+  test("re-request after a decline is rejected for 7 days, then allowed", async () => {
+    const t = setup();
+    const a = await addProfile(t, "alice");
+    const b = await addProfile(t, "bob");
+    const asA = await as(t, a);
+    await asA.mutation(api.social.sendFriendRequest, { to: b });
+    await (await as(t, b)).mutation(api.social.respondFriendRequest, { requestId: await pendingId(t, b), accept: false });
+    const rows = await t.run((ctx) => ctx.db.query("friendRequests").collect());
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("declined");
+    expect(rows[0].respondedAt).toBe(NOW.getTime());
+
+    await expect(asA.mutation(api.social.sendFriendRequest, { to: b })).rejects.toThrow("Request already sent");
+    expect(await t.run((ctx) => ctx.db.query("friendRequests").collect())).toHaveLength(1);
+
+    vi.setSystemTime(NOW.getTime() + 7 * 24 * 60 * 60 * 1000 - 1000);
+    await expect(asA.mutation(api.social.sendFriendRequest, { to: b })).rejects.toThrow("Request already sent");
+
+    vi.setSystemTime(NOW.getTime() + 7 * 24 * 60 * 60 * 1000 + 1000);
+    expect(await asA.mutation(api.social.sendFriendRequest, { to: b })).toBe("sent");
+    const after = await t.run((ctx) => ctx.db.query("friendRequests").collect());
+    expect(after).toHaveLength(1);
+    expect(after[0].status).toBe("pending");
+  });
+
+  test("accepting after a block is rejected", async () => {
+    const t = setup();
+    const a = await addProfile(t, "alice");
+    const b = await addProfile(t, "bob");
+    await (await as(t, a)).mutation(api.social.sendFriendRequest, { to: b });
+    const requestId = await pendingId(t, b);
+    await t.run((ctx) => ctx.db.insert("blocks", { blocker: b, blocked: a }));
+    await expect(
+      (await as(t, b)).mutation(api.social.respondFriendRequest, { requestId, accept: true }),
+    ).rejects.toThrow("Not allowed");
+    expect(await friendsRows(t)).toHaveLength(0);
+  });
+
+  test("accepting a banned sender's request throws Profile not found", async () => {
+    const t = setup();
+    const a = await addProfile(t, "alice");
+    const b = await addProfile(t, "bob");
+    await (await as(t, a)).mutation(api.social.sendFriendRequest, { to: b });
+    const requestId = await pendingId(t, b);
+    await t.run((ctx) => ctx.db.patch(a, { banned: true }));
+    await expect(
+      (await as(t, b)).mutation(api.social.respondFriendRequest, { requestId, accept: true }),
+    ).rejects.toThrow("Profile not found");
+    expect(await friendsRows(t)).toHaveLength(0);
+  });
+
+  test("a banned actor cannot send requests or set Top 8", async () => {
+    const t = setup();
+    const a = await addProfile(t, "alice", { banned: true });
+    const b = await addProfile(t, "bob");
+    const asA = await as(t, a);
+    await expect(asA.mutation(api.social.sendFriendRequest, { to: b })).rejects.toThrow("Account banned");
+    await expect(asA.mutation(api.social.setTop8, { ids: [] })).rejects.toThrow("Account banned");
+  });
+
+  test("setTop8 with own id and removeFriend of self are rejected", async () => {
+    const t = setup();
+    const a = await addProfile(t, "alice");
+    const asA = await as(t, a);
+    await expect(asA.mutation(api.social.setTop8, { ids: [a] })).rejects.toThrow("Top 8 can only include friends");
+    await expect(asA.mutation(api.social.removeFriend, { other: a })).rejects.toThrow("Not allowed");
+  });
+});
+
 describe("top 8", () => {
   test("rejects non-friends, more than 8, duplicates; accepts friends", async () => {
     const t = setup();
@@ -206,16 +291,20 @@ describe("block", () => {
     await befriend(t, a, b);
     await (await as(t, a)).mutation(api.social.setTop8, { ids: [b] });
     await (await as(t, b)).mutation(api.social.setTop8, { ids: [a] });
-    await (await as(t, c)).mutation(api.social.sendFriendRequest, { to: a });
-    await (await as(t, a)).mutation(api.social.sendFriendRequest, { to: c }).catch(() => {});
+    const d = await addProfile(t, "dave");
+    await (await as(t, c)).mutation(api.social.sendFriendRequest, { to: a }); // incoming to alice
+    await (await as(t, a)).mutation(api.social.sendFriendRequest, { to: d }); // outgoing from alice
+    expect(await t.run((ctx) => ctx.db.query("friendRequests").collect())).toHaveLength(2);
     await (await as(t, a)).mutation(api.social.block, { other: b });
     await (await as(t, a)).mutation(api.social.block, { other: c });
+    await (await as(t, a)).mutation(api.social.block, { other: d });
+    expect(await t.run((ctx) => ctx.db.query("friendRequests").collect())).toHaveLength(0);
     expect(await friendsRows(t)).toHaveLength(0);
     expect((await t.run((ctx) => ctx.db.get(a)))!.top8).toEqual([]);
     expect((await t.run((ctx) => ctx.db.get(b)))!.top8).toEqual([]);
     expect((await (await as(t, a)).query(api.home.dashboard, {}))!.pendingRequests).toHaveLength(0);
     await (await as(t, a)).mutation(api.social.unblock, { other: b });
-    expect(await t.run((ctx) => ctx.db.query("blocks").collect())).toHaveLength(1);
+    expect(await t.run((ctx) => ctx.db.query("blocks").collect())).toHaveLength(2);
     expect(await friendsRows(t)).toHaveLength(0);
   });
 

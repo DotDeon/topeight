@@ -38,9 +38,10 @@ async function runSocial(
     return await go(id);
   } catch (e) {
     const message = e instanceof ConvexError && typeof e.data === "string" ? e.data : "Something went wrong.";
-    return message === "Not signed in" || message === "Email not verified" || message === "No profile"
-      ? loggedOut
-      : message;
+    if (message === "Not signed in") return loggedOut;
+    if (message === "Email not verified") return "Verify your email first";
+    if (message === "No profile") return "Finish setting up your profile";
+    return message;
   }
 }
 

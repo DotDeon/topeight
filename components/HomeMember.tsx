@@ -1,6 +1,7 @@
 "use client";
 
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
 import Link from "next/link";
 import { Box } from "@/components/Box";
 import { LoginBox } from "@/components/LoginBox";
@@ -13,10 +14,12 @@ import styles from "./Home.module.css";
 function RequestButtons({ requestId }: { requestId: Id<"friendRequests"> }) {
   const respond = useMutation(api.social.respondFriendRequest);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const answer = (accept: boolean) => {
     setBusy(true);
+    setError("");
     void respond({ requestId, accept })
-      .catch(() => {})
+      .catch((e) => setError(e instanceof ConvexError && typeof e.data === "string" ? e.data : "Something went wrong."))
       .finally(() => setBusy(false));
   };
   return (
@@ -27,6 +30,11 @@ function RequestButtons({ requestId }: { requestId: Id<"friendRequests"> }) {
       <button type="button" disabled={busy} onClick={() => answer(false)}>
         Decline
       </button>
+      {error && (
+        <span className={styles.reqError} role="alert">
+          {error}
+        </span>
+      )}
     </span>
   );
 }

@@ -58,9 +58,12 @@ export default defineSchema({
       v.literal("accepted"),
       v.literal("declined"),
     ),
+    /** When a decline happened, in ms. Accepted requests are deleted instead. */
+    respondedAt: v.optional(v.number()),
   })
     .index("by_to_status", ["to", "status"])
-    .index("by_pair", ["from", "to"]),
+    .index("by_pair", ["from", "to"])
+    .index("by_pair_status", ["from", "to", "status"]),
 
   friendships: defineTable({
     a: v.id("profiles"),
