@@ -1,0 +1,56 @@
+.login label {
+  display: block;
+  font-weight: bold;
+  margin-top: 4px;
+}
+
+.login input[type="email"],
+.login input[type="password"],
+.login input[type="text"] {
+  width: 100%;
+  font: inherit;
+}
+
+.remember {
+  margin-top: 4px;
+}
+
+.remember label {
+  display: inline;
+  font-weight: normal;
+}
+
+.actions {
+  margin-top: 4px;
+}
+
+.btn {
+  font: inherit;
+  padding: 1px 6px;
+}
+
+.error {
+  color: #cc0000;
+  font-weight: bold;
+  margin: 0 0 4px;
+}
+
+.note {
+  margin: 0 0 4px;
+}
+
+.signup {
+  display: block;
+  background: #ff6600;
+  color: #fff;
+  font-weight: bold;
+  font-size: 14px;
+  padding: 6px;
+  text-align: center;
+  margin-top: 6px;
+}
+
+.signup:hover {
+  text-decoration: none;
+  background: #e65c00;
+}

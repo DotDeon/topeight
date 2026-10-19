@@ -9,12 +9,17 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as home from "../home.js";
 import type * as http from "../http.js";
 import type * as lib_access from "../lib/access.js";
+import type * as lib_bulletins from "../lib/bulletins.js";
+import type * as lib_cards from "../lib/cards.js";
 import type * as lib_friendships from "../lib/friendships.js";
+import type * as lib_media from "../lib/media.js";
 import type * as lib_otp from "../lib/otp.js";
 import type * as lib_password from "../lib/password.js";
 import type * as profiles from "../profiles.js";
+import type * as shows from "../shows.js";
 
 import type {
   ApiFromModules,
@@ -24,12 +29,17 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  home: typeof home;
   http: typeof http;
   "lib/access": typeof lib_access;
+  "lib/bulletins": typeof lib_bulletins;
+  "lib/cards": typeof lib_cards;
   "lib/friendships": typeof lib_friendships;
+  "lib/media": typeof lib_media;
   "lib/otp": typeof lib_otp;
   "lib/password": typeof lib_password;
   profiles: typeof profiles;
+  shows: typeof shows;
 }>;
 
 /**

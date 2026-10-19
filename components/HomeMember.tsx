@@ -1,0 +1,69 @@
+"use client";
+
+import { useConvexAuth, useQuery } from "convex/react";
+import Link from "next/link";
+import { Box } from "@/components/Box";
+import { LoginBox } from "@/components/LoginBox";
+import { Photo } from "@/components/PhotoGrid";
+import { api } from "@/convex/_generated/api";
+import styles from "./Home.module.css";
+
+function useDashboard() {
+  const { isLoading, isAuthenticated } = useConvexAuth();
+  const dashboard = useQuery(api.home.dashboard, isAuthenticated ? {} : "skip");
+  return { isLoading, isAuthenticated, dashboard };
+}
+
+/** Top of the right column. Member Login when signed out, the member's own panel when in. */
+export function MemberPanel() {
+  const { isLoading, isAuthenticated, dashboard } = useDashboard();
+  if (isLoading) return null;
+  if (!isAuthenticated) return <LoginBox />;
+  if (dashboard === undefined) return <Box title="Welcome">Loading...</Box>;
+  const { me, pendingRequests } = dashboard;
+  return (
+    <Box title="Member Login">
+      <p className={styles.hello}>Hello, {me.displayName}!</p>
+      <div className={styles.me}>
+        <Photo card={me} />
+        <div>
+          View My: <Link href={`/${me.username}`}>Profile</Link> | <Link href="/edit">Edit Profile</Link>
+        </div>
+      </div>
+      <div className={styles.reqs}>
+        <b>Friend requests waiting: {pendingRequests.length}</b>
+        {pendingRequests.map((c) => (
+          <div className={styles.reqRow} key={c.username}>
+            <Link href={`/${c.username}`}>
+              <Photo card={c} size={40} />
+            </Link>
+            <Link href={`/${c.username}`}>{c.displayName}</Link>
+          </div>
+        ))}
+        {pendingRequests.length > 0 && <div className={styles.muted}>View friend requests</div>}
+      </div>
+    </Box>
+  );
+}
+
+/** Friends' bulletins, shown only when signed in. */
+export function HomeBulletins() {
+  const { isAuthenticated, dashboard } = useDashboard();
+  if (!isAuthenticated || dashboard === undefined) return null;
+  const { bulletins } = dashboard;
+  return (
+    <Box title="Bulletins From Friends" color="blue">
+      {bulletins.length === 0 ? (
+        <span className={styles.muted}>No new bulletins from your friends</span>
+      ) : (
+        bulletins.map((b) => (
+          <div className={styles.bulletin} key={b.id}>
+            <Link href={`/${b.author.username}`}><b>{b.author.displayName}</b></Link>{" "}
+            <span className={styles.muted}>{new Date(b.createdAt).toLocaleDateString("en-GB")}</span>
+            <div className={styles.body}>{b.body}</div>
+          </div>
+        ))
+      )}
+    </Box>
+  );
+}

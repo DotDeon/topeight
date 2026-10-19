@@ -1,0 +1,34 @@
+.people {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.p {
+  width: 94px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.ph {
+  display: block;
+  width: 90px;
+  height: 90px;
+  margin: 0 auto 2px;
+  border: 1px solid #999;
+  object-fit: cover;
+}
+
+.blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #d5e8fb;
+  color: #336699;
+  font-size: 28px;
+  font-weight: bold;
+}
+
+.empty {
+  color: #666;
+}
