@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mockup: 2006 homepage and classic artist profile</title>
+<style>
+  body { margin:0; background:#e5e5e5; font-family: Verdana, Arial, sans-serif; font-size:10px; color:#000; }
+  .wrap { padding:16px; }
+  .note { font-family: -apple-system, sans-serif; font-size:13px; background:#fff8d6; border:1px solid #e0c96a; padding:10px 14px; margin:0 auto 16px; max-width:1640px; }
+  .note b { font-weight:600; }
+  .row { display:flex; gap:24px; justify-content:center; align-items:flex-start; flex-wrap:wrap; }
+  .frame { width:800px; background:#fff; box-shadow:0 2px 10px rgba(0,0,0,.25); }
+  .frame-label { font-family:-apple-system,sans-serif; font-size:13px; font-weight:600; margin:0 0 6px; }
+  a { color:#003399; text-decoration:none; }
+  a:hover { text-decoration:underline; }
+
+  /* header */
+  .hdr { background:#003399; height:68px; display:flex; align-items:center; padding:0 10px; justify-content:space-between; }
+  .logo { color:#fff; font-family: Arial, sans-serif; }
+  .logo .big { font-size:26px; font-weight:bold; letter-spacing:-1px; }
+  .logo .small { font-size:10px; display:block; margin-top:-2px; }
+  .search { color:#fff; font-size:10px; text-align:right; }
+  .search input[type=text] { width:170px; font-size:10px; }
+  .search button { font-size:10px; }
+  .nav { background:#6698cb; color:#fff; padding:4px 6px; font-size:10px; font-weight:bold; text-align:center; }
+  .nav a { color:#fff; padding:0 3px; }
+
+  /* homepage */
+  .home { display:flex; gap:8px; padding:8px; }
+  .col-l { width:520px; }
+  .col-r { width:256px; }
+  .box { border:1px solid #6698cb; margin-bottom:8px; }
+  .box h4 { margin:0; background:#ffcc99; color:#ff6600; font-size:11px; padding:3px 5px; }
+  .box h4.blue { background:#6698cb; color:#fff; }
+  .box .in { padding:6px; }
+  .ad { height:90px; background:repeating-linear-gradient(45deg,#f2f2f2,#f2f2f2 8px,#e8e8e8 8px,#e8e8e8 16px); display:flex; align-items:center; justify-content:center; color:#888; font-size:11px; margin-bottom:8px; border:1px solid #ccc; }
+  .people { display:flex; gap:6px; flex-wrap:wrap; }
+  .p { width:94px; text-align:center; }
+  .ph { width:90px; height:90px; margin:0 auto 2px; border:1px solid #999; }
+  .login label { display:block; font-weight:bold; margin-top:4px; }
+  .login input[type=text], .login input[type=password] { width:220px; font-size:10px; }
+  .btn { font-size:10px; padding:1px 6px; }
+  .signup { background:#ff6600; color:#fff; font-weight:bold; font-size:14px; padding:6px; text-align:center; margin-top:6px; }
+  .music li, .home ul { margin:0; padding-left:14px; line-height:15px; }
+  .footer { text-align:center; padding:8px; border-top:1px solid #ccc; color:#666; }
+
+  /* profile */
+  .prof { display:flex; gap:10px; padding:10px; }
+  .pl { width:300px; }
+  .pr { width:470px; }
+  .name { font-size:17px; font-weight:bold; margin:0 0 4px; }
+  .basic { display:flex; gap:8px; }
+  .basic .ph { width:150px; height:170px; margin:0; }
+  .contact { border:1px solid #6698cb; margin-top:8px; }
+  .contact h5, .tbl h5 { margin:0; background:#6698cb; color:#fff; font-size:10px; padding:3px 5px; }
+  .contact table { width:100%; font-size:10px; }
+  .contact td { padding:3px 5px; }
+  .tbl { border:1px solid #6698cb; margin-top:8px; }
+  .tbl table { width:100%; border-collapse:collapse; }
+  .tbl td { padding:3px 5px; vertical-align:top; border-top:1px solid #fff; }
+  .tbl td.k { background:#b1d0f0; color:#336699; font-weight:bold; width:90px; }
+  .tbl td.v { background:#d5e8fb; }
+  .player { background:#111; color:#ddd; border:2px solid #444; padding:6px; margin-top:8px; font-family: Arial, sans-serif; }
+  .player .bar { height:6px; background:#333; margin:4px 0; }
+  .player .bar i { display:block; width:35%; height:100%; background:#ff9900; }
+  .player .trk { padding:2px 0; border-bottom:1px solid #333; display:flex; justify-content:space-between; }
+  .ext { border:1px solid #000; padding:10px; font-size:14px; font-weight:bold; text-align:center; margin-bottom:8px; }
+  .orange { color:#ff6600; font-weight:bold; font-size:11px; background:#ffcc99; padding:3px 5px; margin:8px 0 0; }
+  .blurb { padding:6px; border:1px solid #ffcc99; border-top:none; }
+  .top8 { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; padding:6px; border:1px solid #ffcc99; border-top:none; text-align:center; }
+  .top8 .ph { width:90px; height:90px; }
+  .shows table { width:100%; border-collapse:collapse; }
+  .shows td { padding:3px; border-bottom:1px solid #eee; }
+  .cmt { display:flex; border-bottom:1px solid #fff; }
+  .cmt .who { width:110px; background:#ff9933; padding:5px; text-align:center; color:#fff; }
+  .cmt .who .ph { width:70px; height:70px; }
+  .cmt .what { flex:1; background:#f9d9b9; padding:5px; }
+  .sandbox-tag { display:inline-block; background:#c00; color:#fff; font-size:9px; padding:1px 4px; margin-left:4px; }
+
+  /* placeholder photo colours */
+  .c1{background:#c9a7d8}.c2{background:#9fc3a9}.c3{background:#e6b48a}.c4{background:#8fb1d9}
+  .c5{background:#d99a9a}.c6{background:#b9b9b9}.c7{background:#d6cf8a}.c8{background:#8ad3cf}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="note">
+    <b>Layout mockup, not final pixels.</b> Coloured squares stand in for photos, and names are made up. Left: the logged-out homepage. Right: an artist profile, where the parts marked <span class="sandbox-tag">ARTIST CODE</span> are what the artist's own HTML, CSS and JavaScript can restyle. A fan profile is the same right-hand page without the player, shows and band details.
+  </div>
+  <div class="row">
+
+    <!-- HOMEPAGE -->
+    <div>
+      <p class="frame-label">1. Homepage (logged out)</p>
+      <div class="frame">
+        <div class="hdr">
+          <div class="logo"><span class="big">myspace.com</span><span class="small">a place for friends</span></div>
+          <div class="search">
+            <div><input type="radio" checked> MySpace <input type="radio"> People <input type="radio"> Music</div>
+            <input type="text"> <button>Search</button>
+          </div>
+        </div>
+        <div class="nav">
+          <a>Home</a> | <a>Browse</a> | <a>Search</a> | <a>Invite</a> | <a>Mail</a> | <a>Blog</a> | <a>Favorites</a> | <a>Forum</a> | <a>Groups</a> | <a>Events</a> | <a>Music</a> | <a>Bulletins</a>
+        </div>
+        <div class="home">
+          <div class="col-l">
+            <div class="ad">banner slot (house ad, or empty)</div>
+            <div class="box">
+              <h4>Cool New People</h4>
+              <div class="in people">
+                <div class="p"><div class="ph c1"></div><a>Jess</a></div>
+                <div class="p"><div class="ph c2"></div><a>Marco</a></div>
+                <div class="p"><div class="ph c3"></div><a>Thandi</a></div>
+                <div class="p"><div class="ph c4"></div><a>Kyle</a></div>
+                <div class="p"><div class="ph c5"></div><a>Ren</a></div>
+              </div>
+            </div>
+            <div class="box">
+              <h4>Cool New Music</h4>
+              <div class="in people">
+                <div class="p"><div class="ph c6"></div><a>The Static Kids</a></div>
+                <div class="p"><div class="ph c7"></div><a>Lowveld</a></div>
+                <div class="p"><div class="ph c8"></div><a>Nightjar</a></div>
+                <div class="p"><div class="ph c1"></div><a>DJ Fynbos</a></div>
+                <div class="p"><div class="ph c3"></div><a>Paper Moons</a></div>
+              </div>
+            </div>
+            <div class="box">
+              <h4 class="blue">MySpace Announcements</h4>
+              <div class="in"><ul><li><a>Upload your tracks to your artist profile</a></li><li><a>New: custom profile code for artists</a></li><li><a>Read the safety tips</a></li></ul></div>
+            </div>
+          </div>
+          <div class="col-r">
+            <div class="box login">
+              <h4>Member Login</h4>
+              <div class="in">
+                <label>E-Mail:</label><input type="text">
+                <label>Password:</label><input type="password">
+                <div style="margin-top:4px"><input type="checkbox"> Remember Me</div>
+                <div style="margin-top:4px"><button class="btn">LOGIN</button> <a>Forgot your password?</a></div>
+                <div class="signup">SIGN UP!</div>
+              </div>
+            </div>
+            <div class="box">
+              <h4 class="blue">Upcoming Shows</h4>
+              <div class="in"><ul><li><b>Lowveld</b> 24 Oct, Cape Town</li><li><b>Nightjar</b> 31 Oct, Joburg</li><li><b>Paper Moons</b> 2 Nov, Durban</li></ul></div>
+            </div>
+          </div>
+        </div>
+        <div class="footer">About | FAQ | Terms | Privacy | Safety Tips | Contact MySpace | Report Abuse</div>
+      </div>
+    </div>
+
+    <!-- ARTIST PROFILE -->
+    <div>
+      <p class="frame-label">2. Artist profile (classic layout)</p>
+      <div class="frame">
+        <div class="hdr" style="height:44px">
+          <div class="logo"><span class="big" style="font-size:20px">myspace.com</span></div>
+          <div class="search"><input type="text"> <button>Search</button></div>
+        </div>
+        <div class="nav"><a>Home</a> | <a>Browse</a> | <a>Search</a> | <a>Mail</a> | <a>Blog</a> | <a>Music</a> | <a>Bulletins</a></div>
+        <div class="prof">
+          <div class="pl">
+            <p class="name">Lowveld <span class="sandbox-tag">ARTIST CODE</span></p>
+            <div class="basic">
+              <div class="ph c7"></div>
+              <div>"heat and static"<br><br>Indie / Electronic<br><br>Nelspruit<br>South Africa<br><br>Profile Views: 4,812<br><br>Last Login: 18/10/2026</div>
+            </div>
+            <div style="margin-top:4px">View My: <a>Pics</a> | <a>Videos</a></div>
+
+            <div class="player">
+              <b>Lowveld</b> &middot; music player
+              <div class="bar"><i></i></div>
+              <div class="trk"><span>&#9654; Red Dust</span><span>3:41</span></div>
+              <div class="trk"><span>Kruger Gate</span><span>4:02</span></div>
+              <div class="trk"><span>Summer Hail</span><span>2:58</span></div>
+            </div>
+
+            <div class="contact">
+              <h5>Contacting Lowveld</h5>
+              <table>
+                <tr><td>&#9993; <a>Send Message</a></td><td>&#10010; <a>Add to Friends</a></td></tr>
+                <tr><td>&#10148; <a>Forward to Friend</a></td><td>&#9733; <a>Add to Favorites</a></td></tr>
+                <tr><td>&#9888; <a>Report</a></td><td>&#10006; <a>Block User</a></td></tr>
+              </table>
+            </div>
+            <div style="border:1px solid #6698cb;margin-top:8px;padding:4px"><b>MySpace URL:</b><br>myspace.example/lowveld</div>
+
+            <div class="tbl">
+              <h5>Lowveld's General Info</h5>
+              <table>
+                <tr><td class="k">Member Since</td><td class="v">12/09/2026</td></tr>
+                <tr><td class="k">Band Members</td><td class="v">Sipho (synths), Anna (vox)</td></tr>
+                <tr><td class="k">Influences</td><td class="v">Boards of Canada, BLK JKS</td></tr>
+                <tr><td class="k">Sounds Like</td><td class="v">a long drive at night</td></tr>
+                <tr><td class="k">Record Label</td><td class="v">Unsigned</td></tr>
+              </table>
+            </div>
+          </div>
+
+          <div class="pr">
+            <div class="ext">Lowveld is in your extended network</div>
+
+            <div class="orange">Upcoming Shows</div>
+            <div class="blurb shows">
+              <table>
+                <tr><td>24 Oct 2026</td><td>The Waiting Room</td><td>Cape Town</td></tr>
+                <tr><td>08 Nov 2026</td><td>Untitled Basement</td><td>Joburg</td></tr>
+              </table>
+            </div>
+
+            <div class="orange">Lowveld's Latest Bulletin</div>
+            <div class="blurb">New single "Red Dust" is up on the player. (<a>view more</a>)</div>
+
+            <div class="orange">Lowveld's Blurbs <span class="sandbox-tag">ARTIST CODE</span></div>
+            <div class="blurb"><b>About me:</b><br>Two people, too many synths. This is where the artist's own HTML, CSS and JavaScript goes, like pasting code into "About me" in 2006.</div>
+
+            <div class="orange">Lowveld's Friend Space</div>
+            <div class="top8">
+              <div style="grid-column:1/-1;text-align:left"><b>Lowveld has 238 friends.</b></div>
+              <div><div class="ph c6"></div><a>Tom</a></div>
+              <div><div class="ph c8"></div><a>Nightjar</a></div>
+              <div><div class="ph c1"></div><a>Jess</a></div>
+              <div><div class="ph c3"></div><a>Thandi</a></div>
+              <div><div class="ph c2"></div><a>Marco</a></div>
+              <div><div class="ph c4"></div><a>Kyle</a></div>
+              <div><div class="ph c5"></div><a>Ren</a></div>
+              <div><div class="ph c7"></div><a>Paper Moons</a></div>
+              <div style="grid-column:1/-1;text-align:right"><a>View All of Lowveld's Friends</a></div>
+            </div>
+
+            <div class="orange">Lowveld's Friends Comments</div>
+            <div style="border:1px solid #ffcc99;border-top:none">
+              <div style="padding:4px"><b>Displaying 2 of 57 comments</b> ( <a>View All</a> | <a>Add Comment</a> )</div>
+              <div class="cmt"><div class="who"><a style="color:#fff">Jess</a><div class="ph c1"></div></div><div class="what"><b>19 Oct 2026 9:14 PM</b><br>Red Dust on repeat all week!! see u in cape town</div></div>
+              <div class="cmt"><div class="who"><a style="color:#fff">Nightjar</a><div class="ph c8"></div></div><div class="what"><b>18 Oct 2026 4:02 PM</b><br>thanks for the add! shared bill soon?</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>
