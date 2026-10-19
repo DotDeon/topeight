@@ -29,6 +29,10 @@ export const RESERVED_USERNAMES: ReadonlySet<string> = new Set([
   "moderator",
   "openspace",
   "www",
+  "_next",
+  "favicon",
+  "robots",
+  "sitemap",
 ]);
 
 const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
@@ -51,6 +55,19 @@ export function validateUsername(
     return { ok: false, reason: "That username is reserved." };
   }
   return { ok: true, username };
+}
+
+/** True if value is a real YYYY-MM-DD calendar date. */
+export function isCalendarDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [y, m, d] = match.slice(1).map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return (
+    date.getUTCFullYear() === y &&
+    date.getUTCMonth() === m - 1 &&
+    date.getUTCDate() === d
+  );
 }
 
 /** Whole years between birthDate (YYYY-MM-DD) and today, using UTC. */

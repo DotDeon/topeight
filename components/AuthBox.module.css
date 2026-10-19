@@ -1,0 +1,90 @@
+.page {
+  font-family: Verdana, Arial, sans-serif;
+  font-size: 10px;
+  width: 800px;
+  max-width: 100%;
+  margin: 20px auto;
+  padding: 0 10px;
+  color: #000;
+}
+
+.box {
+  width: 320px;
+  margin: 0 auto;
+  border: 1px solid #6698cb;
+  background: #fff;
+}
+
+.title {
+  background: #ffcc99;
+  color: #ff6600;
+  font-weight: bold;
+  font-size: 11px;
+  padding: 4px 6px;
+}
+
+.body {
+  padding: 8px 10px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.row label {
+  width: 100px;
+  font-weight: bold;
+}
+
+.row input,
+.row select {
+  flex: 1;
+  font: inherit;
+  border: 1px solid #7f9db9;
+  padding: 2px;
+}
+
+.radios {
+  flex: 1;
+  display: flex;
+  gap: 10px;
+}
+
+.radios label {
+  width: auto;
+  font-weight: normal;
+}
+
+.actions {
+  margin-top: 8px;
+  text-align: right;
+}
+
+.actions button {
+  font: inherit;
+  font-weight: bold;
+  padding: 2px 10px;
+}
+
+.error {
+  color: #cc0000;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+.note {
+  color: #333;
+  margin-bottom: 6px;
+}
+
+.links {
+  margin-top: 8px;
+  border-top: 1px solid #b1d0f0;
+  padding-top: 6px;
+}
+
+.links a {
+  color: #003399;
+}

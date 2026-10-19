@@ -10,7 +10,7 @@ export default defineConfig({
         resolve: { alias: { "@": root } },
         test: {
           name: "convex",
-          include: ["convex/**/*.test.ts"],
+          include: ["convex/**/*.test.ts", "tests/convex/**/*.test.ts"],
           environment: "edge-runtime",
           server: { deps: { inline: ["convex-test"] } },
         },
@@ -20,6 +20,7 @@ export default defineConfig({
         test: {
           name: "lib",
           include: ["tests/**/*.test.ts"],
+          exclude: ["tests/convex/**"],
           environment: "node",
           env: {
             NEXT_PUBLIC_MAIN_ORIGIN: "http://localhost:3000",
