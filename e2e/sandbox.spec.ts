@@ -1,4 +1,5 @@
 import { expect, test, type Frame, type Page } from "@playwright/test";
+import { buildUsercontentCsp } from "../lib/profile/csp";
 
 // Seeded by e2e/global-setup.ts (convex/testing.ts seedSandboxFixture).
 const port = Number(process.env.PORT ?? 3000);
@@ -12,6 +13,7 @@ type Probes = {
   topNav?: string;
   fetch?: string;
   form?: string;
+  violations?: string[];
   done?: boolean;
 };
 
@@ -56,12 +58,13 @@ test.describe("artist sandbox", () => {
     const r = await probes(page);
     console.log("sandbox probes:", JSON.stringify(r));
 
-    // document.cookie: the opaque origin has no cookie jar.
-    expect(r.cookie === "" || r.cookie?.startsWith("threw:")).toBe(true);
-    expect(r.cookie).not.toContain("main-only");
+    // document.cookie: the opaque origin has no cookie jar ("" or a throw).
+    expect(r.cookie).toMatch(/^threw:|^$/);
     expect(r.localStorage).toMatch(/^threw:/);
     expect(r.parentDocument).toMatch(/^threw:/);
+    // A no-cors POST resolves with an opaque response unless CSP blocks it.
     expect(r.fetch).toMatch(/^rejected:/);
+    expect(r.violations?.some((v) => v.startsWith("connect-src"))).toBe(true);
     // The form probe writes "stayed" only if the document survived submit().
     expect(r.form).toBe("stayed");
     expect(profileFrame(page)?.url()).toBe(`${USERCONTENT}/sandboxtest`);
@@ -86,6 +89,67 @@ test.describe("artist sandbox", () => {
     await dialog.getByRole("button", { name: "Confirm" }).click();
     await expect(dialog).toHaveAttribute("data-last-action", "addFriend");
     await expect(dialog).toContainText("Coming soon");
+  });
+
+  test("the dialog starts on Cancel and Enter does not confirm", async ({ page }) => {
+    await page.goto("/sandboxtest");
+    await probes(page);
+    const dialog = page.locator("[data-openspace-confirm]");
+    await page.frameLocator("iframe[data-openspace-profile]").locator("#probe-add-friend").click();
+    await expect(dialog).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.activeElement?.textContent)).toBe("Cancel");
+    // Wait past the arm delay so Confirm is live, then press Enter.
+    await expect(dialog.getByRole("button", { name: "Confirm" })).toBeEnabled();
+    await page.keyboard.press("Enter");
+    await expect(dialog).toBeHidden();
+    await expect(dialog).not.toHaveAttribute("data-last-action", /.*/);
+  });
+
+  test("frame dialogs are throttled visibly, coming-soon ones never count", async ({ page }) => {
+    await page.goto("/sandboxtest");
+    await probes(page);
+    const frame = page.frameLocator("iframe[data-openspace-profile]");
+    const dialog = page.locator("[data-openspace-confirm]");
+    const note = page.locator("[data-openspace-strip]").getByText("This profile is sending too many requests");
+    const pastCooldown = () => page.waitForTimeout(1_100);
+
+    // Closing coming-soon dialogs (Forward to Friend) never counts.
+    for (let i = 0; i < 4; i++) {
+      await frame.locator('[data-openspace-action="forward"]').click();
+      await expect(dialog).toContainText("Forward to Friend is coming soon.");
+      await dialog.getByRole("button", { name: "Close" }).click();
+      await expect(dialog).toBeHidden();
+      await pastCooldown();
+    }
+
+    // Three cancelled requests that could act, then the frame is throttled.
+    for (let i = 0; i < 3; i++) {
+      await frame.locator("#probe-add-friend").click();
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole("button", { name: "Cancel" }).click();
+      await expect(dialog).toBeHidden();
+      await pastCooldown();
+    }
+    await expect(note).toBeHidden();
+    await frame.locator("#probe-add-friend").click();
+    await expect(note).toBeVisible();
+    await expect(dialog).toBeHidden();
+
+    // Any trusted strip click lifts the throttle.
+    await page.locator("[data-openspace-strip]").getByRole("button", { name: "Report" }).click();
+    await expect(note).toBeHidden();
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await pastCooldown();
+    await frame.locator("#probe-add-friend").click();
+    await expect(dialog).toContainText("Add Sandbox Test to your friends?");
+  });
+
+  test("main-host pages cannot be framed", async ({ request }) => {
+    for (const path of ["/", "/sandboxtest", "/about"]) {
+      const h = (await request.get(`${MAIN}${path}`)).headers();
+      expect(h["content-security-policy"], path).toBe("frame-ancestors 'none'");
+      expect(h["x-frame-options"], path).toBe("DENY");
+    }
   });
 
   test("cancel runs nothing", async ({ page }) => {
@@ -143,9 +207,7 @@ test.describe("artist sandbox", () => {
     expect(res.status()).toBe(200);
     const h = res.headers();
     expect(h["content-type"]).toContain("text/html");
-    expect(h["content-security-policy"]).toContain(`connect-src ${USERCONTENT}`);
-    expect(h["content-security-policy"]).toContain("form-action 'none'");
-    expect(h["content-security-policy"]).toContain(`frame-ancestors ${MAIN}`);
+    expect(h["content-security-policy"]).toBe(`${buildUsercontentCsp(USERCONTENT)}; frame-ancestors ${MAIN}`);
     expect(h["x-content-type-options"]).toBe("nosniff");
     expect(h["referrer-policy"]).toBe("no-referrer");
     expect(h["cache-control"]).toContain("no-store");

@@ -23,9 +23,29 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
     return NextResponse.rewrite(url);
   }
   if (route.action === "notFound") {
-    return new NextResponse("Not found", { status: 404 });
+    const res = new NextResponse("Not found", { status: 404 });
+    return kind === "main" ? denyFraming(res) : res;
   }
-  return convexAuth(request, event);
+  const res = (await convexAuth(request, event)) ?? NextResponse.next();
+  return denyFraming(res);
+}
+
+/**
+ * Main-host pages hold the visitor's login and the trusted controls, so no
+ * other page (artist code included, which may embed any frame) may frame them.
+ */
+function denyFraming(res: Response): Response {
+  const set = (r: Response) => {
+    r.headers.set("Content-Security-Policy", "frame-ancestors 'none'");
+    r.headers.set("X-Frame-Options", "DENY");
+    return r;
+  };
+  try {
+    return set(res);
+  } catch {
+    // Responses proxied from fetch can have immutable headers.
+    return set(new Response(res.body, res));
+  }
 }
 
 export const config = {

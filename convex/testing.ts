@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { friendshipPair } from "./lib/friendships";
@@ -10,13 +10,20 @@ import { friendshipPair } from "./lib/friendships";
  * `sandboxtest` is an artist whose custom JS tries to break out of the
  * sandbox and writes what happened into document.title as JSON.
  * `sandboxfan` is a fan with custom CSS, a friend of sandboxtest.
+ *
+ * Runs only when the deployment has OPENSPACE_TEST_FIXTURES=1, and never
+ * touches a profile whose user has an email (fixture users have none).
  */
 
 function probeJs(mainOrigin: string): string {
   return `(function () {
   var MAIN = ${JSON.stringify(mainOrigin)};
-  var r = { done: false };
+  var r = { done: false, violations: [] };
   function write() { document.title = JSON.stringify(r); }
+  document.addEventListener("securitypolicyviolation", function (e) {
+    r.violations.push(e.violatedDirective + " " + e.blockedURI);
+    write();
+  });
   function threw(e) { return "threw:" + (e && e.name ? e.name : "Error"); }
 
   try { r.cookie = document.cookie; } catch (e) { r.cookie = threw(e); }
@@ -25,7 +32,8 @@ function probeJs(mainOrigin: string): string {
   try { window.top.location.href = MAIN + "/hijacked"; r.topNav = "no-throw"; } catch (e) { r.topNav = threw(e); }
   write();
 
-  var fetched = fetch(MAIN + "/api/anything", { credentials: "include" }).then(
+  // no-cors: an opaque response resolves, so only CSP connect-src can make this reject.
+  var fetched = fetch(MAIN + "/api/anything", { method: "POST", mode: "no-cors" }).then(
     function () { r.fetch = "resolved"; },
     function (e) { r.fetch = "rejected:" + (e && e.name); }
   );
@@ -81,20 +89,31 @@ function blank() {
   };
 }
 
-async function findProfile(ctx: MutationCtx, username: string) {
-  return await ctx.db
+/** The fixture profile, or null. Throws if a real member (a user with an email) holds the name. */
+async function findFixture(ctx: MutationCtx, username: string) {
+  const profile = await ctx.db
     .query("profiles")
     .withIndex("by_username", (q) => q.eq("username", username))
     .unique();
+  if (profile === null) return null;
+  const user = await ctx.db.get(profile.userId);
+  if (user?.email) {
+    throw new ConvexError(`"${username}" belongs to a real member; refusing to touch it`);
+  }
+  return profile;
 }
 
 export const seedSandboxFixture = internalMutation({
   args: { mainOrigin: v.optional(v.string()) },
   returns: v.null(),
   handler: async (ctx, { mainOrigin }) => {
+    // Dev and preview deployments only. Never set this on production.
+    if (process.env.OPENSPACE_TEST_FIXTURES !== "1") {
+      throw new ConvexError("Set OPENSPACE_TEST_FIXTURES=1 on this deployment to seed test fixtures");
+    }
     const origin = mainOrigin ?? process.env.SITE_URL ?? "http://localhost:3000";
 
-    let fan = await findProfile(ctx, "sandboxfan");
+    let fan = await findFixture(ctx, "sandboxfan");
     if (fan === null) {
       const userId = await ctx.db.insert("users", { name: "Sandbox Fan" });
       const id = await ctx.db.insert("profiles", {
@@ -125,7 +144,7 @@ export const seedSandboxFixture = internalMutation({
       customHtml: PROBE_HTML,
       customJs: probeJs(origin),
     };
-    const existing = await findProfile(ctx, "sandboxtest");
+    const existing = await findFixture(ctx, "sandboxtest");
     if (existing !== null) {
       await ctx.db.patch(existing._id, artistFields);
       return null;

@@ -6,24 +6,27 @@ import { buildUsercontentCsp } from "@/lib/profile/csp";
 import { renderProfileDocument } from "@/lib/profile/render";
 import { validateUsername } from "@/lib/validation";
 
-// Sent on every response from this route, including 404s.
-const BASE_HEADERS = {
-  "X-Content-Type-Options": "nosniff",
-  "Referrer-Policy": "no-referrer",
-  "Cache-Control": "no-store",
-};
-
-function notFound(): Response {
-  return new Response("Not found", {
-    status: 404,
-    headers: { ...BASE_HEADERS, "Content-Type": "text/plain; charset=utf-8" },
-  });
-}
-
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`${name} must be set`);
   return value;
+}
+
+/** Sent on every response from this route, including 404 and 503. */
+function baseHeaders(csp: string): Record<string, string> {
+  return {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": csp,
+  };
+}
+
+function plain(status: number, body: string, csp: string): Response {
+  return new Response(body, {
+    status,
+    headers: { ...baseHeaders(csp), "Content-Type": "text/plain; charset=utf-8" },
+  });
 }
 
 /**
@@ -33,26 +36,30 @@ function requireEnv(name: string): string {
  * main origin frames this page, and CSP frame-ancestors limits who may.
  */
 export async function GET(request: NextRequest, ctx: RouteContext<"/usercontent/[username]">) {
-  if (classifyHost(request.headers.get("host") ?? "") !== "usercontent") return notFound();
-
-  const { username } = await ctx.params;
-  const checked = validateUsername(username);
-  if (!checked.ok || checked.username !== username) return notFound();
-
-  const client = new ConvexHttpClient(requireEnv("NEXT_PUBLIC_CONVEX_URL"));
-  const profile = await client.query(api.profiles.getPublicProfile, { username });
-  if (profile === null || "unavailable" in profile) return notFound();
-
   const mainOrigin = requireEnv("NEXT_PUBLIC_MAIN_ORIGIN");
   const usercontentOrigin = requireEnv("NEXT_PUBLIC_USERCONTENT_ORIGIN");
   const csp = `${buildUsercontentCsp(usercontentOrigin)}; frame-ancestors ${mainOrigin}`;
 
+  if (classifyHost(request.headers.get("host") ?? "") !== "usercontent") {
+    return plain(404, "Not found", csp);
+  }
+
+  const { username } = await ctx.params;
+  const checked = validateUsername(username);
+  if (!checked.ok || checked.username !== username) return plain(404, "Not found", csp);
+
+  let profile;
+  try {
+    const client = new ConvexHttpClient(requireEnv("NEXT_PUBLIC_CONVEX_URL"));
+    profile = await client.query(api.profiles.getPublicProfile, { username });
+  } catch (e) {
+    console.error("usercontent: getPublicProfile failed", e);
+    return plain(503, "Profile temporarily unavailable", csp);
+  }
+  if (profile === null || "unavailable" in profile) return plain(404, "Not found", csp);
+
   return new Response(renderProfileDocument(profile, { mainOrigin }), {
     status: 200,
-    headers: {
-      ...BASE_HEADERS,
-      "Content-Type": "text/html; charset=utf-8",
-      "Content-Security-Policy": csp,
-    },
+    headers: { ...baseHeaders(csp), "Content-Type": "text/html; charset=utf-8" },
   });
 }

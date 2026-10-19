@@ -36,6 +36,8 @@ export function ConfirmDialog({
     if (request && !dialog.open) {
       outcome.current = "cancelled";
       dialog.showModal();
+      // Start on Cancel (or Close), so Enter or Space never confirms by default.
+      dialog.querySelector<HTMLButtonElement>("[data-dialog-dismiss]")?.focus();
     }
     if (!request && dialog.open) dialog.close();
   }, [request]);
@@ -121,12 +123,12 @@ function DialogBody({
               >
                 Confirm
               </button>
-              <button type="button" className={styles.btn} onClick={onDismiss} autoFocus>
+              <button type="button" className={styles.btn} onClick={onDismiss} data-dialog-dismiss="">
                 Cancel
               </button>
             </>
           ) : (
-            <button type="button" className={styles.btn} onClick={onDismiss} autoFocus>
+            <button type="button" className={styles.btn} onClick={onDismiss} data-dialog-dismiss="">
               Close
             </button>
           )}

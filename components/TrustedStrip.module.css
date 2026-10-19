@@ -24,3 +24,9 @@
   padding: 1px 6px;
   cursor: pointer;
 }
+
+.note {
+  flex: 1;
+  color: #cc0000;
+  font-weight: bold;
+}

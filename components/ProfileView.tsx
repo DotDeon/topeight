@@ -4,23 +4,20 @@ import { useMutation } from "convex/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { BridgeAction } from "@/lib/bridge-protocol";
+import { BRIDGE_RESET_MS, BridgeGate } from "@/lib/bridgeGate";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
+import { PROFILE_ACTIONS } from "./profileActions";
 import { ProfileFrame } from "./ProfileFrame";
 import { TrustedStrip } from "./TrustedStrip";
-
-/** Bridge requests are ignored this long after a dialog closes. */
-const BRIDGE_COOLDOWN_MS = 1000;
-/** After this many dialogs from the frame are cancelled in a row, the frame can no longer open one. */
-const MAX_CANCELLED_BRIDGE_DIALOGS = 3;
 
 /** Trusted strip, sandboxed profile frame and the confirm dialog they share. */
 export function ProfileView({ username, displayName }: { username: string; displayName: string }) {
   const [request, setRequest] = useState<ConfirmRequest | null>(null);
+  const [throttled, setThrottled] = useState(false);
   const nextId = useRef(1);
-  const open = useRef(false);
-  const fromBridge = useRef(false);
-  const closedAt = useRef(0);
-  const cancelledBridge = useRef(0);
+  const open = useRef<{ action: BridgeAction; fromBridge: boolean } | null>(null);
+  const gate = useRef(new BridgeGate());
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const recordView = useMutation(api.profiles.recordView);
   const viewed = useRef<string | null>(null);
@@ -30,14 +27,16 @@ export function ProfileView({ username, displayName }: { username: string; displ
     void recordView({ username }).catch(() => {});
   }, [username, recordView]);
 
-  const show = useCallback((action: BridgeAction, bridge: boolean) => {
-    open.current = true;
-    fromBridge.current = bridge;
+  const show = useCallback((action: BridgeAction, fromBridge: boolean) => {
+    open.current = { action, fromBridge };
     setRequest({ id: nextId.current++, action });
   }, []);
 
   const onStripAction = useCallback(
     (action: BridgeAction) => {
+      gate.current.reset();
+      clearTimeout(noteTimer.current);
+      setThrottled(false);
       if (!open.current) show(action, false);
     },
     [show],
@@ -48,26 +47,41 @@ export function ProfileView({ username, displayName }: { username: string; displ
   const onBridgeAction = useCallback(
     (action: BridgeAction) => {
       if (open.current) return;
-      if (Date.now() - closedAt.current < BRIDGE_COOLDOWN_MS) return;
-      if (cancelledBridge.current >= MAX_CANCELLED_BRIDGE_DIALOGS) return;
+      const verdict = gate.current.check(Date.now());
+      if (verdict === "cooldown") return;
+      if (verdict === "throttled") {
+        // Say so in the strip rather than dropping the request silently.
+        setThrottled(true);
+        clearTimeout(noteTimer.current);
+        noteTimer.current = setTimeout(() => setThrottled(false), BRIDGE_RESET_MS);
+        return;
+      }
+      setThrottled(false);
       show(action, true);
     },
     [show],
   );
 
   const onClose = useCallback((outcome: "cancelled" | "done") => {
-    open.current = false;
-    closedAt.current = Date.now();
-    if (fromBridge.current) {
-      cancelledBridge.current = outcome === "cancelled" ? cancelledBridge.current + 1 : 0;
+    const closing = open.current;
+    open.current = null;
+    if (closing) {
+      gate.current.closed(Date.now(), {
+        fromBridge: closing.fromBridge,
+        // Coming-soon dialogs have nothing to run and never count.
+        counts: PROFILE_ACTIONS[closing.action].run !== undefined,
+        outcome,
+      });
     }
     setRequest(null);
   }, []);
 
+  useEffect(() => () => clearTimeout(noteTimer.current), []);
+
   const target = { username, displayName };
   return (
     <>
-      <TrustedStrip displayName={displayName} onAction={onStripAction} />
+      <TrustedStrip displayName={displayName} onAction={onStripAction} throttled={throttled} />
       <ProfileFrame username={username} displayName={displayName} onAction={onBridgeAction} />
       <ConfirmDialog request={request} target={target} onClose={onClose} />
     </>
