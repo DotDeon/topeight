@@ -1,5 +1,6 @@
 "use client";
 
+import { useConvex } from "convex/react";
 import { useEffect, useRef, useState } from "react";
 import type { BridgeAction } from "@/lib/bridge-protocol";
 import { PROFILE_ACTIONS, type ActionTarget } from "./profileActions";
@@ -79,6 +80,7 @@ function DialogBody({
   onDismiss: () => void;
 }) {
   const spec = PROFILE_ACTIONS[action];
+  const client = useConvex();
   const [phase, setPhase] = useState<"ask" | "running" | "done">("ask");
   const [result, setResult] = useState("");
   const [armed, setArmed] = useState(false);
@@ -92,7 +94,7 @@ function DialogBody({
     if (!spec.run || phase !== "ask") return;
     setPhase("running");
     try {
-      setResult(await spec.run(target));
+      setResult(await spec.run(target, client));
     } catch (e) {
       setResult(e instanceof Error ? e.message : "Something went wrong.");
     }

@@ -88,7 +88,7 @@ test.describe("artist sandbox", () => {
 
     await dialog.getByRole("button", { name: "Confirm" }).click();
     await expect(dialog).toHaveAttribute("data-last-action", "addFriend");
-    await expect(dialog).toContainText("Coming soon");
+    await expect(dialog).toContainText("Log in to add friends");
   });
 
   test("the dialog starts on Cancel and Enter does not confirm", async ({ page }) => {

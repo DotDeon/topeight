@@ -71,3 +71,8 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.reqBtns {
+  margin-left: auto;
+  white-space: nowrap;
+}

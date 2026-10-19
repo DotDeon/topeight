@@ -21,6 +21,7 @@ import type * as lib_otp from "../lib/otp.js";
 import type * as lib_password from "../lib/password.js";
 import type * as profiles from "../profiles.js";
 import type * as shows from "../shows.js";
+import type * as social from "../social.js";
 import type * as testing from "../testing.js";
 
 import type {
@@ -43,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   "lib/password": typeof lib_password;
   profiles: typeof profiles;
   shows: typeof shows;
+  social: typeof social;
   testing: typeof testing;
 }>;
 
@@ -72,4 +74,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
+};

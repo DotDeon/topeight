@@ -1,7 +1,8 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError } from "convex/values";
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { friendshipPair } from "./friendships";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -52,4 +53,23 @@ export async function isAdmin(ctx: Ctx): Promise<boolean> {
   const user = await ctx.db.get(userId);
   if (!user?.email || user.emailVerificationTime === undefined) return false;
   return adminEmails().has(user.email.toLowerCase());
+}
+
+/** True if a and b are friends. */
+export async function areFriends(ctx: Ctx, a: Id<"profiles">, b: Id<"profiles">): Promise<boolean> {
+  const pair = friendshipPair(a, b);
+  const row = await ctx.db
+    .query("friendships")
+    .withIndex("by_pair", (q) => q.eq("a", pair.a).eq("b", pair.b))
+    .first();
+  return row !== null;
+}
+
+/** True if either profile has blocked the other. */
+export async function isBlockedEitherWay(ctx: Ctx, a: Id<"profiles">, b: Id<"profiles">): Promise<boolean> {
+  const [ab, ba] = await Promise.all([
+    ctx.db.query("blocks").withIndex("by_pair", (q) => q.eq("blocker", a).eq("blocked", b)).first(),
+    ctx.db.query("blocks").withIndex("by_pair", (q) => q.eq("blocker", b).eq("blocked", a)).first(),
+  ]);
+  return ab !== null || ba !== null;
 }

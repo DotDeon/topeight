@@ -37,3 +37,9 @@ test("search form posts type and q", async ({ page }) => {
   expect(url.searchParams.get("q")).toBe("jess");
   expect(url.searchParams.get("type")).toBe("people");
 });
+
+test("friends page shows the member's name, the grid area and a link back", async ({ page }) => {
+  await page.goto("/sandboxtest/friends");
+  await expect(page.getByRole("heading", { name: "Sandbox Test's Friends" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to the profile" })).toHaveAttribute("href", "/sandboxtest");
+});

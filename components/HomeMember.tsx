@@ -1,12 +1,35 @@
 "use client";
 
-import { useConvexAuth, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { Box } from "@/components/Box";
 import { LoginBox } from "@/components/LoginBox";
 import { Photo } from "@/components/PhotoGrid";
 import { api } from "@/convex/_generated/api";
+import { useState } from "react";
+import type { Id } from "@/convex/_generated/dataModel";
 import styles from "./Home.module.css";
+
+function RequestButtons({ requestId }: { requestId: Id<"friendRequests"> }) {
+  const respond = useMutation(api.social.respondFriendRequest);
+  const [busy, setBusy] = useState(false);
+  const answer = (accept: boolean) => {
+    setBusy(true);
+    void respond({ requestId, accept })
+      .catch(() => {})
+      .finally(() => setBusy(false));
+  };
+  return (
+    <span className={styles.reqBtns}>
+      <button type="button" disabled={busy} onClick={() => answer(true)}>
+        Accept
+      </button>{" "}
+      <button type="button" disabled={busy} onClick={() => answer(false)}>
+        Decline
+      </button>
+    </span>
+  );
+}
 
 function useDashboard() {
   const { isLoading, isAuthenticated } = useConvexAuth();
@@ -46,14 +69,14 @@ export function MemberPanel() {
       <div className={styles.reqs}>
         <b>Friend requests waiting: {pendingRequests.length}</b>
         {pendingRequests.map((c) => (
-          <div className={styles.reqRow} key={c.username}>
+          <div className={styles.reqRow} key={c.requestId}>
             <Link href={`/${c.username}`}>
               <Photo card={c} size={40} />
             </Link>
             <Link href={`/${c.username}`}>{c.displayName}</Link>
+            <RequestButtons requestId={c.requestId} />
           </div>
         ))}
-        {pendingRequests.length > 0 && <div className={styles.muted}>View friend requests</div>}
       </div>
     </Box>
   );

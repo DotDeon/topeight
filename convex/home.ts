@@ -1,4 +1,5 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
+import type { Id } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import { profileForUser } from "./lib/access";
 import { friendBulletins } from "./lib/bulletins";
@@ -66,10 +67,10 @@ export const dashboard = query({
       .withIndex("by_to_status", (q) => q.eq("to", me._id).eq("status", "pending"))
       .order("desc")
       .take(20);
-    const pendingRequests: PublicCard[] = [];
+    const pendingRequests: (PublicCard & { requestId: Id<"friendRequests"> })[] = [];
     for (const r of pending) {
       const from = await ctx.db.get(r.from);
-      if (from !== null && !from.banned) pendingRequests.push(toPublicCard(from));
+      if (from !== null && !from.banned) pendingRequests.push({ ...toPublicCard(from), requestId: r._id });
     }
     return {
       me: toPublicCard(me),
