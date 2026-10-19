@@ -1,0 +1,14 @@
+.nav {
+  background: #6698cb;
+  color: #fff;
+  padding: 4px 6px;
+  font-size: 10px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.nav a,
+.nav a:hover {
+  color: #fff;
+  padding: 0 3px;
+}

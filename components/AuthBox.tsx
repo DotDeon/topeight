@@ -4,7 +4,7 @@ import styles from "./AuthBox.module.css";
 
 export { styles as authStyles };
 
-/** A plain classic login box. Task 4 adds the full site chrome around it. */
+/** A plain classic login box. The root layout supplies the site chrome. */
 export function AuthBox({ title, children }: { title: string; children: ReactNode }) {
   return (
     <main className={styles.page}>

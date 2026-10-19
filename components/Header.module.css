@@ -1,0 +1,47 @@
+.header {
+  background: #003399;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  color: #fff;
+}
+
+.logo,
+.logo:hover {
+  color: #fff;
+  font-family: Arial, sans-serif;
+  text-decoration: none;
+}
+
+.big {
+  display: block;
+  font-size: 26px;
+  font-weight: bold;
+  letter-spacing: -1px;
+}
+
+.small {
+  display: block;
+  font-size: 10px;
+  margin-top: -2px;
+}
+
+.right {
+  text-align: right;
+}
+
+.search {
+  font-size: 10px;
+}
+
+.search input[type="text"] {
+  width: 170px;
+  font: inherit;
+}
+
+.search button {
+  font: inherit;
+}
+.authLinks { font-size: 10px; margin-bottom: 4px; }
