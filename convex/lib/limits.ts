@@ -8,9 +8,10 @@ export const MAX_FRIENDS = 1000;
 
 const HOUR = 60 * 60 * 1000;
 
-/** Per-account hourly limits, keyed by profile id. Comments and bulletins are used by later tasks. */
+/** Per-account hourly limits, keyed by profile id. */
 export const rateLimiter = new RateLimiter(components.rateLimiter, {
   friendRequest: { kind: "fixed window", rate: 50, period: HOUR },
   comment: { kind: "fixed window", rate: 30, period: HOUR },
   bulletin: { kind: "fixed window", rate: 10, period: HOUR },
+  upload: { kind: "fixed window", rate: 30, period: HOUR },
 });

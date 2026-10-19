@@ -9,6 +9,7 @@ export type MediaPurpose = "photo" | "track";
 
 /**
  * Upload a photo or track: beginUpload, then a signed PUT to R2, then syncMetadata.
+ * The upload URL only accepts this exact file size and type, and expires in 5 minutes.
  * Resolves with the object key once the file is in R2. The server checks size and
  * type after the sync and records the track or photo a moment later, so watch the
  * profile or track list queries for the result.
@@ -28,9 +29,19 @@ export function useMediaUpload() {
         throw new Error(track ? "Tracks must be MP3 files" : "Photos must be JPEG, PNG, GIF or WebP");
       }
 
-      const { uploadId } = await beginUpload({ purpose: opts.purpose, title: opts.title });
+      const { uploadId } = await beginUpload({
+        purpose: opts.purpose,
+        title: opts.title,
+        size: file.size,
+        contentType: file.type,
+      });
       const { url, key } = await generateUploadUrl({ uploadId });
-      const res = await fetch(url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      // Both headers are signed into the URL. The browser sets Content-Length itself.
+      const res = await fetch(url, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type, "If-None-Match": "*" },
+      });
       if (!res.ok) throw new Error(`Upload failed (${res.status})`);
       await syncMetadata({ key });
       return key;

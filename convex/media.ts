@@ -2,8 +2,9 @@ import type { R2Callbacks } from "@convex-dev/r2";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { DataModel, Doc, Id } from "./_generated/dataModel";
-import { mutation, type MutationCtx } from "./_generated/server";
+import { internalMutation, mutation, type MutationCtx } from "./_generated/server";
 import { requireProfile } from "./lib/access";
+import { rateLimiter } from "./lib/limits";
 import {
   MAX_TRACKS,
   PHOTO_MAX_BYTES,
@@ -13,20 +14,23 @@ import {
   TRACK_TYPES,
   UPLOAD_TTL_MS,
 } from "./lib/media";
-import { r2, storage } from "./lib/r2";
+import { r2, storage, UPLOAD_URL_TTL_S } from "./lib/r2";
 
 /*
  * Upload flow:
- * 1. beginUpload({ purpose, title? }) checks who may upload and records a pending
- *    row in `uploads` with a server-chosen key. Returns { uploadId }.
- * 2. generateUploadUrl({ uploadId }) signs a PUT URL for that row's key, only for
- *    the row's owner. The component's own generateUploadUrl takes no key, so it is
- *    not exported.
+ * 1. beginUpload({ purpose, title?, size, contentType }) checks who may upload and
+ *    the declared size and type, then records a pending row in `uploads` with a
+ *    server-chosen key and schedules expireUpload. Returns { uploadId }.
+ * 2. generateUploadUrl({ uploadId }) signs a 5 minute PUT URL for that row's key,
+ *    locked to the declared size and type and to a key that does not exist yet,
+ *    only for the row's owner. The component's own generateUploadUrl takes no key
+ *    and signs neither, so it is not exported.
  * 3. The client PUTs the file to R2.
  * 4. syncMetadata({ key }) (from the component) runs onUpload, which checks the
  *    caller owns the pending row, then schedules the component's metadata sync.
  * 5. After R2 metadata is synced, the component calls onSyncMetadata, which reads
- *    size and type and records the track or photo, or deletes the object.
+ *    size and type, which must equal the declared ones, and records the track or
+ *    photo, or deletes the object.
  */
 
 const trimTitle = (title: string) => title.trim();
@@ -74,23 +78,16 @@ export const beginUpload = mutation({
   args: {
     purpose: v.union(v.literal("photo"), v.literal("track")),
     title: v.optional(v.string()),
+    size: v.number(),
+    contentType: v.string(),
   },
   returns: v.object({ uploadId: v.id("uploads") }),
-  handler: async (ctx, { purpose, title }) => {
+  handler: async (ctx, { purpose, title, size, contentType }) => {
     const profile = await requireProfile(ctx);
-    const cutoff = Date.now() - UPLOAD_TTL_MS;
-
-    // Drop this profile's stale pending rows so the table stays small.
-    const stale = await ctx.db
-      .query("uploads")
-      .withIndex("by_profile_purpose", (q) =>
-        q.eq("profileId", profile._id).eq("purpose", purpose).lt("createdAt", cutoff),
-      )
-      .take(50);
-    for (const row of stale) await ctx.db.delete(row._id);
+    const track = purpose === "track";
 
     let cleanTitle: string | undefined;
-    if (purpose === "track") {
+    if (track) {
       if (profile.kind !== "artist") throw new ConvexError("Only artists can upload tracks");
       const [tracks, pending] = await Promise.all([
         tracksFor(ctx, profile._id),
@@ -99,21 +96,31 @@ export const beginUpload = mutation({
       if (tracks.length + pending.length >= MAX_TRACKS) throw new ConvexError("Maximum 10 tracks");
       if (title !== undefined && trimTitle(title) !== "") cleanTitle = checkTitle(title);
     }
+    if (!Number.isInteger(size) || size < 1) throw new ConvexError("That file is empty");
+    if (size > (track ? TRACK_MAX_BYTES : PHOTO_MAX_BYTES)) throw new ConvexError("File is too large");
+    if (!(track ? TRACK_TYPES : PHOTO_TYPES).includes(contentType)) {
+      throw new ConvexError("That file type isn't allowed");
+    }
 
-    const folder = purpose === "track" ? "tracks" : "photos";
-    const key = `${folder}/${profile._id}/${crypto.randomUUID()}`;
+    const { ok } = await rateLimiter.limit(ctx, "upload", { key: profile._id });
+    if (!ok) throw new ConvexError("Slow down");
+
+    const key = `${track ? "tracks" : "photos"}/${profile._id}/${crypto.randomUUID()}`;
     const uploadId = await ctx.db.insert("uploads", {
       profileId: profile._id,
       purpose,
       title: cleanTitle,
       key,
+      size,
+      contentType,
       createdAt: Date.now(),
     });
+    await ctx.scheduler.runAfter(UPLOAD_TTL_MS, internal.media.expireUpload, { uploadId });
     return { uploadId };
   },
 });
 
-/** A signed PUT URL for the caller's own pending upload. */
+/** A signed PUT URL for the caller's own pending upload, locked to its declared size and type. */
 export const generateUploadUrl = mutation({
   args: { uploadId: v.id("uploads") },
   returns: v.object({ key: v.string(), url: v.string() }),
@@ -122,7 +129,30 @@ export const generateUploadUrl = mutation({
     const row = await ctx.db.get(uploadId);
     if (row === null || row.profileId !== profile._id) throw new ConvexError("Not allowed");
     if (row.createdAt < Date.now() - UPLOAD_TTL_MS) throw new ConvexError("Upload expired");
-    return await storage.uploadUrl(row.key);
+    return await storage.uploadUrl({ key: row.key, size: row.size, contentType: row.contentType });
+  },
+});
+
+/** Scheduled by beginUpload: an upload that never landed loses its row and any object. */
+export const expireUpload = internalMutation({
+  args: { uploadId: v.id("uploads") },
+  returns: v.null(),
+  handler: async (ctx, { uploadId }) => {
+    const row = await ctx.db.get(uploadId);
+    if (row === null) return null;
+    await storage.remove(ctx, row.key);
+    await ctx.db.delete(row._id);
+    return null;
+  },
+});
+
+/** Scheduled by reject: removes anything PUT to the key again before its URL expired. */
+export const removeObject = internalMutation({
+  args: { key: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { key }) => {
+    await storage.remove(ctx, key);
+    return null;
   },
 });
 
@@ -131,6 +161,11 @@ async function reject(ctx: MutationCtx, row: Doc<"uploads">, reason: string) {
   console.warn(`Upload rejected: ${reason} (${row.key})`);
   await storage.remove(ctx, row.key);
   await ctx.db.delete(row._id);
+  // The object is gone, so If-None-Match no longer blocks a second PUT on the same
+  // URL. Sweep the key again once that URL has expired.
+  await ctx.scheduler.runAfter((UPLOAD_URL_TTL_S + 60) * 1000, internal.media.removeObject, {
+    key: row.key,
+  });
 }
 
 async function acceptTrack(ctx: MutationCtx, row: Doc<"uploads">, size: number, contentType: string) {
@@ -183,6 +218,9 @@ export const { syncMetadata, onSyncMetadata } = r2.clientApi<DataModel>({
     const size = meta?.size;
     const contentType = meta?.contentType ?? "";
     if (meta === null || size === undefined) return await reject(ctx, row, "no metadata");
+    if (size !== row.size || contentType !== row.contentType) {
+      return await reject(ctx, row, `got ${size} bytes of ${contentType}, declared ${row.size} of ${row.contentType}`);
+    }
     if (row.purpose === "track") await acceptTrack(ctx, row, size, contentType);
     else await acceptPhoto(ctx, row, size, contentType);
   },

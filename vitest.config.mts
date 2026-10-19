@@ -13,6 +13,13 @@ export default defineConfig({
           include: ["convex/**/*.test.ts", "tests/convex/**/*.test.ts"],
           environment: "edge-runtime",
           server: { deps: { inline: ["convex-test"] } },
+          // Dummy R2 config: signing is local, and tests never reach the network.
+          env: {
+            R2_BUCKET: "test-bucket",
+            R2_ENDPOINT: "https://test-account.r2.cloudflarestorage.com",
+            R2_ACCESS_KEY_ID: "test-access-key",
+            R2_SECRET_ACCESS_KEY: "test-secret-key",
+          },
         },
       },
       {

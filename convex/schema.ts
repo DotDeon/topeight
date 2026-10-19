@@ -101,6 +101,9 @@ export default defineSchema({
     purpose: v.union(v.literal("photo"), v.literal("track")),
     title: v.optional(v.string()),
     key: v.string(),
+    /** Declared by the client and signed into the upload URL. */
+    size: v.number(),
+    contentType: v.string(),
     createdAt: v.number(),
   })
     .index("by_key", ["key"])
