@@ -54,7 +54,7 @@ lib/
   profile/render.ts          renderProfileDocument
   profile/csp.ts             buildUsercontentCsp
   bridge.ts                  postMessage protocol
-middleware.ts                host split + Convex Auth middleware
+proxy.ts                host split + Convex Auth middleware
 convex/
   schema.ts, auth.ts, auth.config.ts, http.ts, convex.config.ts
   profiles.ts, social.ts, comments.ts, bulletins.ts, media.ts, shows.ts
@@ -67,7 +67,7 @@ tests/ (vitest, convex-test)   e2e/ (playwright)
 ### Task 1: Scaffold, hosts and tooling
 
 **Files:**
-- Create: Next.js app via `npx create-next-app@latest . --ts --app --eslint --no-tailwind --no-src-dir`, `convex/` via `npx convex dev --once --configure new`, `LICENSE` (AGPL-3.0 text), `.env.example`, `vitest.config.ts`, `playwright.config.ts`, `lib/hosts.ts`, `middleware.ts`
+- Create: Next.js app via `npx create-next-app@latest . --ts --app --eslint --no-tailwind --no-src-dir`, `convex/` via `npx convex dev --once --configure new`, `LICENSE` (AGPL-3.0 text), `.env.example`, `vitest.config.mts`, `playwright.config.ts`, `lib/hosts.ts`, `proxy.ts`
 - Test: `tests/hosts.test.ts`
 
 **Interfaces:**
@@ -95,7 +95,7 @@ test("main host never serves /usercontent", () => {
 ```
 
 - [ ] **Step 3: Run** `npm test -- hosts` and confirm FAIL (module not found).
-- [ ] **Step 4: Implement** `lib/hosts.ts` reading the two `NEXT_PUBLIC_*_ORIGIN` env vars, and `middleware.ts` applying `routeForHost` (Convex Auth middleware is added in Task 3). `unknown` hosts are treated as `main` in development only.
+- [ ] **Step 4: Implement** `lib/hosts.ts` reading the two `NEXT_PUBLIC_*_ORIGIN` env vars, and `proxy.ts` applying `routeForHost` (Convex Auth middleware is added in Task 3). `unknown` hosts are treated as `main` in development only.
 - [ ] **Step 5: Run** `npm test` and confirm PASS. Run `npm run build` and confirm it succeeds.
 - [ ] **Step 6: Commit** `feat: scaffold Next.js, Convex and host routing`
 
@@ -151,7 +151,7 @@ test("links and images", () => {
 
 **Files:**
 - Create: `convex/auth.ts`, `convex/auth.config.ts`, `convex/http.ts`, `convex/profiles.ts` (create part), `convex/lib/access.ts`, `app/signup/page.tsx`, `app/login/page.tsx`, `app/reset/page.tsx`, `components/ConvexClientProvider.tsx`
-- Modify: `middleware.ts` (wrap with `convexAuthNextjsMiddleware`)
+- Modify: `proxy.ts` (wrap with `convexAuthNextjsMiddleware (inside proxy.ts)`)
 - Test: `tests/convex/signup.test.ts`
 
 **Interfaces:**
