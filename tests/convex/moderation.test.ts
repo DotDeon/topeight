@@ -147,6 +147,7 @@ describe("admin functions", () => {
       await expect(who.mutation(api.moderation.dismiss, { reportId: row._id })).rejects.toThrow("Not allowed");
       await expect(who.mutation(api.moderation.ban, { profileId: target })).rejects.toThrow("Not allowed");
       await expect(who.mutation(api.moderation.unban, { profileId: target })).rejects.toThrow("Not allowed");
+      await expect(who.mutation(api.moderation.unbanByUsername, { username: "target" })).rejects.toThrow("Not allowed");
       await expect(who.mutation(api.moderation.deleteTrack, { trackId: track })).rejects.toThrow("Not allowed");
     }
     expect((await t.run((ctx) => ctx.db.get(target)))!.banned).toBe(false);
@@ -340,6 +341,24 @@ describe("moderation.ban", () => {
     const p = await t.query(api.profiles.getPublicProfile, { username: "target" });
     expect(p && "username" in p && p.username).toBe("target");
     await (await as(t, target)).mutation(api.bulletins.post, { body: "back" });
+  });
+
+  test("unbanByUsername restores a banned profile by its username", async () => {
+    const { t, boss, target } = await world();
+    const b = await as(t, boss);
+    await b.mutation(api.moderation.ban, { profileId: target });
+    // Normalised like any username input.
+    await b.mutation(api.moderation.unbanByUsername, { username: " Target " });
+    expect((await t.run((ctx) => ctx.db.get(target)))!.banned).toBe(false);
+    const p = await t.query(api.profiles.getPublicProfile, { username: "target" });
+    expect(p && "username" in p && p.username).toBe("target");
+  });
+
+  test("unbanByUsername says so when no profile has that username", async () => {
+    const { t, boss } = await world();
+    const b = await as(t, boss);
+    await expect(b.mutation(api.moderation.unbanByUsername, { username: "nobody" })).rejects.toThrow("Profile not found");
+    await expect(b.mutation(api.moderation.unbanByUsername, { username: "../x" })).rejects.toThrow("Profile not found");
   });
 });
 

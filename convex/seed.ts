@@ -357,7 +357,6 @@ export const run = internalMutation({
           ...fields,
           userId,
           username: p.username,
-          profileViews: 0,
           lastLoginAt: now,
           customCss: "",
           customHtml: "",

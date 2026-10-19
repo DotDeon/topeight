@@ -22,7 +22,7 @@ OpenSpace serves the trusted site and user-written profile code from two differe
 
 1. In the Cloudflare dashboard, open R2 and create a bucket. The name goes in `R2_BUCKET`.
 2. Make the bucket publicly readable. Either attach a custom domain such as `https://media.example.com` under Settings, Custom Domains, or turn on the `r2.dev` URL. The URL goes in `NEXT_PUBLIC_R2_PUBLIC_URL`. A custom domain is the better choice for production because `r2.dev` is rate limited.
-3. Under R2, Manage API Tokens, create an API token with Object Read and Write on this bucket. Copy the token value, the access key ID and the secret access key. Note the S3 endpoint, which looks like `https://<account-id>.r2.cloudflarestorage.com`.
+3. Under R2, Manage API Tokens, create an API token with Object Read and Write on this bucket. Copy the access key ID and the secret access key. OpenSpace does not use the token value. Note the S3 endpoint, which looks like `https://<account-id>.r2.cloudflarestorage.com`.
 4. Open the bucket, then Settings, then CORS policy, and add:
 
 ```json
@@ -64,7 +64,6 @@ These go on Convex:
 | `HOUSE_DISPLAY_NAME` | Its display name, for example `OpenSpace` |
 | `AUTH_RESEND_KEY` | From step 4 |
 | `AUTH_EMAIL_FROM` | From step 4 |
-| `R2_TOKEN` | From step 3 |
 | `R2_ACCESS_KEY_ID` | From step 3 |
 | `R2_SECRET_ACCESS_KEY` | From step 3 |
 | `R2_ENDPOINT` | From step 3 |
@@ -76,7 +75,7 @@ Then push the functions with `npx convex deploy`.
 ## 6. Create the Vercel project
 
 1. Import the repo into Vercel. The framework is detected as Next.js.
-2. Add these environment variables for Production (and Preview if you use it):
+2. Add these environment variables for Production:
 
 | Variable | Value |
 | --- | --- |
@@ -87,6 +86,8 @@ Then push the functions with `npx convex deploy`.
 3. Under Settings, Domains, attach both domains to this same project. Do not make a second project. The app tells the two apart by hostname and serves the profile documents only on the usercontent host.
 4. Set the build command to `npx convex deploy --cmd 'npm run build'` if you want Vercel to push Convex functions on each deploy. That needs a `CONVEX_DEPLOY_KEY` env var from the Convex dashboard. Skip it if you run `npx convex deploy` by hand.
 5. Deploy. Open the main origin, sign up and check that a profile loads inside its frame.
+
+> **Preview deployments.** The app answers only on the two hosts named in `NEXT_PUBLIC_MAIN_ORIGIN` and `NEXT_PUBLIC_USERCONTENT_ORIGIN` and returns 404 on every other host. Vercel's generated preview URLs (`*.vercel.app`) match neither, so previews 404 out of the box. To use previews, give a preview branch its own pair of domains (two different registrable domains, as in step 1), and set the three variables above for Preview with that pair and a non-production Convex URL. Otherwise treat previews as unsupported.
 
 ## 7. Admins and the house account
 

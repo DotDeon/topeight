@@ -8,7 +8,7 @@ import { profileForUser, requireProfile, requireVerifiedUser } from "./lib/acces
 import { BULLETIN_WINDOW_MS } from "./lib/bulletins";
 import { toPublicCard, type PublicCard } from "./lib/cards";
 import { friendIds, friendshipPair } from "./lib/friendships";
-import { MAX_SCAN } from "./lib/limits";
+import { MAX_SCAN, rateLimiter } from "./lib/limits";
 import { MAX_TRACKS, photoUrl, trackUrl } from "./lib/media";
 
 const MIN_AGE = 13;
@@ -20,7 +20,6 @@ function blankProfileFields() {
     location: "",
     aboutMe: "",
     whoIdLikeToMeet: "",
-    profileViews: 0,
     customCss: "",
     customHtml: "",
     customJs: "",
@@ -362,13 +361,14 @@ export const getPublicProfile = query({
       headline: p.headline,
       location: p.location,
       gender: p.gender,
+      ...(isArtist || !isCalendarDate(p.birthDate) ? {} : { age: ageOn(p.birthDate, new Date()) }),
       genre: p.genre,
       aboutMe: p.aboutMe,
       whoIdLikeToMeet: p.whoIdLikeToMeet,
       interests: p.interests,
       band: p.band,
       photoUrl: photoUrl(p.photoKey),
-      profileViews: p.profileViews,
+      profileViews: (await statsFor(ctx, p._id))?.views ?? 0,
       lastLoginAt: p.lastLoginAt,
       memberSince: p._creationTime,
       friendCount: (await friendIds(ctx, p._id)).length,
@@ -388,14 +388,37 @@ export const getPublicProfile = query({
   },
 });
 
-/** Counts one view. The profile page calls this once per page load; no sign-in needed. */
+async function statsFor(ctx: QueryCtx | MutationCtx, profileId: Id<"profiles">) {
+  return await ctx.db
+    .query("profileStats")
+    .withIndex("by_profile", (q) => q.eq("profileId", profileId))
+    .unique();
+}
+
+/**
+ * Counts one view. The profile page calls this once per page load; no sign-in
+ * needed. Writes only to profileStats, so queries reading profile docs don't
+ * re-run. Signed-in viewers are limited per profile, anonymous ones share one
+ * global bucket. Over the limit the view is dropped without an error.
+ */
 export const recordView = mutation({
   args: { username: v.string() },
   returns: v.null(),
   handler: async (ctx, { username }) => {
     const p = await profileByUsername(ctx, username);
-    if (p !== null && !p.banned) {
-      await ctx.db.patch(p._id, { profileViews: p.profileViews + 1 });
+    if (p === null || p.banned) return null;
+    const userId = await getAuthUserId(ctx);
+    const viewer = userId === null ? null : await profileForUser(ctx, userId);
+    const { ok } =
+      viewer === null
+        ? await rateLimiter.limit(ctx, "anonView")
+        : await rateLimiter.limit(ctx, "view", { key: viewer._id });
+    if (!ok) return null;
+    const stats = await statsFor(ctx, p._id);
+    if (stats === null) {
+      await ctx.db.insert("profileStats", { profileId: p._id, views: 1 });
+    } else {
+      await ctx.db.patch(stats._id, { views: stats.views + 1 });
     }
     return null;
   },

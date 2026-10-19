@@ -163,10 +163,21 @@ function renderPlayer(p: PublicProfile, name: string): string {
 function renderLeft(p: PublicProfile, opts: RenderOptions): string {
   const name = escapeHtml(p.displayName);
   const isArtist = p.kind === "artist";
+  // Fans: gender, age and location on their own lines in one block, as in 2006.
+  const who = isArtist
+    ? [escapeHtml(p.genre ?? ""), textHtml(p.location)]
+    : [
+        [
+          escapeHtml(p.gender?.trim() ?? ""),
+          p.age !== undefined ? `${formatCount(p.age)} years old` : "",
+          textHtml(p.location.trim()),
+        ]
+          .filter(Boolean)
+          .join("<br>"),
+      ];
   const facts = [
     p.headline ? `"${escapeHtml(p.headline)}"` : "",
-    isArtist ? escapeHtml(p.genre ?? "") : escapeHtml(p.gender ?? ""),
-    textHtml(p.location),
+    ...who,
     `Profile Views: ${formatCount(p.profileViews)}`,
     `Last Login: ${formatDay(p.lastLoginAt)}`,
   ].filter(Boolean);
@@ -420,7 +431,16 @@ export function renderProfileDocument(p: PublicProfile, opts: RenderOptions): st
   // custom is left out: it is already in the document and can be 100 KB.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { custom, ...data } = p;
-  const publicData = { ...data, comments: p.comments.slice(0, MAX_COMMENTS) };
+  // Comments go in as the same safe HTML the page shows, never raw, so artist
+  // code that drops them into innerHTML gets escaped text.
+  const publicData = {
+    ...data,
+    comments: p.comments.slice(0, MAX_COMMENTS).map((c) => ({
+      author: c.author,
+      bodyHtml: richText(c.body),
+      createdAt: c.createdAt,
+    })),
+  };
 
   return `<!DOCTYPE html>
 <html lang="en">

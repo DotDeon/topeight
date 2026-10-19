@@ -21,7 +21,6 @@ async function addProfile(t: T, username: string, extra: Record<string, unknown>
       location: "",
       aboutMe: "",
       whoIdLikeToMeet: "",
-      profileViews: 0,
       lastLoginAt: 0,
       customCss: "",
       customHtml: "",

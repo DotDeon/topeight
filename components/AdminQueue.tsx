@@ -71,15 +71,11 @@ function ReportRow({ r }: { r: Row }) {
     p.catch((e) => setError(errorText(e)));
   };
   const p = r.preview;
-  // Who "Ban user" bans: the profile itself, or whoever wrote or uploaded the content.
+  // Who the separate "Ban user" button bans: whoever wrote or uploaded the content.
+  // On a profile report the hide action already bans, so it is the ban button.
   const bannedId: Id<"profiles"> | null =
-    p.kind === "profile"
-      ? p.banned ? null : p.profileId
-      : p.kind === "comment" || p.kind === "bulletin"
-        ? p.authorId
-        : p.kind === "track"
-          ? p.ownerId
-          : null;
+    p.kind === "comment" || p.kind === "bulletin" ? p.authorId : p.kind === "track" ? p.ownerId : null;
+  const banPrompt = "Ban this user? They are signed out and their profile disappears.";
 
   return (
     <div data-report="" style={{ borderBottom: "1px solid #6698cb", padding: "6px 0" }}>
@@ -112,9 +108,20 @@ function ReportRow({ r }: { r: Row }) {
         </ul>
       )}
       <p>
-        <button type="button" onClick={() => run(hide({ reportId: r.id }))}>
-          Hide
-        </button>{" "}
+        {p.kind === "profile" ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm(banPrompt)) run(hide({ reportId: r.id }));
+            }}
+          >
+            Ban user
+          </button>
+        ) : (
+          <button type="button" onClick={() => run(hide({ reportId: r.id }))}>
+            Hide
+          </button>
+        )}{" "}
         <button type="button" onClick={() => run(dismiss({ reportId: r.id }))}>
           Dismiss
         </button>
@@ -124,7 +131,7 @@ function ReportRow({ r }: { r: Row }) {
             <button
               type="button"
               onClick={() => {
-                if (window.confirm("Ban this user? They are signed out and their profile disappears.")) {
+                if (window.confirm(banPrompt)) {
                   run(ban({ profileId: bannedId }));
                 }
               }}
@@ -140,6 +147,43 @@ function ReportRow({ r }: { r: Row }) {
         )}
       </p>
     </div>
+  );
+}
+
+function Unban() {
+  const unban = useMutation(api.moderation.unbanByUsername);
+  const [username, setUsername] = useState("");
+  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const name = username.trim();
+        if (!name || busy) return;
+        setBusy(true);
+        setStatus(null);
+        unban({ username: name })
+          .then(() => {
+            setStatus({ ok: true, text: `Unbanned ${name}.` });
+            setUsername("");
+          })
+          .catch((err) => setStatus({ ok: false, text: errorText(err) }))
+          .finally(() => setBusy(false));
+      }}
+    >
+      <label htmlFor="unban-username">Username:</label>{" "}
+      <input id="unban-username" value={username} onChange={(e) => setUsername(e.target.value)} maxLength={20} />{" "}
+      <button type="submit" disabled={busy}>
+        Unban
+      </button>
+      {status && (
+        <span className={status.ok ? styles.muted : styles.error} role={status.ok ? "status" : "alert"}>
+          {" "}
+          {status.text}
+        </span>
+      )}
+    </form>
   );
 }
 
@@ -162,8 +206,13 @@ export function AdminQueue() {
   if (allowed === undefined) return <p className={styles.muted}>Loading...</p>;
   if (!allowed) return <p>Not allowed</p>;
   return (
-    <Box title="Open Reports">
-      <Queue />
-    </Box>
+    <>
+      <Box title="Open Reports">
+        <Queue />
+      </Box>
+      <Box title="Unban">
+        <Unban />
+      </Box>
+    </>
   );
 }

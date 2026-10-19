@@ -13,7 +13,7 @@ const { GET } = await import("@/app/usercontent/[username]/route");
 
 const MAIN = "http://localhost:3000";
 const UC = "http://127.0.0.1:3000";
-const CSP = `${buildUsercontentCsp(UC)}; frame-ancestors ${MAIN}`;
+const CSP = `${buildUsercontentCsp(UC)}; frame-ancestors ${MAIN}; sandbox allow-scripts allow-popups`;
 
 const profile: PublicProfile = {
   username: "jess",

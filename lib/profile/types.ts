@@ -18,6 +18,8 @@ export type PublicProfile = {
   headline: string;
   location: string;
   gender?: string;
+  /** Fans only, worked out on the server. The birth date itself is never sent. */
+  age?: number;
   genre?: string;
   aboutMe: string;
   whoIdLikeToMeet: string;

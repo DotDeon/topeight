@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { validateUsername } from "../lib/validation";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { isAdmin, requireProfile } from "./lib/access";
@@ -252,6 +253,7 @@ export const ban = mutation({
   },
 });
 
+/** Admin: lifts a ban by profile id. */
 export const unban = mutation({
   args: { profileId: v.id("profiles") },
   returns: v.null(),
@@ -260,6 +262,25 @@ export const unban = mutation({
     const profile = await ctx.db.get(profileId);
     if (profile === null) throw new ConvexError("Profile not found");
     await ctx.db.patch(profileId, { banned: false });
+    return null;
+  },
+});
+
+/** Admin: lifts a ban by username, for the Unban box on /admin. */
+export const unbanByUsername = mutation({
+  args: { username: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { username }) => {
+    await requireAdmin(ctx);
+    const checked = validateUsername(username);
+    const profile = checked.ok
+      ? await ctx.db
+          .query("profiles")
+          .withIndex("by_username", (q) => q.eq("username", checked.username))
+          .unique()
+      : null;
+    if (profile === null) throw new ConvexError("Profile not found");
+    await ctx.db.patch(profile._id, { banned: false });
     return null;
   },
 });

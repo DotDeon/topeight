@@ -37,7 +37,8 @@ export default defineSchema({
       }),
     ),
     photoKey: v.optional(v.string()),
-    profileViews: v.number(),
+    /** Legacy. Views live in profileStats so a view never rewrites this doc. */
+    profileViews: v.optional(v.number()),
     lastLoginAt: v.number(),
     customCss: v.string(),
     customHtml: v.string(),
@@ -53,6 +54,12 @@ export default defineSchema({
       searchField: "displayName",
       filterFields: ["kind", "banned"],
     }),
+
+  /** Counters kept off the profiles doc so bumping them doesn't re-run queries that read profiles. */
+  profileStats: defineTable({
+    profileId: v.id("profiles"),
+    views: v.number(),
+  }).index("by_profile", ["profileId"]),
 
   friendRequests: defineTable({
     from: v.id("profiles"),

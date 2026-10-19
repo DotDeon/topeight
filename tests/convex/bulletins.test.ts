@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "../../convex/_generated/api";
+import { FEED_MAX_FRIENDS } from "../../convex/lib/bulletins";
 import { DAY, NOW, addProfile, as, befriend, setup } from "./helpers";
 
 beforeEach(() => {
@@ -53,6 +54,48 @@ describe("bulletins.feed", () => {
   test("signed-out callers are refused", async () => {
     const t = setup();
     await expect(t.query(api.bulletins.feed, {})).rejects.toThrow("Not signed in");
+  });
+
+  test(`scans only the ${FEED_MAX_FRIENDS} most recent friendships`, async () => {
+    const t = setup();
+    const me = await addProfile(t, "me");
+    const oldest = await addProfile(t, "oldest");
+    await befriend(t, me, oldest);
+    const others = await t.run(async (ctx) => {
+      const ids = [];
+      for (let i = 0; i < FEED_MAX_FRIENDS; i++) {
+        const userId = await ctx.db.insert("users", {});
+        const id = await ctx.db.insert("profiles", {
+          userId,
+          username: `f${i}`,
+          displayName: `F${i}`,
+          kind: "fan",
+          birthDate: "2000-01-01",
+          headline: "",
+          location: "",
+          aboutMe: "",
+          whoIdLikeToMeet: "",
+          lastLoginAt: 0,
+          customCss: "",
+          customHtml: "",
+          customJs: "",
+          top8: [],
+          isHouse: false,
+          banned: false,
+        });
+        // Friendship rows keep a < b, so these land on both the by_a and by_b side of me.
+        await ctx.db.insert("friendships", me < id ? { a: me, b: id } : { a: id, b: me });
+        ids.push(id);
+      }
+      return ids;
+    });
+    const newest = others[others.length - 1];
+    await t.run(async (ctx) => {
+      await ctx.db.insert("bulletins", { authorId: oldest, body: "from oldest", hidden: false });
+      await ctx.db.insert("bulletins", { authorId: newest, body: "from newest", hidden: false });
+    });
+    const feed = await (await as(t, me)).query(api.bulletins.feed, {});
+    expect(feed.bulletins.map((b) => b.body)).toEqual(["from newest"]);
   });
 });
 

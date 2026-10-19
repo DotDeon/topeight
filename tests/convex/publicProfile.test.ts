@@ -1,9 +1,10 @@
 /// <reference types="vite/client" />
+import rateLimiterTest from "@convex-dev/rate-limiter/test";
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import { MAX_SCAN } from "../../convex/lib/limits";
+import { ANON_VIEWS_PER_MINUTE, MAX_SCAN, VIEWS_PER_MINUTE } from "../../convex/lib/limits";
 import schema from "../../convex/schema";
 
 const modules = import.meta.glob("../../convex/**/*.*s");
@@ -11,7 +12,11 @@ const NOW = new Date("2026-10-19T12:00:00Z");
 const DAY = 24 * 60 * 60 * 1000;
 
 type T = ReturnType<typeof convexTest>;
-const setup = () => convexTest(schema, modules);
+const setup = () => {
+  const t = convexTest(schema, modules);
+  rateLimiterTest.register(t);
+  return t;
+};
 
 async function addProfile(
   t: T,
@@ -34,7 +39,6 @@ async function addProfile(
       aboutMe: "",
       whoIdLikeToMeet: "",
       photoKey: `${username}.jpg`,
-      profileViews: 0,
       lastLoginAt: 0,
       customCss: "",
       customHtml: "",
@@ -54,6 +58,11 @@ async function befriend(t: T, x: Id<"profiles">, y: Id<"profiles">) {
 
 async function comment(t: T, profileId: Id<"profiles">, authorId: Id<"profiles">, body: string, hidden = false) {
   await t.run((ctx) => ctx.db.insert("comments", { profileId, authorId, body, hidden }));
+}
+
+async function asProfile(t: T, id: Id<"profiles">) {
+  const p = await t.run((ctx) => ctx.db.get(id));
+  return t.withIdentity({ subject: `${p!.userId}|s1` });
 }
 
 const get = (t: T, username: string) => t.query(api.profiles.getPublicProfile, { username });
@@ -96,12 +105,12 @@ describe("getPublicProfile", () => {
       headline: "loud",
       genre: "Rock",
       band: { members: "a", influences: "b", soundsLike: "c", recordLabel: "d", labelType: "Indie" },
-      profileViews: 41,
       lastLoginAt: 123,
       customCss: "body{}",
       customHtml: "<b>hi</b>",
       customJs: "1+1",
     });
+    await t.run((ctx) => ctx.db.insert("profileStats", { profileId: id, views: 41 }));
     const p = await get(t, "band");
     if (!p || "unavailable" in p) throw new Error("expected a profile");
     expect(p).toMatchObject({
@@ -128,6 +137,28 @@ describe("getPublicProfile", () => {
     for (const key of ["birthDate", "userId", "_id", "banned", "isHouse", "photoKey", "customJs"]) {
       expect(p).not.toHaveProperty(key);
     }
+  });
+
+  test("fans get an age worked out from the birth date, never the date itself", async () => {
+    const t = setup();
+    // NOW is 2026-10-19: one birthday is tomorrow, one was today.
+    await addProfile(t, "older", { birthDate: "2000-10-20", gender: "Female" });
+    await addProfile(t, "today", { birthDate: "2000-10-19" });
+    const a = await get(t, "older");
+    const b = await get(t, "today");
+    if (!a || "unavailable" in a || !b || "unavailable" in b) throw new Error("expected profiles");
+    expect(a.age).toBe(25);
+    expect(b.age).toBe(26);
+    expect(a).not.toHaveProperty("birthDate");
+    expect(JSON.stringify(a)).not.toContain("2000-10-20");
+  });
+
+  test("artists get no age", async () => {
+    const t = setup();
+    await addProfile(t, "band", { kind: "artist", birthDate: "1990-01-01" });
+    const p = await get(t, "band");
+    if (!p || "unavailable" in p) throw new Error("expected a profile");
+    expect(p).not.toHaveProperty("age");
   });
 
   test("fans never get custom html or js back", async () => {
@@ -275,23 +306,68 @@ describe("getPublicProfile", () => {
 });
 
 describe("recordView", () => {
-  test("increments profileViews without signing in", async () => {
+  const views = async (t: T, username: string) => {
+    const p = await get(t, username);
+    if (!p || "unavailable" in p) throw new Error("expected a profile");
+    return p.profileViews;
+  };
+
+  test("counts views in profileStats without signing in", async () => {
     const t = setup();
-    const id = await addProfile(t, "jess", { profileViews: 5 });
+    await addProfile(t, "jess");
+    expect(await views(t, "jess")).toBe(0);
     await t.mutation(api.profiles.recordView, { username: "jess" });
     await t.mutation(api.profiles.recordView, { username: "Jess" });
-    expect((await t.run((ctx) => ctx.db.get(id)))!.profileViews).toBe(7);
+    expect(await views(t, "jess")).toBe(2);
+  });
+
+  test("never writes to the profiles doc", async () => {
+    const t = setup();
+    const id = await addProfile(t, "jess");
+    const before = await t.run((ctx) => ctx.db.get(id));
+    await t.mutation(api.profiles.recordView, { username: "jess" });
+    expect(await t.run((ctx) => ctx.db.get(id))).toEqual(before);
+    const stats = await t.run((ctx) => ctx.db.query("profileStats").collect());
+    expect(stats).toHaveLength(1);
+    expect(stats[0]).toMatchObject({ profileId: id, views: 1 });
   });
 
   test("counts the house profile and ignores missing or banned ones", async () => {
     const t = setup();
-    const house = await addProfile(t, "house", { isHouse: true });
+    await addProfile(t, "house", { isHouse: true });
     const banned = await addProfile(t, "gone", { banned: true });
     await t.mutation(api.profiles.recordView, { username: "house" });
     await t.mutation(api.profiles.recordView, { username: "gone" });
     await t.mutation(api.profiles.recordView, { username: "nobody" });
-    expect((await t.run((ctx) => ctx.db.get(house)))!.profileViews).toBe(1);
-    expect((await t.run((ctx) => ctx.db.get(banned)))!.profileViews).toBe(0);
+    expect(await views(t, "house")).toBe(1);
+    const stats = await t.run((ctx) => ctx.db.query("profileStats").collect());
+    expect(stats.some((s) => s.profileId === banned)).toBe(false);
+  });
+
+  test("anonymous views share one bucket and stop counting silently at the limit", async () => {
+    const t = setup();
+    await addProfile(t, "jess");
+    for (let i = 0; i < ANON_VIEWS_PER_MINUTE + 5; i++) {
+      await expect(t.mutation(api.profiles.recordView, { username: "jess" })).resolves.toBeNull();
+    }
+    expect(await views(t, "jess")).toBe(ANON_VIEWS_PER_MINUTE);
+    // The window resets after a minute.
+    vi.setSystemTime(NOW.getTime() + 61_000);
+    await t.mutation(api.profiles.recordView, { username: "jess" });
+    expect(await views(t, "jess")).toBe(ANON_VIEWS_PER_MINUTE + 1);
+  });
+
+  test("signed-in viewers are limited per profile, apart from the anonymous bucket", async () => {
+    const t = setup();
+    await addProfile(t, "jess");
+    const viewer = await addProfile(t, "viewer");
+    const signedIn = await asProfile(t, viewer);
+    for (let i = 0; i < VIEWS_PER_MINUTE + 3; i++) {
+      await expect(signedIn.mutation(api.profiles.recordView, { username: "jess" })).resolves.toBeNull();
+    }
+    expect(await views(t, "jess")).toBe(VIEWS_PER_MINUTE);
+    await t.mutation(api.profiles.recordView, { username: "jess" });
+    expect(await views(t, "jess")).toBe(VIEWS_PER_MINUTE + 1);
   });
 });
 

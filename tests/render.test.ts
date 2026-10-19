@@ -127,6 +127,29 @@ function extractOpenspaceJson(html: string): string {
   return m[1];
 }
 
+describe("fan facts", () => {
+  const facts = (html: string) => /<div class="basic-info">([^]*?)<\/div>/.exec(html)![1];
+
+  test("fans show gender, age and location on their own lines", () => {
+    const html = renderProfileDocument(fan({ gender: "Female", age: 23 }), opts);
+    expect(facts(html)).toContain("Female<br>23 years old<br>Cape Town");
+  });
+
+  test("missing parts are left out", () => {
+    expect(facts(renderProfileDocument(fan({ age: 19 }), opts))).toContain('"hi"<br><br>19 years old<br>Cape Town<br><br>');
+    expect(facts(renderProfileDocument(fan({ gender: "Male", location: "" }), opts))).toContain(
+      '"hi"<br><br>Male<br><br>Profile Views',
+    );
+    expect(facts(renderProfileDocument(fan({ location: "" }), opts))).toContain('"hi"<br><br>Profile Views');
+  });
+
+  test("artists never show an age", () => {
+    const html = renderProfileDocument(artist({ genre: "Rock", age: 30 }), opts);
+    expect(facts(html)).not.toContain("years old");
+    expect(facts(html)).toContain("Rock<br><br>Cape Town");
+  });
+});
+
 describe("renderProfileDocument (hardening)", () => {
   test("window.OPENSPACE JSON escapes </script> and U+2028/U+2029", () => {
     const p = artist({ aboutMe: "</script><script>alert(1)</script>\u2028\u2029&" });
@@ -148,6 +171,25 @@ describe("renderProfileDocument (hardening)", () => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { custom, ...rest } = p;
     expect(data).toEqual(rest);
+  });
+
+  test("window.OPENSPACE comments carry bodyHtml, the same safe markup the page shows", () => {
+    const evil = '<img src=x onerror="alert(1)">';
+    const pic = "https://x.com/a.gif";
+    const p = fan({ comments: [c(evil), c(pic)] });
+    const html = renderProfileDocument(p, opts);
+    const json = extractOpenspaceJson(html);
+    // The raw markup never appears in the JSON, not even JSON-escaped.
+    expect(json).not.toContain("onerror=\"alert");
+    expect(json).not.toContain("\\u003cimg src=x");
+    const data = JSON.parse(json);
+    expect(data.comments[0]).not.toHaveProperty("body");
+    expect(data.comments[0].bodyHtml).toBe("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
+    expect(data.comments[0].author).toEqual(card("nightjar", "artist"));
+    expect(typeof data.comments[0].createdAt).toBe("number");
+    expect(data.comments[1].bodyHtml).toBe('<img src="https://x.com/a.gif" alt="">');
+    // Same markup as the rendered comment.
+    expect(html).toContain(`<br>${data.comments[0].bodyHtml}</div>`);
   });
 
   test("comment image URL cannot inject attributes", () => {

@@ -34,7 +34,6 @@ async function addProfile(
       aboutMe: "",
       whoIdLikeToMeet: "",
       photoKey: `${username}.jpg`,
-      profileViews: 0,
       lastLoginAt: 0,
       customCss: "",
       customHtml: "",

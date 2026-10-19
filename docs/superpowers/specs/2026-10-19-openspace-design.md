@@ -135,8 +135,10 @@ This is the most important technical part.
 - The main site runs on the main domain (for example `openspace.example`).
 - Custom profile code is served from a second domain that shares no cookies with
   the main one (for example `openspaceusercontent.example`). Both domains come
-  from environment variables. In local development they are `localhost:3000`
-  and `127.0.0.1:3001`.
+  from environment variables. In local development they are
+  `http://localhost:3000` and `http://127.0.0.1:3000`: the same server on the
+  same port, told apart by hostname, so no cookies are shared (updated during
+  build; the port follows `PORT`).
 - An artist profile page on the main domain has two parts. At the top is a thin
   strip of trusted OpenSpace controls that artist code cannot touch: Add to
   Friends, Add Comment, Report and Block, plus the site header and nav. Below it

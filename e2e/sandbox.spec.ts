@@ -207,7 +207,9 @@ test.describe("artist sandbox", () => {
     expect(res.status()).toBe(200);
     const h = res.headers();
     expect(h["content-type"]).toContain("text/html");
-    expect(h["content-security-policy"]).toBe(`${buildUsercontentCsp(USERCONTENT)}; frame-ancestors ${MAIN}`);
+    expect(h["content-security-policy"]).toBe(
+      `${buildUsercontentCsp(USERCONTENT)}; frame-ancestors ${MAIN}; sandbox allow-scripts allow-popups`,
+    );
     expect(h["x-content-type-options"]).toBe("nosniff");
     expect(h["referrer-policy"]).toBe("no-referrer");
     expect(h["cache-control"]).toContain("no-store");

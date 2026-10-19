@@ -26,7 +26,7 @@ Artists can run their own JavaScript on their profile. That is the feature that 
 
 - **Two origins.** The trusted site, with sign-in, editing and the friend buttons, is served from the main origin. Profile documents are served from a second origin on a different registrable domain, so browsers never share cookies between them.
 - **Sandboxed iframe.** The main site shows each profile in an iframe with `sandbox="allow-scripts allow-popups"`. It never has `allow-same-origin`, so profile code cannot read the parent page, cookies or storage.
-- **Content Security Policy.** The usercontent origin sends a strict CSP. `connect-src` allows only the usercontent origin and `form-action` is `'none'`, so profile code cannot call the main site's APIs or post a form to it.
+- **Content Security Policy.** The usercontent origin sends a strict CSP. `connect-src` allows only the usercontent origin and `form-action` is `'none'`, so profile code cannot call the main site's APIs or post a form to it. The CSP also carries `sandbox allow-scripts allow-popups`, so a profile document opened directly in its own tab still runs in an opaque origin and cannot set or read cookies or storage on the usercontent origin.
 - **The trusted strip.** The bar above every profile is drawn by the main site, outside the iframe. It holds the Add Friend, Comment and Report actions, so artist code cannot hide, fake or restyle it. When profile code asks for an action, it goes through a message to the parent, which asks the viewer to confirm.
 
 The full design is in [docs/superpowers/specs/2026-10-19-openspace-design.md](docs/superpowers/specs/2026-10-19-openspace-design.md).
@@ -79,7 +79,6 @@ Running the seed again is safe.
 | `HOUSE_DISPLAY_NAME` | Convex | Display name of the house account |
 | `AUTH_RESEND_KEY` | Convex | Resend API key for email |
 | `AUTH_EMAIL_FROM` | Convex | From address for email |
-| `R2_TOKEN` | Convex | Cloudflare R2 API token |
 | `R2_ACCESS_KEY_ID` | Convex, seed script | R2 S3 access key id |
 | `R2_SECRET_ACCESS_KEY` | Convex, seed script | R2 S3 secret access key |
 | `R2_ENDPOINT` | Convex, seed script | R2 S3 endpoint |

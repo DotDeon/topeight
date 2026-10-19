@@ -85,7 +85,6 @@ function blank() {
     location: "",
     aboutMe: "",
     whoIdLikeToMeet: "",
-    profileViews: 0,
     customCss: "",
     customHtml: "",
     customJs: "",

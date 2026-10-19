@@ -38,7 +38,9 @@ function plain(status: number, body: string, csp: string): Response {
 export async function GET(request: NextRequest, ctx: RouteContext<"/usercontent/[username]">) {
   const mainOrigin = requireEnv("NEXT_PUBLIC_MAIN_ORIGIN");
   const usercontentOrigin = requireEnv("NEXT_PUBLIC_USERCONTENT_ORIGIN");
-  const csp = `${buildUsercontentCsp(usercontentOrigin)}; frame-ancestors ${mainOrigin}`;
+  // sandbox: opened directly in a tab, the document still runs in an opaque
+  // origin, so artist JS never gets the real usercontent origin's cookies or storage.
+  const csp = `${buildUsercontentCsp(usercontentOrigin)}; frame-ancestors ${mainOrigin}; sandbox allow-scripts allow-popups`;
 
   if (classifyHost(request.headers.get("host") ?? "") !== "usercontent") {
     return plain(404, "Not found", csp);
