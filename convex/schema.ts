@@ -95,6 +95,17 @@ export default defineSchema({
     autoplay: v.boolean(),
   }).index("by_profile_order", ["profileId", "order"]),
 
+  /** Uploads that have been started but not yet accepted or rejected. */
+  uploads: defineTable({
+    profileId: v.id("profiles"),
+    purpose: v.union(v.literal("photo"), v.literal("track")),
+    title: v.optional(v.string()),
+    key: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_key", ["key"])
+    .index("by_profile_purpose", ["profileId", "purpose", "createdAt"]),
+
   shows: defineTable({
     profileId: v.id("profiles"),
     date: v.string(),

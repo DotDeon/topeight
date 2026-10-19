@@ -22,6 +22,8 @@ import type * as lib_media from "../lib/media.js";
 import type * as lib_otp from "../lib/otp.js";
 import type * as lib_password from "../lib/password.js";
 import type * as lib_posting from "../lib/posting.js";
+import type * as lib_r2 from "../lib/r2.js";
+import type * as media from "../media.js";
 import type * as profiles from "../profiles.js";
 import type * as shows from "../shows.js";
 import type * as social from "../social.js";
@@ -48,6 +50,8 @@ declare const fullApi: ApiFromModules<{
   "lib/otp": typeof lib_otp;
   "lib/password": typeof lib_password;
   "lib/posting": typeof lib_posting;
+  "lib/r2": typeof lib_r2;
+  media: typeof media;
   profiles: typeof profiles;
   shows: typeof shows;
   social: typeof social;
@@ -82,4 +86,5 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
+  r2: import("@convex-dev/r2/_generated/component.js").ComponentApi<"r2">;
 };

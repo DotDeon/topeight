@@ -9,7 +9,7 @@ import { BULLETIN_WINDOW_MS } from "./lib/bulletins";
 import { toPublicCard, type PublicCard } from "./lib/cards";
 import { friendIds, friendshipPair } from "./lib/friendships";
 import { MAX_SCAN } from "./lib/limits";
-import { photoUrl, trackUrl } from "./lib/media";
+import { MAX_TRACKS, photoUrl, trackUrl } from "./lib/media";
 
 const MIN_AGE = 13;
 const MAX_DISPLAY_NAME = 50;
@@ -150,7 +150,6 @@ export const touchLogin = mutation({
 const PROFILE_COMMENTS = 10;
 /** Comments are counted up to this many; the renderer shows more than 1000 as "1000+". */
 const COMMENT_COUNT_CAP = 1001;
-const MAX_TRACKS = 10;
 const MAX_SHOWS = 20;
 
 async function profileByUsername(ctx: QueryCtx | MutationCtx, raw: string): Promise<Doc<"profiles"> | null> {
