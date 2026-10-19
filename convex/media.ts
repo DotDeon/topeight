@@ -33,6 +33,9 @@ import { r2, storage, UPLOAD_URL_TTL_S } from "./lib/r2";
  *    photo, or deletes the object.
  */
 
+/** When a pending upload is swept: after the last URL it could get has expired, plus 60 s. */
+export const EXPIRE_AFTER_MS = UPLOAD_TTL_MS + (UPLOAD_URL_TTL_S + 60) * 1000;
+
 const trimTitle = (title: string) => title.trim();
 
 function checkTitle(title: string): string {
@@ -115,7 +118,9 @@ export const beginUpload = mutation({
       contentType,
       createdAt: Date.now(),
     });
-    await ctx.scheduler.runAfter(UPLOAD_TTL_MS, internal.media.expireUpload, { uploadId });
+    // generateUploadUrl works until UPLOAD_TTL_MS, and its URL lives UPLOAD_URL_TTL_S
+    // more. Expire only after the last possible URL is dead, plus a minute for a sync.
+    await ctx.scheduler.runAfter(EXPIRE_AFTER_MS, internal.media.expireUpload, { uploadId });
     return { uploadId };
   },
 });
@@ -128,7 +133,7 @@ export const generateUploadUrl = mutation({
     const profile = await requireProfile(ctx);
     const row = await ctx.db.get(uploadId);
     if (row === null || row.profileId !== profile._id) throw new ConvexError("Not allowed");
-    if (row.createdAt < Date.now() - UPLOAD_TTL_MS) throw new ConvexError("Upload expired");
+    if (Date.now() - row.createdAt >= UPLOAD_TTL_MS) throw new ConvexError("Upload expired");
     return await storage.uploadUrl({ key: row.key, size: row.size, contentType: row.contentType });
   },
 });

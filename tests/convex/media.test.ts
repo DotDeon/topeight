@@ -2,7 +2,9 @@ import r2Test from "@convex-dev/r2/test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import { storage } from "../../convex/lib/r2";
+import { EXPIRE_AFTER_MS } from "../../convex/media";
+import { UPLOAD_TTL_MS } from "../../convex/lib/media";
+import { storage, UPLOAD_URL_TTL_S } from "../../convex/lib/r2";
 import { NOW, addProfile, as, setup } from "./helpers";
 
 type T = ReturnType<typeof setup>;
@@ -322,26 +324,45 @@ describe("upload lifecycle", () => {
     expect(sync?.args[0]).toMatchObject({ key, onComplete: expect.any(String) });
   });
 
-  test("expireUpload removes the object and the row of an upload that never landed", async () => {
+  test("expireUpload waits until a URL issued just before the hour has expired, plus 60 s", async () => {
     const t = mediaSetup();
     const band = await addProfile(t, "band", { kind: "artist" });
     const me = await as(t, band);
     const { uploadId } = await me.mutation(api.media.beginUpload, { purpose: "track", ...mp3() });
+    const tick = async (ms: number) => {
+      vi.advanceTimersByTime(ms);
+      await t.finishInProgressScheduledFunctions();
+    };
+    // Last moment a URL can be issued: 1 ms before UPLOAD_TTL_MS.
+    await tick(UPLOAD_TTL_MS - 1);
     const { key } = await me.mutation(api.media.generateUploadUrl, { uploadId });
-    vi.advanceTimersByTime(59 * 60 * 1000);
-    await t.finishInProgressScheduledFunctions();
+    const urlDeadAt = UPLOAD_TTL_MS - 1 + UPLOAD_URL_TTL_S * 1000;
+    // Still pending at the hour, at URL expiry, and right up to URL expiry plus 60 s.
+    await tick(1);
     expect(await pendingCount(t)).toBe(1);
-    vi.advanceTimersByTime(60 * 1000 + 1);
-    await t.finishInProgressScheduledFunctions();
+    await tick(urlDeadAt + 60 * 1000 - UPLOAD_TTL_MS);
+    expect(await pendingCount(t)).toBe(1);
+    expect(removed).toEqual([]);
+    expect(EXPIRE_AFTER_MS).toBeGreaterThan(urlDeadAt + 60 * 1000);
+    await tick(EXPIRE_AFTER_MS - (urlDeadAt + 60 * 1000));
     expect(await pendingCount(t)).toBe(0);
     expect(removed).toEqual([key]);
+  });
+
+  test("generateUploadUrl refuses a row at or past UPLOAD_TTL_MS", async () => {
+    const t = mediaSetup();
+    const band = await addProfile(t, "band", { kind: "artist" });
+    const me = await as(t, band);
+    const { uploadId } = await me.mutation(api.media.beginUpload, { purpose: "track", ...mp3() });
+    vi.advanceTimersByTime(UPLOAD_TTL_MS + 1);
+    await expect(me.mutation(api.media.generateUploadUrl, { uploadId })).rejects.toThrow("Upload expired");
   });
 
   test("expireUpload does nothing once the upload was accepted", async () => {
     const t = mediaSetup();
     const band = await addProfile(t, "band", { kind: "artist" });
     const key = await upload(t, band, "track", mp3());
-    vi.advanceTimersByTime(61 * 60 * 1000);
+    vi.advanceTimersByTime(EXPIRE_AFTER_MS + 1);
     await t.finishInProgressScheduledFunctions();
     expect(removed).toEqual([]);
     expect((await tracksOf(t, band)).map((r) => r.key)).toEqual([key]);
