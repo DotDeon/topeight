@@ -1,0 +1,286 @@
+import { ConvexError, v } from "convex/values";
+import type { Doc, Id } from "./_generated/dataModel";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { isAdmin, requireProfile } from "./lib/access";
+import { toPublicCard, type PublicCard } from "./lib/cards";
+import { MAX_SCAN, rateLimiter } from "./lib/limits";
+import { MAX_TRACKS, trackUrl } from "./lib/media";
+import { removeTrack } from "./media";
+
+const MAX_REASON = 500;
+const QUEUE_SIZE = 50;
+const ABOUT_SNIPPET = 300;
+/** Most sessions, and refresh tokens per session, a ban deletes. */
+const MAX_SESSIONS = 100;
+
+const targetType = v.union(v.literal("profile"), v.literal("comment"), v.literal("bulletin"), v.literal("track"));
+type TargetType = "profile" | "comment" | "bulletin" | "track";
+const TABLE = { profile: "profiles", comment: "comments", bulletin: "bulletins", track: "tracks" } as const;
+
+type Ctx = QueryCtx | MutationCtx;
+
+async function requireAdmin(ctx: Ctx): Promise<void> {
+  if (!(await isAdmin(ctx))) throw new ConvexError("Not allowed");
+}
+
+/** The reported row, or null when the id is malformed or the row is gone. */
+async function loadTarget(ctx: Ctx, type: TargetType, targetId: string) {
+  const id = ctx.db.normalizeId(TABLE[type], targetId);
+  return id === null ? null : await ctx.db.get(id);
+}
+
+async function openReportsOn(ctx: Ctx, type: TargetType, targetId: string, limit: number) {
+  return await ctx.db
+    .query("reports")
+    .withIndex("by_target", (q) => q.eq("targetType", type).eq("targetId", targetId).eq("status", "open"))
+    .take(limit);
+}
+
+/** Marks every open report on the target actioned, at most MAX_SCAN of them. */
+async function actionAllOn(ctx: MutationCtx, type: TargetType, targetId: string) {
+  for (const r of await openReportsOn(ctx, type, targetId, MAX_SCAN)) {
+    await ctx.db.patch(r._id, { status: "actioned" });
+  }
+}
+
+/** Bans a profile, signs its user out everywhere, and closes the open reports on it. */
+async function banProfile(ctx: MutationCtx, profile: Doc<"profiles">) {
+  if (profile.isHouse) throw new ConvexError("Not allowed");
+  await ctx.db.patch(profile._id, { banned: true });
+  const sessions = await ctx.db
+    .query("authSessions")
+    .withIndex("userId", (q) => q.eq("userId", profile.userId))
+    .take(MAX_SESSIONS);
+  for (const s of sessions) {
+    const tokens = await ctx.db
+      .query("authRefreshTokens")
+      .withIndex("sessionId", (q) => q.eq("sessionId", s._id))
+      .take(MAX_SESSIONS);
+    for (const tok of tokens) await ctx.db.delete(tok._id);
+    await ctx.db.delete(s._id);
+  }
+  await actionAllOn(ctx, "profile", profile._id);
+}
+
+async function profileTracks(ctx: Ctx, profileId: Id<"profiles">) {
+  const rows = await ctx.db
+    .query("tracks")
+    .withIndex("by_profile_order", (q) => q.eq("profileId", profileId))
+    .take(MAX_TRACKS);
+  return rows.map((t) => ({ id: t._id, title: t.title, url: trackUrl(t.key) }));
+}
+
+async function cardFor(ctx: Ctx, id: Id<"profiles">): Promise<PublicCard | null> {
+  const p = await ctx.db.get(id);
+  return p === null ? null : toPublicCard(p);
+}
+
+export type ReportPreview =
+  | {
+      kind: "profile";
+      profileId: Id<"profiles">;
+      username: string;
+      displayName: string;
+      headline: string;
+      aboutMe: string;
+      banned: boolean;
+      tracks: { id: Id<"tracks">; title: string; url: string | null }[];
+    }
+  | { kind: "comment" | "bulletin"; body: string; authorId: Id<"profiles">; author: PublicCard | null }
+  | {
+      kind: "track";
+      trackId: Id<"tracks">;
+      title: string;
+      url: string | null;
+      ownerId: Id<"profiles">;
+      owner: PublicCard | null;
+    }
+  | { kind: "gone" };
+
+async function preview(ctx: Ctx, report: Doc<"reports">): Promise<ReportPreview> {
+  const { targetType: type, targetId } = report;
+  if (type === "profile") {
+    const id = ctx.db.normalizeId("profiles", targetId);
+    const p = id && (await ctx.db.get(id));
+    if (!p) return { kind: "gone" };
+    return {
+      kind: "profile",
+      profileId: p._id,
+      username: p.username,
+      displayName: p.displayName,
+      headline: p.headline,
+      aboutMe: p.aboutMe.slice(0, ABOUT_SNIPPET),
+      banned: p.banned,
+      tracks: await profileTracks(ctx, p._id),
+    };
+  }
+  if (type === "comment" || type === "bulletin") {
+    const id = type === "comment" ? ctx.db.normalizeId("comments", targetId) : ctx.db.normalizeId("bulletins", targetId);
+    const row = id && (await ctx.db.get(id));
+    if (!row) return { kind: "gone" };
+    return { kind: type, body: row.body, authorId: row.authorId, author: await cardFor(ctx, row.authorId) };
+  }
+  const id = ctx.db.normalizeId("tracks", targetId);
+  const t = id && (await ctx.db.get(id));
+  if (!t) return { kind: "gone" };
+  return {
+    kind: "track",
+    trackId: t._id,
+    title: t.title,
+    url: trackUrl(t.key),
+    ownerId: t.profileId,
+    owner: await cardFor(ctx, t.profileId),
+  };
+}
+
+/** Report a profile, comment, bulletin or track. A repeat open report by the same member adds nothing. */
+export const report = mutation({
+  args: { targetType, targetId: v.string(), reason: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const me = await requireProfile(ctx);
+    const reason = args.reason.trim();
+    if (reason.length < 1 || reason.length > MAX_REASON) {
+      throw new ConvexError(`Reason must be 1 to ${MAX_REASON} characters`);
+    }
+    const target = await loadTarget(ctx, args.targetType, args.targetId);
+    if (target === null) throw new ConvexError("Not found");
+    const targetId = target._id as string;
+
+    const open = await openReportsOn(ctx, args.targetType, targetId, MAX_SCAN);
+    if (open.some((r) => r.reporterId === me._id)) return null;
+
+    const { ok } = await rateLimiter.limit(ctx, "report", { key: me._id });
+    if (!ok) throw new ConvexError("Slow down");
+    await ctx.db.insert("reports", {
+      reporterId: me._id,
+      targetType: args.targetType,
+      targetId,
+      reason,
+      status: "open",
+    });
+    return null;
+  },
+});
+
+/** Admin: the 50 oldest open reports, each with a preview of what was reported. */
+export const listOpen = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const rows = await ctx.db
+      .query("reports")
+      .withIndex("by_status", (q) => q.eq("status", "open"))
+      .order("asc")
+      .take(QUEUE_SIZE);
+    const out = [];
+    for (const r of rows) {
+      out.push({
+        id: r._id,
+        targetType: r.targetType,
+        targetId: r.targetId,
+        reason: r.reason,
+        createdAt: r._creationTime,
+        reporter: await cardFor(ctx, r.reporterId),
+        preview: await preview(ctx, r),
+      });
+    }
+    return out;
+  },
+});
+
+async function openReport(ctx: MutationCtx, reportId: Id<"reports">) {
+  const r = await ctx.db.get(reportId);
+  if (r === null) throw new ConvexError("Report not found");
+  return r;
+}
+
+/**
+ * Admin: acts on the reported content. Comments and bulletins are hidden,
+ * tracks deleted, profiles banned. Closes every open report on that target.
+ */
+export const hide = mutation({
+  args: { reportId: v.id("reports") },
+  returns: v.null(),
+  handler: async (ctx, { reportId }) => {
+    await requireAdmin(ctx);
+    const r = await openReport(ctx, reportId);
+    const type = r.targetType;
+    if (type === "comment") {
+      const id = ctx.db.normalizeId("comments", r.targetId);
+      if (id && (await ctx.db.get(id))) await ctx.db.patch(id, { hidden: true });
+    } else if (type === "bulletin") {
+      const id = ctx.db.normalizeId("bulletins", r.targetId);
+      if (id && (await ctx.db.get(id))) await ctx.db.patch(id, { hidden: true });
+    } else if (type === "track") {
+      const id = ctx.db.normalizeId("tracks", r.targetId);
+      const track = id && (await ctx.db.get(id));
+      if (track) await removeTrack(ctx, track);
+    } else {
+      const id = ctx.db.normalizeId("profiles", r.targetId);
+      const profile = id && (await ctx.db.get(id));
+      if (profile) await banProfile(ctx, profile);
+    }
+    await ctx.db.patch(r._id, { status: "actioned" });
+    await actionAllOn(ctx, type, r.targetId);
+    return null;
+  },
+});
+
+/** Admin: closes a report without touching the content. */
+export const dismiss = mutation({
+  args: { reportId: v.id("reports") },
+  returns: v.null(),
+  handler: async (ctx, { reportId }) => {
+    await requireAdmin(ctx);
+    const r = await openReport(ctx, reportId);
+    await ctx.db.patch(r._id, { status: "dismissed" });
+    return null;
+  },
+});
+
+/** Admin: bans a profile and signs its user out. The house profile cannot be banned. */
+export const ban = mutation({
+  args: { profileId: v.id("profiles") },
+  returns: v.null(),
+  handler: async (ctx, { profileId }) => {
+    await requireAdmin(ctx);
+    const profile = await ctx.db.get(profileId);
+    if (profile === null) throw new ConvexError("Profile not found");
+    await banProfile(ctx, profile);
+    return null;
+  },
+});
+
+export const unban = mutation({
+  args: { profileId: v.id("profiles") },
+  returns: v.null(),
+  handler: async (ctx, { profileId }) => {
+    await requireAdmin(ctx);
+    const profile = await ctx.db.get(profileId);
+    if (profile === null) throw new ConvexError("Profile not found");
+    await ctx.db.patch(profileId, { banned: false });
+    return null;
+  },
+});
+
+/** Admin: deletes any track and its object. */
+export const deleteTrack = mutation({
+  args: { trackId: v.id("tracks") },
+  returns: v.null(),
+  handler: async (ctx, { trackId }) => {
+    await requireAdmin(ctx);
+    const track = await ctx.db.get(trackId);
+    if (track === null) return null;
+    await removeTrack(ctx, track);
+    await actionAllOn(ctx, "track", trackId);
+    return null;
+  },
+});
+
+/** True when the caller may use the admin page. Not an admin function, so it never throws. */
+export const canModerate = query({
+  args: {},
+  returns: v.boolean(),
+  handler: async (ctx) => await isAdmin(ctx),
+});

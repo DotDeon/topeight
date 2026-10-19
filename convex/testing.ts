@@ -10,7 +10,8 @@ import { hashPassword } from "./lib/password";
  * runs them, and only against a local Convex backend.
  *
  * seedSandboxFixture feeds e2e/sandbox.spec.ts, seedCommenterFixture feeds
- * e2e/comments.spec.ts, seedArtistLoginFixture feeds e2e/edit.spec.ts.
+ * e2e/comments.spec.ts and e2e/moderation.spec.ts, seedArtistLoginFixture feeds
+ * e2e/edit.spec.ts, seedAdminLoginFixture feeds e2e/moderation.spec.ts.
  *
  * `sandboxtest` is an artist whose custom JS tries to break out of the
  * sandbox and writes what happened into document.title as JSON.
@@ -200,6 +201,7 @@ export const seedSandboxFixture = internalMutation({
  */
 export const COMMENTER_EMAIL = "e2e-commenter@fixture.invalid";
 export const EDITOR_EMAIL = "e2e-editor@fixture.invalid";
+export const ADMIN_EMAIL = "e2e-admin@fixture.invalid";
 
 /**
  * Creates or resets a password-login fixture. Refuses to touch any user whose
@@ -228,6 +230,8 @@ async function seedLoginFixture(
     // Start each run clean: no comments by this user, and (editor) default profile content.
     const comments = await ctx.db.query("comments").filter((q) => q.eq(q.field("authorId"), existing._id)).take(100);
     for (const c of comments) await ctx.db.delete(c._id);
+    const reports = await ctx.db.query("reports").filter((q) => q.eq(q.field("reporterId"), existing._id)).take(100);
+    for (const r of reports) await ctx.db.delete(r._id);
     await ctx.db.patch(existing._id, { kind: f.kind, customHtml: "", customCss: "", customJs: "" });
     return null;
   }
@@ -277,6 +281,23 @@ export const seedArtistLoginFixture = internalMutation({
       displayName: "E2E Editor",
       email: EDITOR_EMAIL,
       kind: "artist",
+      password,
+    }),
+});
+
+/**
+ * Fixture for e2e/moderation.spec.ts: a member who can log in. Same guards as the
+ * commenter. It is only an admin because global-setup puts its email in ADMIN_EMAILS.
+ */
+export const seedAdminLoginFixture = internalMutation({
+  args: { password: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { password }) =>
+    await seedLoginFixture(ctx, {
+      username: "e2eadmin",
+      displayName: "E2E Admin",
+      email: ADMIN_EMAIL,
+      kind: "fan",
       password,
     }),
 });

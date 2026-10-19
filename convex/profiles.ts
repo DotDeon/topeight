@@ -138,7 +138,7 @@ export const touchLogin = mutation({
     const userId = await getAuthUserId(ctx);
     if (userId === null) return null;
     const profile = await profileForUser(ctx, userId);
-    if (profile !== null) {
+    if (profile !== null && !profile.banned) {
       await ctx.db.patch(profile._id, { lastLoginAt: Date.now() });
     }
     return null;

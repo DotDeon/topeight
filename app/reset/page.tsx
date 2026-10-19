@@ -26,14 +26,15 @@ export default function ResetPage() {
     const form = new FormData(e.currentTarget);
     setBusy(true);
     setError(null);
+    const address = normalizeEmail(form.get("email"));
     try {
-      await signIn("password", { email: normalizeEmail(form.get("email")), flow: "reset" });
-      setEmail(normalizeEmail(form.get("email")));
+      await signIn("password", { email: address, flow: "reset" });
     } catch {
-      setError("Could not send a reset code to that e-mail.");
+      // Same screen either way, so the page never says whether an account exists.
     } finally {
       setBusy(false);
     }
+    setEmail(address);
   }
 
   async function submitReset(e: FormEvent<HTMLFormElement>) {
@@ -61,7 +62,7 @@ export default function ResetPage() {
     return (
       <AuthBox title="Reset Password">
         {errorLine}
-        <p className={s.note}>We sent a code to {email}.</p>
+        <p className={s.note}>If that address has an account, we sent a code</p>
         <form onSubmit={submitReset}>
           <div className={s.row}>
             <label htmlFor="code">Code</label>

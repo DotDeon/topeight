@@ -9,6 +9,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { CommentForm } from "./CommentForm";
 import { Photo } from "./PhotoGrid";
 import { PostBody } from "./PostBody";
+import { ReportLink } from "./ReportLink";
 import styles from "./Posts.module.css";
 
 function formatDate(ms: number): string {
@@ -53,6 +54,7 @@ function Page({ username, cursor, onMore }: { username: string; cursor: string |
                   Delete
                 </button>
               )}
+              <ReportLink targetType="comment" targetId={c.id} />
             </span>
             <PostBody body={c.body} />
           </div>

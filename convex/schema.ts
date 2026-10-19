@@ -144,5 +144,7 @@ export default defineSchema({
       v.literal("actioned"),
       v.literal("dismissed"),
     ),
-  }).index("by_status", ["status"]),
+  })
+    .index("by_status", ["status"])
+    .index("by_target", ["targetType", "targetId", "status"]),
 });

@@ -9,6 +9,7 @@ import { api } from "@/convex/_generated/api";
 import { BulletinForm } from "./CommentForm";
 import { Photo } from "./PhotoGrid";
 import { PostBody } from "./PostBody";
+import { ReportLink } from "./ReportLink";
 import styles from "./Posts.module.css";
 
 const STATUS_TEXT = {
@@ -51,6 +52,7 @@ function Feed() {
                   Delete
                 </button>
               )}
+              <ReportLink targetType="bulletin" targetId={b.id} />
             </span>
             <PostBody body={b.body} />
           </div>

@@ -4,6 +4,7 @@ import { ConvexClientProvider } from "@/components/ConvexClientProvider";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { NavBar } from "@/components/NavBar";
+import { SuspendedGate } from "@/components/SuspendedGate";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,7 +21,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <div className="site">
               <Header />
               <NavBar />
-              <div className="site-main">{children}</div>
+              <div className="site-main">
+                <SuspendedGate>{children}</SuspendedGate>
+              </div>
               <Footer />
             </div>
           </ConvexClientProvider>

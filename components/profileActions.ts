@@ -26,11 +26,6 @@ export type ProfileAction = {
 };
 
 
-export const COMING_SOON = "Coming soon. This feature arrives in a later update.";
-
-// Task 13 swaps in reporting.
-const comingSoon = async (): Promise<ActionResult> => ({ ok: false, text: COMING_SOON });
-
 /** Runs a social mutation on the profile being viewed and turns the outcome into dialog text. */
 async function runSocial(
   target: ActionTarget,
@@ -69,6 +64,12 @@ const addComment = (target: ActionTarget, client: ConvexReactClient, text: strin
     return "Comment posted";
   });
 
+const report = (target: ActionTarget, client: ConvexReactClient, text: string) =>
+  runSocial(target, client, "Log in to report", async (id) => {
+    await client.mutation(api.moderation.report, { targetType: "profile", targetId: id, reason: text });
+    return "Thanks. An admin will review this profile.";
+  });
+
 export const PROFILE_ACTIONS: Record<BridgeAction, ProfileAction> = {
   addFriend: { label: "Add to Friends", question: (n) => `Add ${n} to your friends?`, run: addFriend },
   addComment: {
@@ -76,7 +77,11 @@ export const PROFILE_ACTIONS: Record<BridgeAction, ProfileAction> = {
     run: addComment,
     input: { label: "Your comment", maxLength: 2000 },
   },
-  report: { label: "Report", question: (n) => `Report ${n}'s profile?`, run: comingSoon },
+  report: {
+    label: "Report", question: (n) => `Report ${n}'s profile?`,
+    run: report,
+    input: { label: "Reason", maxLength: 500 },
+  },
   block: { label: "Block", question: (n) => `Block ${n}?`, run: block },
   forward: { label: "Forward to Friend", question: () => "Forward to Friend is coming soon." },
   message: { label: "Send Message", question: () => "Send Message is coming soon." },

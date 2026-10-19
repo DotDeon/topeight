@@ -12,8 +12,15 @@ import { existsSync, readFileSync } from "node:fs";
  * It refuses to touch anything but a local Convex backend. Set
  * E2E_CONVEX_ENV_FILE to pass `--env-file` (self-hosted backends).
  * The commenter's password is random per run and reaches the specs through
- * E2E_COMMENTER_PASSWORD. The editor artist's goes through E2E_EDITOR_PASSWORD.
+ * E2E_COMMENTER_PASSWORD. The editor artist's goes through E2E_EDITOR_PASSWORD,
+ * the admin's through E2E_ADMIN_PASSWORD.
+ *
+ * It also adds the admin fixture's email to ADMIN_EMAILS on the deployment.
+ * The value from before the run goes in E2E_PRIOR_ADMIN_EMAILS so the
+ * teardown can put it back, or remove the variable if there was none.
  */
+
+export const ADMIN_FIXTURE_EMAIL = "e2e-admin@fixture.invalid";
 
 function envFileValue(path: string, key: string): string | undefined {
   if (!existsSync(path)) return undefined;
@@ -55,9 +62,24 @@ export default function globalSetup() {
   process.env.E2E_COMMENTER_PASSWORD = password;
   const editorPassword = randomBytes(18).toString("base64url");
   process.env.E2E_EDITOR_PASSWORD = editorPassword;
+  const adminPassword = randomBytes(18).toString("base64url");
+  process.env.E2E_ADMIN_PASSWORD = adminPassword;
   const convex = (...args: string[]) => execFileSync("npx", ["convex", ...args], { stdio: "inherit" });
   convex("env", "set", ...envFile, "OPENSPACE_TEST_FIXTURES", "1");
+
+  // `env get` prints nothing on stdout when the variable is unset.
+  const prior = execFileSync("npx", ["convex", "env", "get", ...envFile, "ADMIN_EMAILS"], {
+    stdio: ["ignore", "pipe", "ignore"],
+  })
+    .toString()
+    .trim();
+  // Drop the fixture in case a crashed run left it behind, so teardown never restores it.
+  const others = prior.split(",").map((e) => e.trim()).filter((e) => e && e !== ADMIN_FIXTURE_EMAIL);
+  process.env.E2E_PRIOR_ADMIN_EMAILS = others.join(",");
+  convex("env", "set", ...envFile, "ADMIN_EMAILS", [...others, ADMIN_FIXTURE_EMAIL].join(","));
+
   convex("run", ...envFile, "testing:seedSandboxFixture", JSON.stringify({ mainOrigin: `http://localhost:${port}` }));
   convex("run", ...envFile, "testing:seedCommenterFixture", JSON.stringify({ password }));
   convex("run", ...envFile, "testing:seedArtistLoginFixture", JSON.stringify({ password: editorPassword }));
+  convex("run", ...envFile, "testing:seedAdminLoginFixture", JSON.stringify({ password: adminPassword }));
 }

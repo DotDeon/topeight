@@ -275,17 +275,22 @@ export const deleteTrack = mutation({
   args: { trackId: v.id("tracks") },
   returns: v.null(),
   handler: async (ctx, { trackId }) => {
-    const { profile, track } = await ownTrack(ctx, trackId);
-    await storage.remove(ctx, track.key);
-    await ctx.db.delete(trackId);
-    if (track.autoplay) {
-      const rest = await tracksFor(ctx, profile._id);
-      const next = rest.find((t) => t.order > track.order) ?? rest[0];
-      if (next !== undefined) await ctx.db.patch(next._id, { autoplay: true });
-    }
+    const { track } = await ownTrack(ctx, trackId);
+    await removeTrack(ctx, track);
     return null;
   },
 });
+
+/** Deletes a track and its R2 object, and passes autoplay on to the next track. No access check. */
+export async function removeTrack(ctx: MutationCtx, track: Doc<"tracks">): Promise<void> {
+  await storage.remove(ctx, track.key);
+  await ctx.db.delete(track._id);
+  if (track.autoplay) {
+    const rest = await tracksFor(ctx, track.profileId);
+    const next = rest.find((t) => t.order > track.order) ?? rest[0];
+    if (next !== undefined) await ctx.db.patch(next._id, { autoplay: true });
+  }
+}
 
 /** The caller's tracks in play order. Empty when signed out or without a profile. */
 export const myTracks = query({
