@@ -4,7 +4,7 @@ import { ageOn, isCalendarDate, normalizeUsername, validateUsername } from "../l
 import type { PublicProfile } from "../lib/profile/types";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
-import { profileForUser, requireVerifiedUser } from "./lib/access";
+import { profileForUser, requireProfile, requireVerifiedUser } from "./lib/access";
 import { BULLETIN_WINDOW_MS } from "./lib/bulletins";
 import { toPublicCard, type PublicCard } from "./lib/cards";
 import { friendIds, friendshipPair } from "./lib/friendships";
@@ -141,6 +141,122 @@ export const touchLogin = mutation({
     if (profile !== null) {
       await ctx.db.patch(profile._id, { lastLoginAt: Date.now() });
     }
+    return null;
+  },
+});
+
+// ---------------------------------------------------------------- editing
+
+const MAX_CODE_BYTES = 100 * 1024;
+
+function clean(raw: string, label: string, max: number): string {
+  const value = raw.trim();
+  if (value.length > max) throw new ConvexError(`${label} is too long`);
+  return value;
+}
+
+const interestsValidator = v.object({
+  general: v.string(),
+  music: v.string(),
+  movies: v.string(),
+  television: v.string(),
+  books: v.string(),
+  heroes: v.string(),
+});
+
+const bandValidator = v.object({
+  members: v.string(),
+  influences: v.string(),
+  soundsLike: v.string(),
+  recordLabel: v.string(),
+  labelType: v.string(),
+});
+
+/**
+ * Saves the editable profile fields, trimmed and length checked. Fans keep
+ * gender and interests, artists keep genre and band; the other group is ignored.
+ */
+export const updateDetails = mutation({
+  args: {
+    displayName: v.string(),
+    headline: v.string(),
+    location: v.string(),
+    aboutMe: v.string(),
+    whoIdLikeToMeet: v.string(),
+    gender: v.optional(v.string()),
+    genre: v.optional(v.string()),
+    interests: v.optional(interestsValidator),
+    band: v.optional(bandValidator),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const me = await requireProfile(ctx);
+    const displayName = clean(args.displayName, "Display name", MAX_DISPLAY_NAME);
+    if (displayName === "") throw new ConvexError("Display name is required");
+    const patch: Partial<Doc<"profiles">> = {
+      displayName,
+      headline: clean(args.headline, "Headline", 100),
+      location: clean(args.location, "Location", 100),
+      aboutMe: clean(args.aboutMe, "About me", 5000),
+      whoIdLikeToMeet: clean(args.whoIdLikeToMeet, "Who I'd like to meet", 5000),
+    };
+    if (me.kind === "artist") {
+      patch.genre = args.genre === undefined ? undefined : clean(args.genre, "Genre", 50);
+      const b = args.band;
+      patch.band =
+        b === undefined
+          ? undefined
+          : {
+              members: clean(b.members, "Band members", 500),
+              influences: clean(b.influences, "Influences", 500),
+              soundsLike: clean(b.soundsLike, "Sounds like", 500),
+              recordLabel: clean(b.recordLabel, "Record label", 500),
+              labelType: clean(b.labelType, "Label type", 500),
+            };
+    } else {
+      patch.gender = args.gender === undefined ? undefined : clean(args.gender, "Gender", 50);
+      const i = args.interests;
+      patch.interests =
+        i === undefined
+          ? undefined
+          : {
+              general: clean(i.general, "Interests", 500),
+              music: clean(i.music, "Interests", 500),
+              movies: clean(i.movies, "Interests", 500),
+              television: clean(i.television, "Interests", 500),
+              books: clean(i.books, "Interests", 500),
+              heroes: clean(i.heroes, "Interests", 500),
+            };
+    }
+    await ctx.db.patch(me._id, patch);
+    return null;
+  },
+});
+
+/** Saves custom CSS, HTML and JS. 100 KB of UTF-8 in total; fans may save CSS only. */
+export const updateCustomCode = mutation({
+  args: { css: v.string(), html: v.string(), js: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { css, html, js }) => {
+    const me = await requireProfile(ctx);
+    if (me.kind !== "artist" && (html !== "" || js !== "")) {
+      throw new ConvexError("Fans can use CSS only");
+    }
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(html).length + encoder.encode(css).length + encoder.encode(js).length;
+    if (bytes > MAX_CODE_BYTES) throw new ConvexError("Custom code is limited to 100 KB");
+    await ctx.db.patch(me._id, { customCss: css, customHtml: html, customJs: js });
+    return null;
+  },
+});
+
+/** Switches a fan to an artist profile. Does nothing for artists. */
+export const becomeArtist = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const me = await requireProfile(ctx);
+    if (me.kind !== "artist") await ctx.db.patch(me._id, { kind: "artist" });
     return null;
   },
 });

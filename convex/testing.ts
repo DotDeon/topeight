@@ -10,7 +10,7 @@ import { hashPassword } from "./lib/password";
  * runs them, and only against a local Convex backend.
  *
  * seedSandboxFixture feeds e2e/sandbox.spec.ts, seedCommenterFixture feeds
- * e2e/comments.spec.ts.
+ * e2e/comments.spec.ts, seedArtistLoginFixture feeds e2e/edit.spec.ts.
  *
  * `sandboxtest` is an artist whose custom JS tries to break out of the
  * sandbox and writes what happened into document.title as JSON.
@@ -199,52 +199,84 @@ export const seedSandboxFixture = internalMutation({
  * ever touched. Same OPENSPACE_TEST_FIXTURES guard as above.
  */
 export const COMMENTER_EMAIL = "e2e-commenter@fixture.invalid";
+export const EDITOR_EMAIL = "e2e-editor@fixture.invalid";
+
+/**
+ * Creates or resets a password-login fixture. Refuses to touch any user whose
+ * email is not the given @fixture.invalid address.
+ */
+async function seedLoginFixture(
+  ctx: MutationCtx,
+  f: { username: string; displayName: string; email: string; kind: "fan" | "artist"; password: string },
+) {
+  if (process.env.OPENSPACE_TEST_FIXTURES !== "1") {
+    throw new ConvexError("Set OPENSPACE_TEST_FIXTURES=1 on this deployment to seed test fixtures");
+  }
+  const secret = await hashPassword(f.password);
+  const existing = await ctx.db
+    .query("profiles")
+    .withIndex("by_username", (q) => q.eq("username", f.username))
+    .unique();
+  if (existing !== null) {
+    const user = await ctx.db.get(existing.userId);
+    if (user?.email !== f.email) throw new ConvexError(`"${f.username}" is not a fixture; refusing to touch it`);
+    const account = await ctx.db
+      .query("authAccounts")
+      .withIndex("userIdAndProvider", (q) => q.eq("userId", user._id).eq("provider", "password"))
+      .unique();
+    if (account !== null) await ctx.db.patch(account._id, { secret });
+    // Start each run clean: no comments by this user, and (editor) default profile content.
+    const comments = await ctx.db.query("comments").filter((q) => q.eq(q.field("authorId"), existing._id)).take(100);
+    for (const c of comments) await ctx.db.delete(c._id);
+    await ctx.db.patch(existing._id, { kind: f.kind, customHtml: "", customCss: "", customJs: "" });
+    return null;
+  }
+  const taken = await ctx.db
+    .query("users")
+    .withIndex("email", (q) => q.eq("email", f.email))
+    .first();
+  if (taken !== null) throw new ConvexError(`${f.email} already exists and is not the fixture; refusing to touch it`);
+  const userId = await ctx.db.insert("users", { name: f.displayName, email: f.email, emailVerificationTime: Date.now() });
+  await ctx.db.insert("authAccounts", {
+    userId,
+    provider: "password",
+    providerAccountId: f.email,
+    secret,
+    emailVerified: f.email,
+  });
+  await ctx.db.insert("profiles", {
+    ...blank(),
+    userId,
+    username: f.username,
+    displayName: f.displayName,
+    kind: f.kind,
+  });
+  return null;
+}
 
 export const seedCommenterFixture = internalMutation({
   args: { password: v.string() },
   returns: v.null(),
-  handler: async (ctx, { password }) => {
-    if (process.env.OPENSPACE_TEST_FIXTURES !== "1") {
-      throw new ConvexError("Set OPENSPACE_TEST_FIXTURES=1 on this deployment to seed test fixtures");
-    }
-    const secret = await hashPassword(password);
-    const existing = await ctx.db
-      .query("profiles")
-      .withIndex("by_username", (q) => q.eq("username", "e2ecommenter"))
-      .unique();
-    if (existing !== null) {
-      const user = await ctx.db.get(existing.userId);
-      if (user?.email !== COMMENTER_EMAIL) throw new ConvexError(`"e2ecommenter" is not a fixture; refusing to touch it`);
-      const account = await ctx.db
-        .query("authAccounts")
-        .withIndex("userIdAndProvider", (q) => q.eq("userId", user._id).eq("provider", "password"))
-        .unique();
-      if (account !== null) await ctx.db.patch(account._id, { secret });
-      // Start each run with no comments on the artist's wall from this user.
-      const comments = await ctx.db.query("comments").filter((q) => q.eq(q.field("authorId"), existing._id)).take(100);
-      for (const c of comments) await ctx.db.delete(c._id);
-      return null;
-    }
-    const taken = await ctx.db
-      .query("users")
-      .withIndex("email", (q) => q.eq("email", COMMENTER_EMAIL))
-      .first();
-    if (taken !== null) throw new ConvexError(`${COMMENTER_EMAIL} already exists and is not the fixture; refusing to touch it`);
-    const userId = await ctx.db.insert("users", { name: "E2E Commenter", email: COMMENTER_EMAIL, emailVerificationTime: Date.now() });
-    await ctx.db.insert("authAccounts", {
-      userId,
-      provider: "password",
-      providerAccountId: COMMENTER_EMAIL,
-      secret,
-      emailVerified: COMMENTER_EMAIL,
-    });
-    await ctx.db.insert("profiles", {
-      ...blank(),
-      userId,
+  handler: async (ctx, { password }) =>
+    await seedLoginFixture(ctx, {
       username: "e2ecommenter",
       displayName: "E2E Commenter",
+      email: COMMENTER_EMAIL,
       kind: "fan",
-    });
-    return null;
-  },
+      password,
+    }),
+});
+
+/** Fixture for e2e/edit.spec.ts: an artist who can log in. Same guards as the commenter. */
+export const seedArtistLoginFixture = internalMutation({
+  args: { password: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { password }) =>
+    await seedLoginFixture(ctx, {
+      username: "e2eeditor",
+      displayName: "E2E Editor",
+      email: EDITOR_EMAIL,
+      kind: "artist",
+      password,
+    }),
 });

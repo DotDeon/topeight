@@ -445,3 +445,23 @@ describe("csp", () => {
     );
   });
 });
+
+describe("cspMeta option", () => {
+  const profile = base("fan");
+
+  test("inserts the meta tag first in head, escaped", () => {
+    const csp = buildUsercontentCsp("http://127.0.0.1:3000");
+    const html = renderProfileDocument(profile, { ...opts, cspMeta: csp });
+    expect(html).toContain(`<head>\n<meta http-equiv="Content-Security-Policy" content="${escapeHtml(csp)}">\n<meta charset="utf-8">`);
+  });
+
+  test("escapes quotes so the content attribute cannot be closed early", () => {
+    const html = renderProfileDocument(profile, { ...opts, cspMeta: `x"><script>alert(1)</script>` });
+    expect(html).not.toContain(`<script>alert(1)</script>`);
+    expect(html).toContain(`content="x&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;"`);
+  });
+
+  test("no meta tag by default", () => {
+    expect(renderProfileDocument(profile, opts)).not.toContain("http-equiv");
+  });
+});

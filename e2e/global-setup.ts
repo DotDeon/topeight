@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from "node:fs";
  * It refuses to touch anything but a local Convex backend. Set
  * E2E_CONVEX_ENV_FILE to pass `--env-file` (self-hosted backends).
  * The commenter's password is random per run and reaches the specs through
- * E2E_COMMENTER_PASSWORD.
+ * E2E_COMMENTER_PASSWORD. The editor artist's goes through E2E_EDITOR_PASSWORD.
  */
 
 function envFileValue(path: string, key: string): string | undefined {
@@ -53,8 +53,11 @@ export default function globalSetup() {
   const envFile = process.env.E2E_CONVEX_ENV_FILE ? ["--env-file", process.env.E2E_CONVEX_ENV_FILE] : [];
   const password = randomBytes(18).toString("base64url");
   process.env.E2E_COMMENTER_PASSWORD = password;
+  const editorPassword = randomBytes(18).toString("base64url");
+  process.env.E2E_EDITOR_PASSWORD = editorPassword;
   const convex = (...args: string[]) => execFileSync("npx", ["convex", ...args], { stdio: "inherit" });
   convex("env", "set", ...envFile, "OPENSPACE_TEST_FIXTURES", "1");
   convex("run", ...envFile, "testing:seedSandboxFixture", JSON.stringify({ mainOrigin: `http://localhost:${port}` }));
   convex("run", ...envFile, "testing:seedCommenterFixture", JSON.stringify({ password }));
+  convex("run", ...envFile, "testing:seedArtistLoginFixture", JSON.stringify({ password: editorPassword }));
 }

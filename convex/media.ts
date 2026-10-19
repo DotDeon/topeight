@@ -1,9 +1,10 @@
+import { getAuthUserId } from "@convex-dev/auth/server";
 import type { R2Callbacks } from "@convex-dev/r2";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { DataModel, Doc, Id } from "./_generated/dataModel";
-import { internalMutation, mutation, type MutationCtx } from "./_generated/server";
-import { requireProfile } from "./lib/access";
+import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
+import { profileForUser, requireProfile } from "./lib/access";
 import { rateLimiter } from "./lib/limits";
 import {
   MAX_TRACKS,
@@ -283,5 +284,21 @@ export const deleteTrack = mutation({
       if (next !== undefined) await ctx.db.patch(next._id, { autoplay: true });
     }
     return null;
+  },
+});
+
+/** The caller's tracks in play order. Empty when signed out or without a profile. */
+export const myTracks = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) return [];
+    const profile = await profileForUser(ctx, userId);
+    if (profile === null) return [];
+    const rows = await ctx.db
+      .query("tracks")
+      .withIndex("by_profile_order", (q) => q.eq("profileId", profile._id))
+      .take(MAX_TRACKS);
+    return rows.map((t) => ({ id: t._id, title: t.title, autoplay: t.autoplay }));
   },
 });

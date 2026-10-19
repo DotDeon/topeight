@@ -1,8 +1,9 @@
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import { validateUsername } from "../lib/validation";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx } from "./_generated/server";
-import { areFriends, isBlockedEitherWay, requireProfile } from "./lib/access";
+import { areFriends, isBlockedEitherWay, profileForUser, requireProfile } from "./lib/access";
 import { toPublicCard, type PublicCard } from "./lib/cards";
 import { friendIds, friendshipPair } from "./lib/friendships";
 import { MAX_FRIENDS, rateLimiter } from "./lib/limits";
@@ -215,5 +216,23 @@ export const listFriends = query({
     }
     friends.sort((x, y) => x.displayName.localeCompare(y.displayName));
     return { friends, total: friends.length };
+  },
+});
+
+/** The caller's friends with their profile ids, for the Top 8 picker. At most 1000, banned left out. */
+export const myFriendsForTop8 = query({
+  args: {},
+  handler: async (ctx): Promise<Array<{ id: Id<"profiles">; card: PublicCard }>> => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) return [];
+    const me = await profileForUser(ctx, userId);
+    if (me === null) return [];
+    const rows: Array<{ id: Id<"profiles">; card: PublicCard }> = [];
+    for (const id of (await friendIds(ctx, me._id)).slice(0, MAX_FRIENDS)) {
+      const f = await ctx.db.get(id);
+      if (f !== null && !f.banned) rows.push({ id, card: toPublicCard(f) });
+    }
+    rows.sort((x, y) => x.card.displayName.localeCompare(y.card.displayName));
+    return rows;
   },
 });

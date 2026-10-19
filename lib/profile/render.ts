@@ -5,7 +5,11 @@ import type { PublicProfile } from "./types";
 
 export type { PublicCard, PublicProfile } from "./types";
 
-export type RenderOptions = { mainOrigin: string };
+export type RenderOptions = {
+  mainOrigin: string;
+  /** A CSP for a <meta http-equiv> tag, put first in <head>. For srcdoc previews, which get no CSP header. */
+  cspMeta?: string;
+};
 
 const MAX_COMMENTS = 10;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -421,7 +425,7 @@ export function renderProfileDocument(p: PublicProfile, opts: RenderOptions): st
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+${opts.cspMeta ? `<meta http-equiv="Content-Security-Policy" content="${escapeHtml(opts.cspMeta)}">\n` : ""}<meta charset="utf-8">
 <title>${escapeHtml(p.displayName)} | OpenSpace</title>
 <style>${PROFILE_CSS}</style>
 <style>${neutraliseStyle(p.custom.css)}</style>
