@@ -11,6 +11,7 @@ import { CodeEditor } from "./CodeEditor";
 import styles from "./Edit.module.css";
 import { FriendsAndBlocking } from "./FriendsAndBlocking";
 import { MailSetting } from "./MailSetting";
+import { MoodForm } from "./MoodForm";
 import { PhotoForm } from "./PhotoForm";
 import { ShowsForm } from "./ShowsForm";
 import { StatusLine, useSaver } from "./shared";
@@ -59,6 +60,9 @@ export function EditProfile() {
       <h1 className={styles.title}>Edit Profile</h1>
       {artist && <ArtistProComingSoon />}
       <DetailsForm key={me._id} me={me} />
+      <Box title="Mood" color="orange">
+        <MoodForm key={me._id} mood={me.mood} label="Profile mood" />
+      </Box>
       <PhotoForm photoUrl={photoUrl} photoKey={me.photoKey} />
       <Top8Picker top8={me.top8} />
       <FriendsAndBlocking />

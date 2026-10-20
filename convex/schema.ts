@@ -52,6 +52,8 @@ export default defineSchema({
     banned: v.boolean(),
     /** Who may send this member mail. Undefined means friends only. */
     mailFrom: v.optional(v.union(v.literal("friends"), v.literal("anyone"))),
+    /** The profile mood line: an icon and up to 40 characters of text. */
+    mood: v.optional(v.object({ icon: moodIcon, text: v.string() })),
     /**
      * Test fixtures only: a creation time to use for the group-creation age check,
      * since _creationTime can't be patched. Written only by internal fixture mutations

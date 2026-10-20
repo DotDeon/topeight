@@ -9,6 +9,7 @@ import { BULLETIN_WINDOW_MS } from "./lib/bulletins";
 import { toPublicCard, type PublicCard } from "./lib/cards";
 import { friendIds, friendshipPair } from "./lib/friendships";
 import { MAX_SCAN, rateLimiter } from "./lib/limits";
+import { moodIcon } from "./lib/moods";
 import { MAX_TRACKS, photoUrl, syncMediaFlags } from "./lib/media";
 
 const MIN_AGE = 13;
@@ -249,6 +250,34 @@ export const updateCustomCode = mutation({
   },
 });
 
+const MAX_MOOD = 40;
+
+/**
+ * Sets the profile mood line. A null icon clears it. Text is trimmed and at most
+ * 40 characters; leaving the icon out keeps the current one. 30 an hour.
+ */
+export const setMood = mutation({
+  args: { icon: v.optional(v.union(moodIcon, v.null())), text: v.optional(v.string()) },
+  returns: v.null(),
+  handler: async (ctx, { icon, text }) => {
+    const me = await requireProfile(ctx);
+    const trimmed = (text ?? "").trim();
+    if (trimmed.length > MAX_MOOD) throw new ConvexError("Mood is too long");
+    const chosen = icon === undefined ? me.mood?.icon : icon;
+    if (chosen === undefined) throw new ConvexError("Pick a mood");
+    const { ok } = await rateLimiter.limit(ctx, "mood", { key: me._id });
+    if (!ok) throw new ConvexError("Slow down");
+    if (chosen === null) {
+      await ctx.db.patch(me._id, { mood: undefined });
+      return null;
+    }
+    await ctx.db.patch(me._id, {
+      mood: { icon: chosen, text: text === undefined && me.mood ? me.mood.text : trimmed },
+    });
+    return null;
+  },
+});
+
 /** Switches a fan to an artist profile. Does nothing for artists. */
 export const becomeArtist = mutation({
   args: {},
@@ -401,6 +430,7 @@ export const getPublicProfile = query({
       displayName: p.displayName,
       kind: p.kind,
       headline: p.headline,
+      mood: p.mood ?? null,
       location: p.location,
       gender: p.gender,
       ...(isArtist || !isCalendarDate(p.birthDate) ? {} : { age: ageOn(p.birthDate, new Date()) }),

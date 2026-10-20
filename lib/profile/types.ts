@@ -16,6 +16,8 @@ export type PublicProfile = {
   displayName: string;
   kind: "fan" | "artist";
   headline: string;
+  /** The mood line. `icon` is one of lib/moods.ts MOOD_ICONS. */
+  mood?: { icon: string; text: string } | null;
   location: string;
   gender?: string;
   /** Fans only, worked out on the server. The birth date itself is never sent. */

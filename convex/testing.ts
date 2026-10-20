@@ -591,3 +591,28 @@ export const resetGroupsFixture = internalMutation({
     return null;
   },
 });
+
+/**
+ * Fixture for e2e/mood.spec.ts: clears the mood on e2eeditor and resets its
+ * mood rate limit so repeated runs never hit 30 an hour.
+ */
+export const resetMoodFixture = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    if (process.env.TOPEIGHT_TEST_FIXTURES !== "1") {
+      throw new ConvexError("Set TOPEIGHT_TEST_FIXTURES=1 on this deployment to seed test fixtures");
+    }
+    const profile = await ctx.db
+      .query("profiles")
+      .withIndex("by_username", (q) => q.eq("username", "e2eeditor"))
+      .unique();
+    const user = profile === null ? null : await ctx.db.get(profile.userId);
+    if (profile === null || user?.email !== "e2e-editor@fixture.invalid") {
+      throw new ConvexError('Fixture "e2eeditor" is not seeded');
+    }
+    await ctx.db.patch(profile._id, { mood: undefined });
+    await rateLimiter.reset(ctx, "mood", { key: profile._id });
+    return null;
+  },
+});

@@ -379,6 +379,18 @@ describe("URL schemes and escaping", () => {
     expect(html).toContain('data-topeight-report-track="&quot;&gt;&lt;img src=x onerror=alert(1)&gt;"');
   });
 
+  test("mood shows its icon and escaped text under the headline", () => {
+    const evil = "<b onmouseover=alert(1)>x</b>";
+    const html = renderProfileDocument(fan({ mood: { icon: "happy", text: evil } }), opts);
+    expect(html).toContain("Mood:");
+    expect(html).toContain('data-mood-icon="happy"');
+    expect(html).toContain("&lt;b onmouseover=alert(1)&gt;x&lt;/b&gt;");
+    expect(html).not.toContain("<b onmouseover");
+    expect(html.indexOf('"hi"')).toBeLessThan(html.indexOf("Mood:"));
+    expect(renderProfileDocument(fan({ mood: null }), opts)).not.toContain("Mood:");
+    expect(renderProfileDocument(fan({ mood: { icon: "in-love", text: "" } }), opts)).toContain("In love");
+  });
+
   test("markup in names, headline, venue and track title is escaped", () => {
     const evil = "<b onmouseover=alert(1)>x</b>";
     const html = renderProfileDocument(

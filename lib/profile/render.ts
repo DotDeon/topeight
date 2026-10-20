@@ -1,5 +1,7 @@
 import { BRIDGE_ACTIONS, BRIDGE_PAGES, MAX_TRACK_ID_LENGTH, type BridgePage } from "@/lib/bridge-protocol";
 import { tokenizeComment } from "@/lib/validation";
+import { moodLabel, moodSvg } from "@/lib/moodSvg";
+import { MOOD_ICONS } from "@/lib/moods";
 import { PROFILE_CSS } from "./profile-css";
 import type { PublicProfile } from "./types";
 
@@ -169,6 +171,13 @@ function renderPlayer(p: PublicProfile, name: string, opts: RenderOptions): stri
 </div>`;
 }
 
+/** "Mood: <icon> text". The icon comes from fixed markup keyed by a known id; the text is escaped. */
+function moodLine(mood: PublicProfile["mood"]): string {
+  const icon = MOOD_ICONS.find((i) => i === mood?.icon);
+  if (!mood || !icon) return "";
+  return `<span class="mood">Mood: ${moodSvg(icon)} ${escapeHtml(mood.text || moodLabel(icon))}</span>`;
+}
+
 function renderLeft(p: PublicProfile, opts: RenderOptions): string {
   const name = escapeHtml(p.displayName);
   const isArtist = p.kind === "artist";
@@ -186,6 +195,7 @@ function renderLeft(p: PublicProfile, opts: RenderOptions): string {
       ];
   const facts = [
     p.headline ? `"${escapeHtml(p.headline)}"` : "",
+    moodLine(p.mood),
     ...who,
     `Profile Views: ${formatCount(p.profileViews)}`,
     `Last Login: ${formatDay(p.lastLoginAt)}`,
