@@ -281,6 +281,11 @@ async function preview(ctx: Ctx, report: Doc<"reports">): Promise<ReportPreview>
     };
   }
   if (type === "blogComment") {
+    // The snapshot is the comment as reported. Reports made before snapshots fall back to the row.
+    const snap = report.snapshot;
+    if (snap?.authorId) {
+      return { kind: "blogComment", body: snap.body, authorId: snap.authorId, author: await cardFor(ctx, snap.authorId) };
+    }
     const id = ctx.db.normalizeId("blogComments", targetId);
     const row = id && (await ctx.db.get(id));
     if (!row) return { kind: "gone" };
@@ -322,8 +327,8 @@ async function trackIsOn(ctx: Ctx, track: Doc<"tracks">, username: string | unde
  * by the same member adds nothing. A track report must name the profile it was
  * seen on in `profileUsername`, and the track must belong to it. Only the
  * recipient can report a message, and the report keeps a copy of it. A
- * blog post or event report keeps a copy of the title and body (description), a group report a
- * copy of its name, description and owner.
+ * blog post or event report keeps a copy of the title and body (description), a blog comment
+ * report a copy of its body and author, a group report a copy of its name, description and owner.
  */
 export const report = mutation({
   args: { targetType, targetId: v.string(), reason: v.string(), profileUsername: v.optional(v.string()) },
@@ -351,6 +356,9 @@ export const report = mutation({
         .withIndex("by_post", (q) => q.eq("postId", post._id))
         .first();
       snapshot = { title: post.title, body: body?.body ?? post.excerpt, authorId: post.authorId };
+    } else if (args.targetType === "blogComment") {
+      const comment = target as Doc<"blogComments">;
+      snapshot = { body: comment.body, authorId: comment.authorId };
     } else if (args.targetType === "event") {
       const event = target as Doc<"events">;
       snapshot = { title: event.title, body: event.description, authorId: event.hostId };
@@ -490,6 +498,44 @@ export const setGroupOwner = mutation({
     if (group === null) throw new ConvexError("Not found");
     await transferOwnership(ctx, group, username);
     return null;
+  },
+});
+
+const MAX_SLUG = 60;
+
+const adminGroupView = v.object({
+  id: v.id("groups"),
+  slug: v.string(),
+  name: v.string(),
+  deleted: v.boolean(),
+  hidden: v.boolean(),
+  /** Null when the owner's profile is gone. */
+  owner: v.union(v.object({ username: v.string(), displayName: v.string(), banned: v.boolean() }), v.null()),
+});
+export type AdminGroupView = typeof adminGroupView.type;
+
+/** Admin: one group by slug, deleted and hidden ones included, for the Group tools box. Null when no group has the slug. */
+export const groupForAdmin = query({
+  args: { slug: v.string() },
+  returns: v.union(adminGroupView, v.null()),
+  handler: async (ctx, { slug }): Promise<AdminGroupView | null> => {
+    await requireAdmin(ctx);
+    const key = slug.trim().toLowerCase();
+    if (key === "" || key.length > MAX_SLUG) return null;
+    const group = await ctx.db
+      .query("groups")
+      .withIndex("by_slug", (q) => q.eq("slug", key))
+      .unique();
+    if (group === null) return null;
+    const owner = await ctx.db.get(group.ownerId);
+    return {
+      id: group._id,
+      slug: group.slug,
+      name: group.name,
+      deleted: group.deleted,
+      hidden: group.hidden,
+      owner: owner === null ? null : { username: owner.username, displayName: owner.displayName, banned: owner.banned },
+    };
   },
 });
 

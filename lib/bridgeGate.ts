@@ -5,6 +5,8 @@
  * - requests in the second after a dialog closes are ignored (double clicks);
  * - after 3 cancelled bridge dialogs that could act, the frame is throttled
  *   until 30 s pass since the last cancel or the visitor uses the trusted strip;
+ * - "Send Message" opens no dialog. It goes straight to the compose page but
+ *   passes through the gate and counts as a cancel, so artist code can't loop it;
  * - coming-soon dialogs (no action to run) and strip dialogs never count.
  */
 export const BRIDGE_COOLDOWN_MS = 1000;

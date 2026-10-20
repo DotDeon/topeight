@@ -5,12 +5,14 @@ import { ConvexError } from "convex/values";
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@/convex/_generated/api";
+import type { Doc } from "@/convex/_generated/dataModel";
 import styles from "./Posts.module.css";
 
 const MAX_REASON = 500;
 
 /** A small Report button for one comment, bulletin, message, blog post, blog comment, event, group, group topic or group post. Asks for a reason with window.prompt. */
-type ReportTarget = "comment" | "bulletin" | "message" | "blogPost" | "blogComment" | "event" | "group" | "groupTopic" | "groupReply";
+/** Profiles and tracks are reported from their own pages, not through this link. */
+type ReportTarget = Exclude<Doc<"reports">["targetType"], "profile" | "track">;
 const TARGET_NAME: Record<ReportTarget, string> = {
   comment: "comment",
   bulletin: "bulletin",

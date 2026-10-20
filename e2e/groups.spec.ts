@@ -103,4 +103,28 @@ test("an aged owner runs a group: join, topic, reply, remove a post, ban, unban"
   // A non-owner can't open the settings.
   await member.goto(`${groupUrl}/settings`);
   await expect(member.getByText("You can't change this group")).toBeVisible();
+
+  // Only admins get the group admin buttons. The owner here is also the e2e admin.
+  await member.goto(groupUrl);
+  await expect(member.getByRole("heading", { name })).toBeVisible();
+  await expect(member.getByRole("button", { name: "Set owner" })).toHaveCount(0);
+  await owner.goto(groupUrl);
+  await expect(owner.locator("[data-group-admin]").getByRole("button", { name: "Set owner" })).toBeVisible();
+
+  // The owner deletes the group, then restores it from Group tools on /admin.
+  const slug = new URL(groupUrl).pathname.split("/").pop()!;
+  await owner.goto(`${groupUrl}/settings`);
+  owner.once("dialog", (d) => void d.accept());
+  await owner.getByRole("button", { name: "Delete group" }).click();
+  await expect(owner).toHaveURL(/\/groups$/, { timeout: 20_000 });
+  await owner.goto("/admin");
+  await owner.getByLabel("Group slug:").fill(slug);
+  await owner.getByRole("button", { name: "Look up" }).click();
+  const tools = owner.locator("[data-group-tools]");
+  await expect(tools.locator("[data-group-state]")).toHaveText("deleted");
+  await expect(tools).toContainText("e2eadmin");
+  await tools.getByRole("button", { name: "Restore group" }).click();
+  await expect(tools.locator("[data-group-state]")).toHaveText("live");
+  await guest.goto(groupUrl);
+  await expect(guest.getByRole("heading", { name })).toBeVisible();
 });

@@ -18,7 +18,12 @@ TopEight is an open source rebuild of 2006-era MySpace. It has the classic 800 p
 - Browse and search for people and music.
 - Reports, blocks, an admin queue and bans.
 - Password reset email through Resend.
-- Nav items for things not built yet (Mail, Blog, Groups, Forum, Events and others) link to a coming soon page.
+- Mail between members, with an inbox, sent mail, replies and a setting for who may write to you.
+- Favorites, a private list of profiles you want to come back to.
+- Blogs with a mood and a song for each post, comments, and a feed of your friends' posts.
+- Events with RSVPs, listed by city next to artists' show dates.
+- Groups with a discussion board, members, owner tools and group bans.
+- Invite and Forum are not built yet. Their nav items link to a coming soon page.
 
 ## How the artist sandbox works
 
@@ -27,7 +32,7 @@ Artists can run their own JavaScript on their profile. That is the feature that 
 - **Two origins.** The trusted site, with sign-in, editing and the friend buttons, is served from the main origin. Profile documents are served from a second origin on a different registrable domain, so browsers never share cookies between them.
 - **Sandboxed iframe.** The main site shows each profile in an iframe with `sandbox="allow-scripts allow-popups"`. It never has `allow-same-origin`, so profile code cannot read the parent page, cookies or storage.
 - **Content Security Policy.** The usercontent origin sends a strict CSP. `connect-src` allows only the usercontent origin and `form-action` is `'none'`, so profile code cannot call the main site's APIs or post a form to it. The CSP also carries `sandbox allow-scripts allow-popups`, so a profile document opened directly in its own tab still runs in an opaque origin and cannot set or read cookies or storage on the usercontent origin.
-- **The trusted strip.** The bar above every profile is drawn by the main site, outside the iframe. It holds the Add Friend, Comment and Report actions, so artist code cannot hide, fake or restyle it. When profile code asks for an action, it goes through a message to the parent, which asks the viewer to confirm.
+- **The trusted strip.** The bar above every profile is drawn by the main site, outside the iframe. It holds the Add Friend, Comment and Report actions, so artist code cannot hide, fake or restyle it. Profile code can ask for an action by posting a message to the parent. An action that changes something, such as adding a friend, opens a confirm dialog drawn by the parent, and nothing happens until the viewer confirms. "Send Message" changes nothing, so it opens no dialog. It only takes the viewer to the compose page for that profile, where they still write and send the message themselves.
 
 The full design is in [docs/superpowers/specs/2026-10-19-topeight-design.md](docs/superpowers/specs/2026-10-19-topeight-design.md).
 

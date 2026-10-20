@@ -327,6 +327,9 @@ describe("blog comments", () => {
     });
     expect((await t.query(api.blog.get, { id: busy }))?.commentCount).toBe(101);
     expect((await t.query(api.blog.get, { id }))?.commentCount).toBe(1);
+    // The blog list counts the same way.
+    const list = await t.query(api.blog.listByUser, { username: "author", cursor: null });
+    expect(Object.fromEntries(list.page.map((p) => [p.id, p.commentCount]))).toEqual({ [id]: 1, [busy]: 101 });
   });
 
   test("a blocked pair cannot comment, either direction", async () => {
@@ -446,6 +449,26 @@ describe("moderation", () => {
     const rows = await t.run(async (ctx) => [await ctx.db.get(id), await ctx.db.get(comment.id)]);
     expect(rows.map((row) => row?.hidden)).toEqual([true, true]);
     expect(await t.query(api.blog.get, { id })).toBeNull();
+  });
+
+  test("a blog comment report keeps a copy, so deleting the comment can't scrub it", async () => {
+    const { t, author, reader, boss } = await withAdmin();
+    const id = await post(t, author);
+    const r = await as(t, reader);
+    await r.mutation(api.blog.addComment, { postId: id, body: "rude words" });
+    const [comment] = (await t.query(api.blog.comments, { postId: id, cursor: null })).page;
+    await (await as(t, author)).mutation(api.moderation.report, {
+      targetType: "blogComment",
+      targetId: comment.id,
+      reason: "rude",
+    });
+    const [report] = await t.run((ctx) => ctx.db.query("reports").take(1));
+    expect(report.snapshot).toEqual({ body: "rude words", authorId: reader });
+    await r.mutation(api.blog.removeComment, { id: comment.id });
+    const [open] = await (await as(t, boss)).query(api.moderation.listOpen, {});
+    expect(open.preview).toEqual(
+      expect.objectContaining({ kind: "blogComment", body: "rude words", authorId: reader }),
+    );
   });
 });
 

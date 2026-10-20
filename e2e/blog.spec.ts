@@ -13,14 +13,15 @@ async function logIn(page: Page, email: string, password: string | undefined) {
   await expect(page.getByRole("link", { name: "Log Out" })).toBeVisible({ timeout: 20_000 });
 }
 
-/** e2eadmin and e2ecommenter are friends. The mail fixture does that and clears their mail. */
+/** e2eadmin and e2ecommenter are friends. The mail fixture does that, clears their mail and resets e2eadmin's blog limits. */
 function befriend() {
   const envFile = process.env.E2E_CONVEX_ENV_FILE ? ["--env-file", process.env.E2E_CONVEX_ENV_FILE] : [];
   execFileSync("npx", ["convex", "run", ...envFile, "testing:seedMailFixture"], { stdio: "inherit" });
 }
 
+test.beforeAll(() => befriend());
+
 test("an author writes a post, a friend finds and comments on it, the author deletes the comment", async ({ browser }) => {
-  befriend();
   const title = `e2e post ${Date.now()}`;
   const text = "first line\nsecond line";
   const comment = `nice post ${Date.now()}`;

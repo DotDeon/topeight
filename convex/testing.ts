@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { rateLimiter } from "./lib/limits";
+import { countField } from "./lib/rsvps";
 import { friendshipPair } from "./lib/friendships";
 import { syncMediaFlags } from "./lib/media";
 import { hashPassword } from "./lib/password";
@@ -429,9 +430,10 @@ export const seedEditorBlock = internalMutation({
 });
 
 /**
- * Fixture for e2e/mail.spec.ts: makes e2ecommenter and e2eadmin friends and
- * clears any mail between them, so the spec starts from an empty mailbox.
- * Safe to call again. Run the login fixtures first.
+ * Fixture for e2e/mail.spec.ts and e2e/blog.spec.ts: makes e2ecommenter and
+ * e2eadmin friends, clears any mail between them, so the spec starts from an
+ * empty mailbox, and resets e2eadmin's blogCreate and blogEdit limits so reruns
+ * stay under 10 posts a day. Safe to call again. Run the login fixtures first.
  */
 export const seedMailFixture = internalMutation({
   args: {},
@@ -465,14 +467,19 @@ export const seedMailFixture = internalMutation({
         .take(100);
       for (const m of rows) await ctx.db.delete(m._id);
     }
+    for (const name of ["blogCreate", "blogEdit"] as const) {
+      await rateLimiter.reset(ctx, name, { key: b._id });
+    }
     return null;
   },
 });
 
 /**
  * Fixture for e2e/events.spec.ts: deletes every event hosted by the e2e
- * accounts, with its RSVPs, and resets their event and RSVP rate limits so
- * repeated runs do not hit the 5 events a day cap.
+ * accounts, with its RSVPs, and their RSVPs on other hosts' events, taking
+ * each one off that event's count. Resets their event and RSVP rate limits so
+ * repeated runs do not hit the 5 events a day cap. Only touches profiles whose
+ * user has the fixture @fixture.invalid address.
  */
 export const resetEventsFixture = internalMutation({
   args: {},
@@ -481,16 +488,22 @@ export const resetEventsFixture = internalMutation({
     if (process.env.TOPEIGHT_TEST_FIXTURES !== "1") {
       throw new ConvexError("Set TOPEIGHT_TEST_FIXTURES=1 on this deployment to seed test fixtures");
     }
-    for (const username of ["e2eadmin", "e2ecommenter"]) {
+    for (const [username, email] of [
+      ["e2eadmin", ADMIN_EMAIL],
+      ["e2ecommenter", COMMENTER_EMAIL],
+    ] as const) {
       const profile = await ctx.db
         .query("profiles")
         .withIndex("by_username", (q) => q.eq("username", username))
         .unique();
       if (profile === null) continue;
+      const user = await ctx.db.get(profile.userId);
+      if (user?.email !== email) throw new ConvexError(`"${username}" is not a fixture; refusing to touch it`);
       const events = await ctx.db
         .query("events")
         .withIndex("by_host", (q) => q.eq("hostId", profile._id))
         .take(100);
+      // The events go too, so their counts don't matter.
       for (const e of events) {
         const rsvps = await ctx.db
           .query("rsvps")
@@ -503,8 +516,16 @@ export const resetEventsFixture = internalMutation({
         .query("rsvps")
         .withIndex("by_profile", (q) => q.eq("profileId", profile._id))
         .take(100);
-      for (const r of own) await ctx.db.delete(r._id);
-      for (const name of ["event", "eventEdit", "rsvp"] as const) {
+      for (const r of own) {
+        await ctx.db.delete(r._id);
+        // A banned member's answers are already out of the counts.
+        const event = profile.banned ? null : await ctx.db.get(r.eventId);
+        if (event !== null) {
+          const field = countField(r.status);
+          await ctx.db.patch(event._id, { [field]: Math.max(0, event[field] - 1) });
+        }
+      }
+      for (const name of ["eventCreate", "eventEdit", "rsvp"] as const) {
         await rateLimiter.reset(ctx, name, { key: profile._id });
       }
     }
@@ -563,7 +584,7 @@ export const resetGroupsFixture = internalMutation({
         .withIndex("by_profile", (q) => q.eq("profileId", profile._id))
         .take(200);
       for (const m of own) await ctx.db.delete(m._id);
-      for (const name of ["groupCreate", "groupEdit", "groupTopic", "groupReply"] as const) {
+      for (const name of ["groupCreate", "groupEdit", "groupTopic", "groupReply", "groupJoin"] as const) {
         await rateLimiter.reset(ctx, name, { key: profile._id });
       }
     }

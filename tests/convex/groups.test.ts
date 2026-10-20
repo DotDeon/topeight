@@ -218,6 +218,63 @@ describe("groups.update and remove", () => {
   });
 });
 
+describe("groups.join and leave limit", () => {
+  test("sixty joins and leaves a minute together; no-op calls cost no quota", async () => {
+    const { t, member, groupId } = await withGroup();
+    const m = await as(t, member);
+    // Joining a group you're in and leaving one you're not in are free.
+    for (let i = 0; i < 70; i++) await m.mutation(api.groups.join, { groupId });
+    await m.mutation(api.groups.leave, { groupId });
+    for (let i = 0; i < 70; i++) await m.mutation(api.groups.leave, { groupId });
+    // The setup join and that leave used 2. 58 more toggles reach 60.
+    for (let i = 0; i < 29; i++) {
+      await m.mutation(api.groups.join, { groupId });
+      await m.mutation(api.groups.leave, { groupId });
+    }
+    await expect(m.mutation(api.groups.join, { groupId })).rejects.toThrow("Slow down");
+    expect(await memberCount(t, groupId)).toBe(1);
+    vi.setSystemTime(new Date(Date.now() + 61 * 1000));
+    await m.mutation(api.groups.join, { groupId });
+    expect(await memberCount(t, groupId)).toBe(2);
+  });
+});
+
+describe("moderation.groupForAdmin", () => {
+  test("only admins may call it", async () => {
+    const { t, owner, member, slug } = await withGroup();
+    await expect(t.query(api.moderation.groupForAdmin, { slug })).rejects.toThrow("Not allowed");
+    await expect((await as(t, owner)).query(api.moderation.groupForAdmin, { slug })).rejects.toThrow("Not allowed");
+    await expect((await as(t, member)).query(api.moderation.groupForAdmin, { slug })).rejects.toThrow("Not allowed");
+  });
+
+  test("admins see deleted and hidden groups with their owner; unknown slugs are null", async () => {
+    const { t, owner, boss, groupId, slug } = await withGroup();
+    await (await as(t, owner)).mutation(api.groups.remove, { groupId });
+    await t.run((ctx) => ctx.db.patch(groupId, { hidden: true }));
+    const b = await as(t, boss);
+    await b.mutation(api.moderation.ban, { profileId: owner });
+    expect(await b.query(api.moderation.groupForAdmin, { slug: ` ${slug.toUpperCase()} ` })).toEqual({
+      id: groupId,
+      slug,
+      name: "Rock Fans",
+      deleted: true,
+      hidden: true,
+      owner: { username: "owner", displayName: "OWNER", banned: true },
+    });
+    expect(await b.query(api.moderation.groupForAdmin, { slug: "nope" })).toBeNull();
+    expect(await b.query(api.moderation.groupForAdmin, { slug: "" })).toBeNull();
+    expect(await b.query(api.moderation.groupForAdmin, { slug: "x".repeat(61) })).toBeNull();
+
+    await b.mutation(api.moderation.setGroupOwner, { groupId, username: "member" });
+    await b.mutation(api.moderation.restoreGroup, { groupId });
+    expect(await b.query(api.moderation.groupForAdmin, { slug })).toMatchObject({
+      deleted: false,
+      hidden: false,
+      owner: { username: "member", banned: false },
+    });
+  });
+});
+
 describe("groups.update limit", () => {
   test("thirty edits an hour; refused edits cost no quota", async () => {
     const { t, owner, groupId } = await withGroup();
@@ -577,7 +634,8 @@ describe("board", () => {
     expect(await t.query(api.groups.topic, { topicId: mine.topicId })).toBeNull();
 
     await b.mutation(api.moderation.ban, { profileId: owner });
-    expect(await t.query(api.groups.get, { slug })).toMatchObject({ slug });
+    // The group stays up, but a banned owner's card is not shown.
+    expect(await t.query(api.groups.get, { slug })).toMatchObject({ slug, owner: null });
     expect((await t.query(api.groups.list, { cursor: null })).page.map((g) => g.slug)).toEqual([slug]);
     expect((await t.query(api.groups.list, { q: "rock", cursor: null })).page.map((g) => g.slug)).toEqual([slug]);
   });

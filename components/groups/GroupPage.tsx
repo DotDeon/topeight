@@ -12,6 +12,7 @@ import { PhotoGrid } from "../PhotoGrid";
 import { PostBody } from "../PostBody";
 import { ReportLink } from "../ReportLink";
 import { Cursored, formatWhen } from "./Cursored";
+import { GroupAdminActions } from "./GroupAdminActions";
 import { GroupThumb } from "./GroupThumb";
 import { CATEGORY_LABEL } from "./GroupsHome";
 import styles from "./Groups.module.css";
@@ -108,11 +109,12 @@ function Members({ slug }: { slug: string }) {
   );
 }
 
-/** /groups/[slug]: the group header, Join Group, the topic board and the members. */
+/** /groups/[slug]: the group header, Join Group, the topic board and the members. Admins also get Restore and Set owner. */
 export function GroupPage({ slug }: { slug: string }) {
   const { isAuthenticated } = useConvexAuth();
   const router = useRouter();
   const group = useQuery(api.groups.get, { slug });
+  const admin = useQuery(api.moderation.canModerate, {}) ?? false;
   const join = useMutation(api.groups.join);
   const leave = useMutation(api.groups.leave);
   const [error, setError] = useState("");
@@ -159,7 +161,13 @@ export function GroupPage({ slug }: { slug: string }) {
               {CATEGORY_LABEL[g.category]} group, <span data-member-count="">{g.memberCount}</span>{" "}
               {g.memberCount === 1 ? "member" : "members"}
               <br />
-              Owner: <Link href={`/${g.owner.username}`}>{g.owner.displayName}</Link>
+              {g.owner ? (
+                <>
+                  Owner: <Link href={`/${g.owner.username}`}>{g.owner.displayName}</Link>
+                </>
+              ) : (
+                <span data-owner-unavailable="">Owner unavailable</span>
+              )}
             </p>
             <p>
               {!isAuthenticated ? (
@@ -184,6 +192,7 @@ export function GroupPage({ slug }: { slug: string }) {
                 {error}
               </p>
             )}
+            {admin && <GroupAdminActions groupId={g.id} deleted={g.deleted} hidden={g.hidden} />}
           </div>
         </div>
         {g.description && (

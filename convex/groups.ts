@@ -61,7 +61,8 @@ const summaryFields = {
 const summaryView = v.object(summaryFields);
 const groupView = v.object({
   ...summaryFields,
-  owner: cardValidator,
+  /** Null when the owner is banned site-wide. */
+  owner: v.union(cardValidator, v.null()),
   isMember: v.boolean(),
   isOwner: v.boolean(),
   isBanned: v.boolean(),
@@ -118,7 +119,7 @@ export type GroupSummary = {
   deleted: boolean;
   hidden: boolean;
 };
-export type GroupView = GroupSummary & { owner: PublicCard; isMember: boolean; isOwner: boolean; isBanned: boolean };
+export type GroupView = GroupSummary & { owner: PublicCard | null; isMember: boolean; isOwner: boolean; isBanned: boolean };
 export type GroupTopicItem = {
   id: Id<"groupTopics">;
   title: string;
@@ -365,7 +366,7 @@ export const remove = mutation({
   },
 });
 
-/** Joins a live group. Members banned from it can't rejoin. Joining twice does nothing. */
+/** Joins a live group. Members banned from it can't rejoin. Joining twice does nothing. Joins and leaves share 60 a minute. */
 export const join = mutation({
   args: { groupId: v.id("groups") },
   returns: v.null(),
@@ -376,6 +377,8 @@ export const join = mutation({
     const row = await membership(ctx, groupId, me._id);
     if (row?.banned) throw new ConvexError("You're banned from this group");
     if (row !== null) return null;
+    const { ok } = await rateLimiter.limit(ctx, "groupJoin", { key: me._id });
+    if (!ok) throw new ConvexError("Slow down");
     await ctx.db.insert("groupMembers", { groupId, profileId: me._id, banned: false });
     await bumpMembers(ctx, group, 1);
     return null;
@@ -393,6 +396,8 @@ export const leave = mutation({
     if (group.ownerId === me._id) throw new ConvexError("Hand over the group first");
     const row = await membership(ctx, groupId, me._id);
     if (row === null || row.banned) return null;
+    const { ok } = await rateLimiter.limit(ctx, "groupJoin", { key: me._id });
+    if (!ok) throw new ConvexError("Slow down");
     await ctx.db.delete(row._id);
     await bumpMembers(ctx, group, -1);
     return null;
@@ -541,7 +546,7 @@ export const reply = mutation({
 
 /**
  * One group by slug, or null when it is missing, or deleted or hidden and the
- * viewer isn't an admin. A site-banned owner's group stays up.
+ * viewer isn't an admin. A site-banned owner's group stays up with owner null.
  */
 export const get = query({
   args: { slug: v.string() },
@@ -555,7 +560,7 @@ export const get = query({
     const row = viewer === null ? null : await membership(ctx, group._id, viewer._id);
     return {
       ...toSummary(group),
-      owner: toPublicCard(owner),
+      owner: owner.banned ? null : toPublicCard(owner),
       isMember: row !== null && !row.banned,
       isOwner: viewer !== null && viewer._id === group.ownerId,
       isBanned: row?.banned ?? false,

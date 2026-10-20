@@ -148,15 +148,11 @@ function postColumns({ body, ...rest }: PostFields) {
 }
 
 /**
- * Visible comments on a post. Reads at most MAX_COMMENT_COUNT + 1 rows and
- * returns MAX_COMMENT_COUNT + 1 whenever more than MAX_COMMENT_COUNT exist.
- * With `authors`, banned commenters are left out too, using it as a cache.
+ * Visible comments on a post: not hidden, commenter not banned. Reads at most
+ * MAX_COMMENT_COUNT + 1 rows and returns MAX_COMMENT_COUNT + 1 whenever more
+ * than MAX_COMMENT_COUNT exist. `authors` caches who is unbanned across posts.
  */
-async function commentCount(
-  ctx: Ctx,
-  postId: Id<"blogPosts">,
-  authors?: Map<Id<"profiles">, boolean>,
-): Promise<number> {
+async function commentCount(ctx: Ctx, postId: Id<"blogPosts">, authors: Map<Id<"profiles">, boolean>): Promise<number> {
   const rows = await ctx.db
     .query("blogComments")
     .withIndex("by_post", (q) => q.eq("postId", postId))
@@ -165,14 +161,11 @@ async function commentCount(
   let n = 0;
   for (const c of rows) {
     if (c.hidden) continue;
-    if (authors) {
-      if (!authors.has(c.authorId)) {
-        const a = await ctx.db.get(c.authorId);
-        authors.set(c.authorId, a !== null && !a.banned);
-      }
-      if (!authors.get(c.authorId)) continue;
+    if (!authors.has(c.authorId)) {
+      const a = await ctx.db.get(c.authorId);
+      authors.set(c.authorId, a !== null && !a.banned);
     }
-    n++;
+    if (authors.get(c.authorId)) n++;
   }
   return n;
 }
@@ -182,7 +175,7 @@ async function toSummary(
   post: Doc<"blogPosts">,
   author: Doc<"profiles">,
   viewer: Doc<"profiles"> | null,
-  authors?: Map<Id<"profiles">, boolean>,
+  authors: Map<Id<"profiles">, boolean>,
 ): Promise<BlogPostSummary> {
   return {
     id: post._id,
@@ -238,7 +231,7 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const me = await requireProfile(ctx);
     const fields = checkPost(me, args);
-    const { ok } = await rateLimiter.limit(ctx, "blogPost", { key: me._id });
+    const { ok } = await rateLimiter.limit(ctx, "blogCreate", { key: me._id });
     if (!ok) throw new ConvexError("Slow down");
     const postId = await ctx.db.insert("blogPosts", { authorId: me._id, ...postColumns(fields), hidden: false });
     await ctx.db.insert("blogBodies", { postId, body: fields.body });
@@ -291,7 +284,10 @@ export const cleanupComments = internalMutation({
   },
 });
 
-/** One page (10) of a member's posts, newest first, without bodies. Hidden posts are dropped after paging. */
+/**
+ * One page (10) of a member's posts, newest first, without bodies. Hidden posts are dropped after paging.
+ * Comment counts leave out banned commenters, as get does.
+ */
 export const listByUser = query({
   args: { username: v.string(), cursor: v.union(v.string(), v.null()) },
   returns: pageOf(summaryView),
@@ -311,8 +307,9 @@ export const listByUser = query({
       .order("desc")
       .paginate({ numItems: POSTS_PER_PAGE, cursor });
     const page: BlogPostSummary[] = [];
+    const authors = new Map<Id<"profiles">, boolean>();
     for (const post of result.page) {
-      if (!post.hidden) page.push(await toSummary(ctx, post, author, viewer));
+      if (!post.hidden) page.push(await toSummary(ctx, post, author, viewer, authors));
     }
     return { page, isDone: result.isDone, continueCursor: result.continueCursor };
   },

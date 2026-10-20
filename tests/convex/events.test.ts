@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { api } from "../../convex/_generated/api";
+import { api, internal } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { DAY, NOW, addProfile, as, block, setup, type T } from "./helpers";
 
@@ -711,5 +711,44 @@ describe("moderation", () => {
     expect((await t.run((ctx) => ctx.db.get(id)))?.hidden).toBe(true);
     expect(await t.query(api.events.get, { id })).toBeNull();
     expect(await b.query(api.moderation.listOpen, {})).toEqual([]);
+  });
+});
+
+describe("resetEventsFixture", () => {
+  async function fixture(t: T, username: string, email: string) {
+    const profile = await addProfile(t, username);
+    await t.run(async (ctx) => {
+      await ctx.db.patch((await ctx.db.get(profile))!.userId, { email });
+    });
+    return profile;
+  }
+
+  test("refuses an e2eadmin or e2ecommenter that isn't the fixture user", async () => {
+    vi.stubEnv("TOPEIGHT_TEST_FIXTURES", "1");
+    const { t, host } = await world();
+    const real = await addProfile(t, "e2eadmin");
+    const eventId = await insertEvent(t, real, Date.now() + DAY);
+    await expect(t.mutation(internal.testing.resetEventsFixture, {})).rejects.toThrow(/not a fixture/);
+    expect(await t.run((ctx) => ctx.db.get(eventId))).not.toBeNull();
+    void host;
+  });
+
+  test("deletes fixture events and RSVPs and keeps other hosts' counts right", async () => {
+    vi.stubEnv("TOPEIGHT_TEST_FIXTURES", "1");
+    const { t, host, guest } = await world();
+    const admin = await fixture(t, "e2eadmin", "e2e-admin@fixture.invalid");
+    const commenter = await fixture(t, "e2ecommenter", "e2e-commenter@fixture.invalid");
+    const theirs = await create(t, host);
+    const mine = await insertEvent(t, admin, Date.now() + DAY);
+    await (await as(t, admin)).mutation(api.events.rsvp, { eventId: theirs, status: "going" });
+    await (await as(t, commenter)).mutation(api.events.rsvp, { eventId: theirs, status: "maybe" });
+    await (await as(t, guest)).mutation(api.events.rsvp, { eventId: theirs, status: "going" });
+    await (await as(t, guest)).mutation(api.events.rsvp, { eventId: mine, status: "going" });
+
+    await t.mutation(internal.testing.resetEventsFixture, {});
+    expect(await t.run((ctx) => ctx.db.get(mine))).toBeNull();
+    expect(await t.run((ctx) => ctx.db.get(theirs))).toMatchObject({ goingCount: 1, maybeCount: 0 });
+    const left = await t.run((ctx) => ctx.db.query("rsvps").take(10));
+    expect(left.map((r) => [r.eventId, r.profileId])).toEqual([[theirs, guest]]);
   });
 });

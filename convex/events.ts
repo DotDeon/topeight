@@ -230,7 +230,7 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const me = await requireProfile(ctx);
     const fields = checkEvent(me, args);
-    const { ok } = await rateLimiter.limit(ctx, "event", { key: me._id });
+    const { ok } = await rateLimiter.limit(ctx, "eventCreate", { key: me._id });
     if (!ok) throw new ConvexError("Slow down");
     return await ctx.db.insert("events", {
       hostId: me._id,
@@ -299,20 +299,12 @@ export const rsvp = mutation({
     const { ok } = await rateLimiter.limit(ctx, "rsvp", { key: me._id });
     if (!ok) throw new ConvexError("Slow down");
 
-    const counts = {
-      goingCount: event.goingCount,
-      maybeCount: event.maybeCount,
-    };
+    const counts = { goingCount: event.goingCount, maybeCount: event.maybeCount };
     if (old !== null) counts[countField(old)] = Math.max(0, counts[countField(old)] - 1);
     if (status !== null) counts[countField(status)] += 1;
     await ctx.db.patch(eventId, counts);
 
-    if (row === null)
-      await ctx.db.insert("rsvps", {
-        eventId,
-        profileId: me._id,
-        status: status!,
-      });
+    if (row === null) await ctx.db.insert("rsvps", { eventId, profileId: me._id, status: status! });
     else if (status === null) await ctx.db.delete(row._id);
     else await ctx.db.patch(row._id, { status });
     return null;
@@ -435,10 +427,11 @@ export const upcoming = query({
     const skip = cursor && Number.isFinite(cursor.skip) ? Math.max(0, Math.floor(cursor.skip)) : 0;
 
     const eventFrom = Math.max(now, from);
-    const eventRows = await (
-      cityKey
-        ? ctx.db.query("events").withIndex("by_city_start", (q) => q.eq("cityKey", cityKey).gte("startsAt", eventFrom))
-        : ctx.db.query("events").withIndex("by_start", (q) => q.gte("startsAt", eventFrom))
+    const eventRows = await (cityKey
+      ? ctx.db
+          .query("events")
+          .withIndex("by_city_start", (q) => q.eq("cityKey", cityKey).gte("startsAt", eventFrom))
+      : ctx.db.query("events").withIndex("by_start", (q) => q.gte("startsAt", eventFrom))
     ).take(SOURCE_READ);
 
     const fromDate = cursor ? new Date(from).toISOString().slice(0, 10) : today;
@@ -513,10 +506,7 @@ export const upcoming = query({
     if (ready.length <= PAGE_SIZE) {
       if (limit === Infinity) return { items, nextCursor: null };
       // Everything before the cut is shown. An inclusive page moves past its instant.
-      return {
-        items,
-        nextCursor: { startsAt: inclusive ? limit + 1 : limit, skip: 0 },
-      };
+      return { items, nextCursor: { startsAt: inclusive ? limit + 1 : limit, skip: 0 } };
     }
     const last = items[items.length - 1].startsAt;
     let atLast = items.filter((i) => i.startsAt === last).length;
@@ -559,10 +549,7 @@ export const myEvents = query({
       if (out.has(r.eventId)) continue;
       const found = await visibleEvent(ctx, r.eventId);
       if (found === null || found.event.startsAt < now) continue;
-      out.set(r.eventId, {
-        ...toEventItem(found.event, found.host),
-        role: r.status,
-      });
+      out.set(r.eventId, { ...toEventItem(found.event, found.host), role: r.status });
     }
     return [...out.values()].sort((a, b) => a.startsAt - b.startsAt);
   },

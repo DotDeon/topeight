@@ -2,7 +2,7 @@
 
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import { errorText } from "@/lib/errorText";
 import { formatEventTime } from "@/lib/eventTime";
@@ -12,10 +12,25 @@ import { PostBody } from "../PostBody";
 import { ReportLink } from "../ReportLink";
 import styles from "./Events.module.css";
 
-/** One event: details, the going grid, RSVP buttons, and the host's edit and cancel. */
+/** The current time, refreshed every 30 seconds. */
+function useNow(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
+}
+
+/**
+ * One event: details, the going grid, RSVP buttons, and the host's edit and cancel.
+ * Once the event starts the RSVP buttons and Edit go away. Clearing an answer and
+ * Cancel event stay, because the server still allows both.
+ */
 export function EventPage({ id }: { id: string }) {
   const { isAuthenticated } = useConvexAuth();
   const event = useQuery(api.events.get, { id });
+  const now = useNow();
   const rsvp = useMutation(api.events.rsvp);
   const cancel = useMutation(api.events.cancel);
   const [error, setError] = useState("");
@@ -37,6 +52,8 @@ export function EventPage({ id }: { id: string }) {
       </Box>
     );
   }
+
+  const started = event.startsAt <= now;
 
   async function answer(status: "going" | "maybe" | null) {
     setError("");
@@ -85,7 +102,7 @@ export function EventPage({ id }: { id: string }) {
           <p>
             <Link href="/login">Log in to RSVP</Link>
           </p>
-        ) : event.cancelled ? (
+        ) : event.cancelled || started ? (
           event.myStatus !== null && (
             <p>
               You answered {event.myStatus === "going" ? "going" : "maybe"}.{" "}
@@ -125,15 +142,18 @@ export function EventPage({ id }: { id: string }) {
       <PhotoGrid cards={event.attendees} empty="Nobody is going yet" />
 
       <p>
-        {event.canEdit && !event.cancelled && (
+        {event.canEdit && !started && (
           <>
             <Link href={`/events/${event.id}/edit`}>Edit</Link>{" "}
+          </>
+        )}
+        {event.canEdit && !event.cancelled && (
+          <>
             <button type="button" onClick={() => void onCancel()}>
               Cancel event
             </button>{" "}
           </>
         )}
-        {event.canEdit && event.cancelled && <Link href={`/events/${event.id}/edit`}>Edit</Link>}{" "}
         <ReportLink targetType="event" targetId={event.id} />
       </p>
       <p>

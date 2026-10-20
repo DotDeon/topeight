@@ -22,8 +22,6 @@ export async function adjustRsvpCounts(ctx: MutationCtx, profileId: Id<"profiles
     const event = await ctx.db.get(r.eventId);
     if (event === null) continue;
     const field = countField(r.status);
-    await ctx.db.patch(event._id, {
-      [field]: Math.max(0, event[field] + delta),
-    });
+    await ctx.db.patch(event._id, { [field]: Math.max(0, event[field] + delta) });
   }
 }

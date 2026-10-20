@@ -9,6 +9,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import type { ReportPreview } from "@/convex/moderation";
 import { errorText } from "@/lib/errorText";
 import { Box } from "./Box";
+import { GroupAdminActions } from "./groups/GroupAdminActions";
 import styles from "./Posts.module.css";
 
 /**
@@ -142,9 +143,6 @@ function ReportRow({ r }: { r: Row }) {
   const dismiss = useMutation(api.moderation.dismiss);
   const ban = useMutation(api.moderation.ban);
   const deleteTrack = useMutation(api.moderation.deleteTrack);
-  const restoreGroup = useMutation(api.moderation.restoreGroup);
-  const setGroupOwner = useMutation(api.moderation.setGroupOwner);
-  const [newOwner, setNewOwner] = useState("");
   const [error, setError] = useState("");
   const run = (p: Promise<null>) => {
     setError("");
@@ -233,34 +231,7 @@ function ReportRow({ r }: { r: Row }) {
           </span>
         )}
       </p>
-      {p.kind === "group" && (
-        <p>
-          {(p.deleted || p.hidden) && (
-            <>
-              <button type="button" onClick={() => run(restoreGroup({ groupId: p.groupId }))}>
-                Restore group
-              </button>{" "}
-            </>
-          )}
-          <label htmlFor={`owner-${r.id}`}>New owner (username):</label>{" "}
-          <input
-            id={`owner-${r.id}`}
-            value={newOwner}
-            maxLength={20}
-            onChange={(e) => setNewOwner(e.target.value)}
-          />{" "}
-          <button
-            type="button"
-            disabled={newOwner.trim() === ""}
-            onClick={() => {
-              run(setGroupOwner({ groupId: p.groupId, username: newOwner.trim() }));
-              setNewOwner("");
-            }}
-          >
-            Set owner
-          </button>
-        </p>
-      )}
+      {p.kind === "group" && <GroupAdminActions groupId={p.groupId} deleted={p.deleted} hidden={p.hidden} />}
     </div>
   );
 }
@@ -302,6 +273,54 @@ function Unban() {
   );
 }
 
+/** Look up any group by slug, deleted and hidden ones included, to restore it or hand it over. */
+function GroupTools() {
+  const [draft, setDraft] = useState("");
+  const [slug, setSlug] = useState("");
+  const group = useQuery(api.moderation.groupForAdmin, slug === "" ? "skip" : { slug });
+  return (
+    <>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          setSlug(draft.trim().toLowerCase());
+        }}
+      >
+        <label htmlFor="group-tools-slug">Group slug:</label>{" "}
+        <input id="group-tools-slug" value={draft} maxLength={60} onChange={(e) => setDraft(e.target.value)} />{" "}
+        <button type="submit" disabled={draft.trim() === ""}>
+          Look up
+        </button>
+      </form>
+      {slug !== "" &&
+        (group === undefined ? (
+          <p className={styles.muted}>Loading...</p>
+        ) : group === null ? (
+          <p className={styles.muted}>No group has that slug.</p>
+        ) : (
+          <div data-group-tools="">
+            <p>
+              <Link href={`/groups/${group.slug}`}>{group.name}</Link>:{" "}
+              <span data-group-state="">
+                {[group.deleted && "deleted", group.hidden && "hidden"].filter(Boolean).join(", ") || "live"}
+              </span>
+              . Owner:{" "}
+              {group.owner ? (
+                <>
+                  <Link href={`/${group.owner.username}`}>{group.owner.displayName}</Link> ({group.owner.username})
+                  {group.owner.banned && " [banned]"}
+                </>
+              ) : (
+                "gone"
+              )}
+            </p>
+            <GroupAdminActions key={group.id} groupId={group.id} deleted={group.deleted} hidden={group.hidden} />
+          </div>
+        ))}
+    </>
+  );
+}
+
 function Queue() {
   const rows = useQuery(api.moderation.listOpen, {});
   if (rows === undefined) return <p className={styles.muted}>Loading...</p>;
@@ -327,6 +346,9 @@ export function AdminQueue() {
       </Box>
       <Box title="Unban">
         <Unban />
+      </Box>
+      <Box title="Group tools">
+        <GroupTools />
       </Box>
     </>
   );
