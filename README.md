@@ -42,13 +42,13 @@ You need Node 20 or newer. Run these from the repo root.
 5. Set the same values on the Convex deployment and add the Convex Auth keys, for example `npx convex env set HOUSE_USERNAME openspace`. [docs/deploy.md](docs/deploy.md) lists every variable and where it goes.
 6. Start everything with `npm run dev`. This runs Next.js and `npx convex dev` together. Open `http://localhost:3000`.
 
-Without `AUTH_RESEND_KEY`, sign-up and reset codes are printed to the Convex logs. Without the R2 variables, photo and track uploads do not work.
+Without `AUTH_RESEND_KEY`, sign-up and reset codes are printed to the Convex logs. Without the R2 variables, photo and track uploads do not work and tracks do not play.
 
 ### Seed demo content
 
 The seed creates 8 fans, 5 artists, tracks, shows, comments and bulletins. The seed accounts have no email, so nobody can sign in as them.
 
-1. `node scripts/seed-media.mjs` generates three silent MP3s and small avatars, and uploads them to R2 when the `R2_*` variables are set. Add `--dry-run` to skip the upload.
+1. `node scripts/seed-media.mjs` generates three silent MP3s and small avatars, and uploads them to R2 when the `R2_*` variables are set. The MP3s go to `R2_AUDIO_BUCKET`, the avatars to `R2_BUCKET`. Add `--dry-run` to skip the upload.
 2. `npx convex env set OPENSPACE_ALLOW_SEED 1`
 3. `npx convex run seed:run`
 4. `npx convex env remove OPENSPACE_ALLOW_SEED`
@@ -82,8 +82,9 @@ Running the seed again is safe.
 | `R2_ACCESS_KEY_ID` | Convex, seed script | R2 S3 access key id |
 | `R2_SECRET_ACCESS_KEY` | Convex, seed script | R2 S3 secret access key |
 | `R2_ENDPOINT` | Convex, seed script | R2 S3 endpoint |
-| `R2_BUCKET` | Convex, seed script | R2 bucket name |
-| `NEXT_PUBLIC_R2_PUBLIC_URL` | Convex | Public base URL of the bucket |
+| `R2_BUCKET` | Convex, seed script | Public R2 bucket for photos |
+| `R2_AUDIO_BUCKET` | Convex, seed script | Private R2 bucket for tracks. Keep it private: no public domain and no `r2.dev` URL |
+| `NEXT_PUBLIC_R2_PUBLIC_URL` | Convex | Public base URL of the photo bucket |
 | `OPENSPACE_TEST_FIXTURES` | Convex, dev only | Enables e2e test fixtures. Never set in production |
 | `OPENSPACE_ALLOW_SEED` | Convex, dev only | Allows `seed:run`. Never leave set in production |
 | `PORT` | Local shell | Port for the dev server and e2e tests |

@@ -272,7 +272,7 @@ describe("getPublicProfile", () => {
     expect(p.latestBulletin).toBeNull();
   });
 
-  test("tracks are ordered with public URLs", async () => {
+  test("tracks are ordered, without URLs (the usercontent route signs them)", async () => {
     const t = setup();
     const me = await addProfile(t, "band", { kind: "artist" });
     const [two, one] = await t.run(async (ctx) => [
@@ -282,8 +282,8 @@ describe("getPublicProfile", () => {
     const p = await get(t, "band");
     if (!p || "unavailable" in p) throw new Error("expected a profile");
     expect(p.tracks).toEqual([
-      { id: one, title: "One", url: "https://cdn.example.com/t/1.mp3", autoplay: false },
-      { id: two, title: "Two", url: "https://cdn.example.com/t/2.mp3", autoplay: true },
+      { id: one, title: "One", url: null, autoplay: false },
+      { id: two, title: "Two", url: null, autoplay: true },
     ]);
   });
 

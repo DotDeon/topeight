@@ -9,7 +9,12 @@ export type RenderOptions = {
   mainOrigin: string;
   /** A CSP for a <meta http-equiv> tag, put first in <head>. For srcdoc previews, which get no CSP header. */
   cspMeta?: string;
+  /** The usercontent origin. When set, the player refreshes its signed URLs from `<origin>/<username>?format=tracks`. */
+  usercontentOrigin?: string;
 };
+
+/** How often the player fetches fresh playback URLs. They live 15 minutes. */
+export const PLAYBACK_REFRESH_MS = 12 * 60 * 1000;
 
 const MAX_COMMENTS = 10;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -140,8 +145,8 @@ function detailsRows(rows: Array<[string, string | undefined]>): string {
     .join("");
 }
 
-function renderPlayer(p: PublicProfile, name: string): string {
-  const tracks = p.tracks.filter((t) => safeUrl(t.url));
+function renderPlayer(p: PublicProfile, name: string, opts: RenderOptions): string {
+  const tracks = p.tracks.filter((t): t is typeof t & { url: string } => safeUrl(t.url) !== null);
   if (p.kind !== "artist" || tracks.length === 0) return "";
   const autoplay = tracks.findIndex((t) => t.autoplay);
   const first = autoplay >= 0 ? autoplay : 0;
@@ -149,12 +154,15 @@ function renderPlayer(p: PublicProfile, name: string): string {
     .map(
       (t, i) =>
         // The Report link sits outside the button, so clicking it never toggles playback.
-        `<li><button type="button" class="player-track${i === first ? " current" : ""}" data-index="${i}" data-src="${escapeHtml(t.url)}"><span><span class="mark">&#9654; </span>${escapeHtml(t.title)}</span><span class="dur"></span></button><a href="#" class="player-report" data-openspace-report-track="${escapeHtml(t.id)}">Report</a></li>`,
+        `<li><button type="button" class="player-track${i === first ? " current" : ""}" data-index="${i}" data-track-id="${escapeHtml(t.id)}" data-src="${escapeHtml(t.url)}"><span><span class="mark">&#9654; </span>${escapeHtml(t.title)}</span><span class="dur"></span></button><a href="#" class="player-report" data-openspace-report-track="${escapeHtml(t.id)}">Report</a></li>`,
     )
     .join("");
-  return `<div class="player" id="openspace-player-ui" data-autoplay="${autoplay}">
+  const refresh = opts.usercontentOrigin
+    ? ` data-tracks-url="${escapeHtml(`${opts.usercontentOrigin.replace(/\/+$/, "")}/${encodeURIComponent(p.username)}?format=tracks`)}"`
+    : "";
+  return `<div class="player" id="openspace-player-ui" data-autoplay="${autoplay}"${refresh}>
 <b>${name}</b> &middot; music player
-<audio id="openspace-player" preload="metadata" src="${escapeHtml(tracks[first].url)}"></audio>
+<audio id="openspace-player" preload="metadata" controlsList="nodownload" src="${escapeHtml(tracks[first].url)}"></audio>
 <div class="player-controls"><button type="button" class="player-play">Play</button><button type="button" class="player-mute">Mute</button><span class="player-time">0:00</span></div>
 <div class="player-bar"><i></i></div>
 <ul class="player-tracks">${items}</ul>
@@ -213,7 +221,7 @@ function renderLeft(p: PublicProfile, opts: RenderOptions): string {
 <h1 class="name">${name}</h1>
 <div class="basic">${photo(p.photoUrl, "photo-main")}<div class="basic-info">${facts.join("<br><br>")}</div></div>
 <div class="view-my">View My: <span class="soon" title="Coming soon">Pics</span> | <span class="soon" title="Coming soon">Videos</span></div>
-${renderPlayer(p, name)}
+${renderPlayer(p, name, opts)}
 <div class="contact"><h5>Contacting ${name}</h5><table>
 <tr><td>&#9993; ${actionLink("message", "Send Message")}</td><td>&#10010; ${actionLink("addFriend", "Add to Friends")}</td></tr>
 <tr><td>&#10148; ${actionLink("forward", "Forward to Friend")}</td><td>&#9733; <span class="soon" title="Coming soon">Add to Favorites</span></td></tr>
@@ -363,8 +371,13 @@ export function bridgeScript(mainOrigin: string): string {
 })();`;
 }
 
-/** Player behaviour. Does nothing when the document has no player. */
-const PLAYER_SCRIPT = `document.addEventListener("DOMContentLoaded", function () {
+/**
+ * Player behaviour. Does nothing when the document has no player. Playback URLs
+ * are signed for 15 minutes, so the player fetches fresh ones from
+ * data-tracks-url every 12 minutes and when the audio fails to load (once per
+ * failure, until playback works again). No download control, no context menu.
+ */
+export const playerScript = `document.addEventListener("DOMContentLoaded", function () {
   var ui = document.getElementById("openspace-player-ui");
   var audio = document.getElementById("openspace-player");
   if (!ui || !audio) return;
@@ -376,6 +389,32 @@ const PLAYER_SCRIPT = `document.addEventListener("DOMContentLoaded", function ()
   var items = Array.prototype.slice.call(ui.querySelectorAll(".player-track"));
   var autoplay = Number(ui.getAttribute("data-autoplay"));
   var current = Math.max(0, autoplay);
+  var tracksUrl = ui.getAttribute("data-tracks-url");
+  var pending = null;
+  var retried = false;
+  ui.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+  function refresh() {
+    if (!tracksUrl || typeof fetch !== "function") return Promise.resolve(false);
+    if (pending) return pending;
+    pending = fetch(tracksUrl, { credentials: "omit", cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        pending = null;
+        if (!data || !Array.isArray(data.tracks)) return false;
+        var urls = {};
+        data.tracks.forEach(function (t) {
+          if (t && typeof t.id === "string" && typeof t.url === "string" && /^https?:[/][/]/i.test(t.url)) urls[t.id] = t.url;
+        });
+        items.forEach(function (item) {
+          var u = urls[item.getAttribute("data-track-id")];
+          if (u) item.setAttribute("data-src", u);
+        });
+        return true;
+      })
+      .catch(function () { pending = null; return false; });
+    return pending;
+  }
+  if (tracksUrl) setInterval(refresh, ${PLAYBACK_REFRESH_MS});
   function fmt(s) {
     if (!isFinite(s) || s < 0) return "0:00";
     s = Math.floor(s);
@@ -386,6 +425,7 @@ const PLAYER_SCRIPT = `document.addEventListener("DOMContentLoaded", function ()
     items[current].classList.remove("current");
     current = i;
     items[current].classList.add("current");
+    retried = false;
     audio.src = items[current].getAttribute("data-src");
     if (play) audio.play().catch(function () {});
   }
@@ -411,6 +451,23 @@ const PLAYER_SCRIPT = `document.addEventListener("DOMContentLoaded", function ()
     var d = audio.duration;
     fill.style.width = isFinite(d) && d > 0 ? (audio.currentTime / d) * 100 + "%" : "0";
     time.textContent = fmt(audio.currentTime) + (isFinite(d) ? " / " + fmt(d) : "");
+  });
+  audio.addEventListener("playing", function () { retried = false; });
+  audio.addEventListener("error", function () {
+    if (retried || !tracksUrl) return;
+    retried = true;
+    var at = audio.currentTime;
+    var resume = !audio.paused;
+    refresh().then(function (ok) {
+      var src = items[current].getAttribute("data-src");
+      if (!ok || !src) return;
+      audio.src = src;
+      if (at > 0) {
+        var seek = function () { audio.removeEventListener("loadedmetadata", seek); audio.currentTime = at; };
+        audio.addEventListener("loadedmetadata", seek);
+      }
+      if (resume) audio.play().catch(function () {});
+    });
   });
   audio.addEventListener("ended", function () {
     if (current + 1 < items.length) select(current + 1, true);
@@ -460,7 +517,7 @@ ${opts.cspMeta ? `<meta http-equiv="Content-Security-Policy" content="${escapeHt
 <script>
 window.OPENSPACE = ${scriptJson(publicData)};
 ${bridgeScript(opts.mainOrigin)}
-${PLAYER_SCRIPT}
+${playerScript}
 </script>
 </head>
 <body>

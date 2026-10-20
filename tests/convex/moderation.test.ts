@@ -219,7 +219,7 @@ describe("admin functions", () => {
       headline: "hi there",
       aboutMe: "a".repeat(300),
       banned: false,
-      tracks: [{ id: track, title: "Loud Song", url: `https://cdn.example.com/tracks/${target}/Loud Song` }],
+      tracks: [{ id: track, title: "Loud Song" }],
     });
     expect(list[1].preview).toMatchObject({ kind: "comment", body: "comment body", author: { username: "target" } });
     expect(list[2].preview).toMatchObject({ kind: "bulletin", body: "bulletin body" });
@@ -227,7 +227,6 @@ describe("admin functions", () => {
       kind: "track",
       trackId: track,
       title: "Loud Song",
-      url: `https://cdn.example.com/tracks/${target}/Loud Song`,
       ownerId: target,
       owner: { username: "target", displayName: "TARGET", photoUrl: null, kind: "fan" },
     });

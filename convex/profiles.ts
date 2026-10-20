@@ -9,7 +9,7 @@ import { BULLETIN_WINDOW_MS } from "./lib/bulletins";
 import { toPublicCard, type PublicCard } from "./lib/cards";
 import { friendIds, friendshipPair } from "./lib/friendships";
 import { MAX_SCAN, rateLimiter } from "./lib/limits";
-import { MAX_TRACKS, photoUrl, syncMediaFlags, trackUrl } from "./lib/media";
+import { MAX_TRACKS, photoUrl, syncMediaFlags } from "./lib/media";
 
 const MIN_AGE = 13;
 const MAX_DISPLAY_NAME = 50;
@@ -268,7 +268,7 @@ const PROFILE_COMMENTS = 10;
 const COMMENT_COUNT_CAP = 1001;
 const MAX_SHOWS = 20;
 
-async function profileByUsername(ctx: QueryCtx | MutationCtx, raw: string): Promise<Doc<"profiles"> | null> {
+export async function profileByUsername(ctx: QueryCtx | MutationCtx, raw: string): Promise<Doc<"profiles"> | null> {
   const checked = validateUsername(raw);
   if (!checked.ok) return null;
   return await ctx.db
@@ -344,10 +344,9 @@ export const getPublicProfile = query({
       .query("tracks")
       .withIndex("by_profile_order", (q) => q.eq("profileId", p._id))
       .take(MAX_TRACKS);
-    for (const t of trackRows) {
-      const url = trackUrl(t.key);
-      if (url) tracks.push({ id: t._id, title: t.title, url, autoplay: t.autoplay });
-    }
+    // No URLs here: tracks live in a private bucket, and the usercontent route
+    // signs short-lived playback URLs at render time (media.playbackUrls).
+    for (const t of trackRows) tracks.push({ id: t._id, title: t.title, url: null, autoplay: t.autoplay });
 
     const today = new Date().toISOString().slice(0, 10);
     const shows = await ctx.db

@@ -175,6 +175,27 @@ test.describe("artist sandbox", () => {
     await expect(dialog.getByRole("alert")).toHaveText("Log in to report");
   });
 
+  test("the player plays signed, short-lived URLs and offers no download", async ({ page, request }) => {
+    await page.goto("/sandboxtest");
+    await probes(page);
+    const frame = page.frameLocator("iframe[data-openspace-profile]");
+    const audio = frame.locator("audio#openspace-player");
+    await expect(audio).toHaveAttribute("controlslist", "nodownload");
+    const src = new URL((await audio.getAttribute("src")) ?? "");
+    expect(src.searchParams.get("X-Amz-Expires")).toBe("900");
+
+    const res = await request.get(`${USERCONTENT}/sandboxtest?format=tracks`);
+    expect(res.status()).toBe(200);
+    expect(res.headers()["access-control-allow-origin"]).toBe("*");
+    expect(res.headers()["cache-control"]).toBe("no-store");
+    const body = (await res.json()) as { tracks: Array<{ id: string; url: string }> };
+    expect(body.tracks.length).toBeGreaterThan(0);
+    for (const t of body.tracks) expect(new URL(t.url).searchParams.get("X-Amz-Expires")).toBe("900");
+
+    // The main host never serves it.
+    expect((await request.get(`${MAIN}/usercontent/sandboxtest?format=tracks`)).status()).toBe(404);
+  });
+
   test("main-host pages cannot be framed", async ({ request }) => {
     for (const path of ["/", "/sandboxtest", "/about"]) {
       const h = (await request.get(`${MAIN}${path}`)).headers();

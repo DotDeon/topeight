@@ -21,11 +21,17 @@ export function classifyHost(host: string): HostKind {
   return "unknown";
 }
 
-export function routeForHost(kind: HostKind, pathname: string): HostRoute {
+/**
+ * Where a request goes. `to` may carry a query string. On the usercontent host
+ * the only query kept is `?format=tracks` (the player's playback URL refresh);
+ * anything else is dropped.
+ */
+export function routeForHost(kind: HostKind, pathname: string, search = ""): HostRoute {
   if (kind === "usercontent") {
     // Only single-segment profile paths are served on the usercontent host.
     if (/^\/[^/]+$/.test(pathname)) {
-      return { action: "rewrite", to: `/usercontent${pathname}` };
+      const tracks = new URLSearchParams(search).get("format") === "tracks";
+      return { action: "rewrite", to: `/usercontent${pathname}${tracks ? "?format=tracks" : ""}` };
     }
     return { action: "notFound" };
   }

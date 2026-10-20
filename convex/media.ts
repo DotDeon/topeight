@@ -3,7 +3,14 @@ import type { R2Callbacks } from "@convex-dev/r2";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { DataModel, Doc, Id } from "./_generated/dataModel";
-import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
+import {
+  action,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+  type MutationCtx,
+} from "./_generated/server";
 import { profileForUser, requireProfile } from "./lib/access";
 import { rateLimiter } from "./lib/limits";
 import {
@@ -16,7 +23,8 @@ import {
   syncMediaFlags,
   UPLOAD_TTL_MS,
 } from "./lib/media";
-import { r2, storage, UPLOAD_URL_TTL_S } from "./lib/r2";
+import { audioBucket, audioConfigured, r2, storage, UPLOAD_URL_TTL_S } from "./lib/r2";
+import { profileByUsername } from "./profiles";
 
 /*
  * Upload flow:
@@ -27,12 +35,15 @@ import { r2, storage, UPLOAD_URL_TTL_S } from "./lib/r2";
  *    locked to the declared size and type and to a key that does not exist yet,
  *    only for the row's owner. The component's own generateUploadUrl takes no key
  *    and signs neither, so it is not exported.
- * 3. The client PUTs the file to R2.
- * 4. syncMetadata({ key }) (from the component) runs onUpload, which checks the
- *    caller owns the pending row, then schedules the component's metadata sync.
- * 5. After R2 metadata is synced, the component calls onSyncMetadata, which reads
- *    size and type, which must equal the declared ones, and records the track or
- *    photo, or deletes the object.
+ * 3. The client PUTs the file to R2. Tracks go to the private R2_AUDIO_BUCKET,
+ *    photos to the public R2_BUCKET.
+ * 4. Tracks: confirmTrackUpload({ uploadId }) checks the caller owns the pending
+ *    row, HEADs the object in the audio bucket, and records the track only if its
+ *    size and type equal the declared ones. Otherwise the object and row go.
+ * 5. Photos: syncMetadata({ key }) (from the component) runs onUpload, which checks
+ *    the caller owns the pending photo row, then schedules the component's metadata
+ *    sync. After that the component calls onSyncMetadata, which applies the same
+ *    size and type check and records the photo, or deletes the object.
  */
 
 /** When a pending upload is swept: after the last URL it could get has expired, plus 60 s. */
@@ -136,7 +147,12 @@ export const generateUploadUrl = mutation({
     const row = await ctx.db.get(uploadId);
     if (row === null || row.profileId !== profile._id) throw new ConvexError("Not allowed");
     if (Date.now() - row.createdAt >= UPLOAD_TTL_MS) throw new ConvexError("Upload expired");
-    return await storage.uploadUrl({ key: row.key, size: row.size, contentType: row.contentType });
+    return await storage.uploadUrl({
+      key: row.key,
+      size: row.size,
+      contentType: row.contentType,
+      purpose: row.purpose,
+    });
   },
 });
 
@@ -147,18 +163,22 @@ export const expireUpload = internalMutation({
   handler: async (ctx, { uploadId }) => {
     const row = await ctx.db.get(uploadId);
     if (row === null) return null;
-    await storage.remove(ctx, row.key);
+    await storage.remove(ctx, row.key, row.purpose);
     await ctx.db.delete(row._id);
     return null;
   },
 });
 
-/** Scheduled by reject: removes anything PUT to the key again before its URL expired. */
+/**
+ * Scheduled by reject: removes anything PUT to the key again before its URL expired.
+ * `purpose` is optional only for jobs scheduled before tracks moved to the audio
+ * bucket; those objects are in the photo bucket.
+ */
 export const removeObject = internalMutation({
-  args: { key: v.string() },
+  args: { key: v.string(), purpose: v.optional(v.union(v.literal("photo"), v.literal("track"))) },
   returns: v.null(),
-  handler: async (ctx, { key }) => {
-    await storage.remove(ctx, key);
+  handler: async (ctx, { key, purpose }) => {
+    await storage.remove(ctx, key, purpose ?? "photo");
     return null;
   },
 });
@@ -166,15 +186,18 @@ export const removeObject = internalMutation({
 /** Delete the object and the pending row, and log why. Nothing is recorded. */
 async function reject(ctx: MutationCtx, row: Doc<"uploads">, reason: string) {
   console.warn(`Upload rejected: ${reason} (${row.key})`);
-  await storage.remove(ctx, row.key);
+  await storage.remove(ctx, row.key, row.purpose);
   await ctx.db.delete(row._id);
   // The object is gone, so If-None-Match no longer blocks a second PUT on the same
   // URL. Sweep the key again once that URL has expired.
   await ctx.scheduler.runAfter((UPLOAD_URL_TTL_S + 60) * 1000, internal.media.removeObject, {
     key: row.key,
+    purpose: row.purpose,
   });
+  return false;
 }
 
+/** Records the track and drops the pending row. False when it was rejected instead. */
 async function acceptTrack(ctx: MutationCtx, row: Doc<"uploads">, size: number, contentType: string) {
   if (size > TRACK_MAX_BYTES) return await reject(ctx, row, "track over 5 MB");
   if (!TRACK_TYPES.includes(contentType)) return await reject(ctx, row, `track type ${contentType}`);
@@ -191,6 +214,7 @@ async function acceptTrack(ctx: MutationCtx, row: Doc<"uploads">, size: number, 
   });
   await syncMediaFlags(ctx, row.profileId);
   await ctx.db.delete(row._id);
+  return true;
 }
 
 async function acceptPhoto(ctx: MutationCtx, row: Doc<"uploads">, size: number, contentType: string) {
@@ -201,7 +225,7 @@ async function acceptPhoto(ctx: MutationCtx, row: Doc<"uploads">, size: number, 
   const old = profile.photoKey;
   await ctx.db.patch(profile._id, { photoKey: row.key });
   await syncMediaFlags(ctx, profile._id);
-  if (old !== undefined && old !== row.key) await storage.remove(ctx, old);
+  if (old !== undefined && old !== row.key) await storage.remove(ctx, old, "photo");
   await ctx.db.delete(row._id);
 }
 
@@ -213,25 +237,113 @@ export const { syncMetadata, onSyncMetadata } = r2.clientApi<DataModel>({
     await requireProfile(ctx);
   },
   // Runs inside syncMetadata, before R2 metadata is fetched: only the owner of a
-  // pending upload may sync its key.
+  // pending photo upload may sync its key. Tracks use confirmTrackUpload.
   onUpload: async (ctx, _bucket, key) => {
     const profile = await requireProfile(ctx);
     const row = await pendingByKey(ctx, key);
-    if (row === null || row.profileId !== profile._id) throw new ConvexError("Not allowed");
+    if (row === null || row.profileId !== profile._id || row.purpose !== "photo") {
+      throw new ConvexError("Not allowed");
+    }
   },
-  // Runs after the component has stored the object's size and type.
+  // Runs after the component has stored the object's size and type. Photos only.
   onSyncMetadata: async (ctx, { key }) => {
     const row = await pendingByKey(ctx, key);
-    if (row === null) return;
+    if (row === null || row.purpose !== "photo") return;
     const meta = await storage.metadata(ctx, key);
     const size = meta?.size;
     const contentType = meta?.contentType ?? "";
-    if (meta === null || size === undefined) return await reject(ctx, row, "no metadata");
-    if (size !== row.size || contentType !== row.contentType) {
-      return await reject(ctx, row, `got ${size} bytes of ${contentType}, declared ${row.size} of ${row.contentType}`);
+    if (meta === null || size === undefined) {
+      await reject(ctx, row, "no metadata");
+    } else if (size !== row.size || contentType !== row.contentType) {
+      await reject(ctx, row, `got ${size} bytes of ${contentType}, declared ${row.size} of ${row.contentType}`);
+    } else {
+      await acceptPhoto(ctx, row, size, contentType);
     }
-    if (row.purpose === "track") await acceptTrack(ctx, row, size, contentType);
-    else await acceptPhoto(ctx, row, size, contentType);
+  },
+});
+
+/** The caller's own pending track upload, or throws "Not allowed". */
+export const pendingTrackUpload = internalQuery({
+  args: { uploadId: v.id("uploads") },
+  returns: v.object({ key: v.string() }),
+  handler: async (ctx, { uploadId }) => {
+    const profile = await requireProfile(ctx);
+    const row = await ctx.db.get(uploadId);
+    if (row === null || row.profileId !== profile._id || row.purpose !== "track") {
+      throw new ConvexError("Not allowed");
+    }
+    return { key: row.key };
+  },
+});
+
+/** Accepts or rejects a pending track from what a HEAD on the audio bucket returned. */
+export const settleTrackUpload = internalMutation({
+  args: {
+    uploadId: v.id("uploads"),
+    head: v.union(v.null(), v.object({ size: v.number(), contentType: v.string() })),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, { uploadId, head }) => {
+    const row = await ctx.db.get(uploadId);
+    // Already settled or expired between the HEAD and now.
+    if (row === null || row.purpose !== "track") return false;
+    if (head === null) return await reject(ctx, row, "no object");
+    if (head.size !== row.size || head.contentType !== row.contentType) {
+      return await reject(
+        ctx,
+        row,
+        `got ${head.size} bytes of ${head.contentType}, declared ${row.size} of ${row.contentType}`,
+      );
+    }
+    return await acceptTrack(ctx, row, head.size, head.contentType);
+  },
+});
+
+/**
+ * Step 4 for tracks. Only the owner of the pending row may confirm it. Checks the
+ * object in the private audio bucket against the declared size and type.
+ */
+export const confirmTrackUpload = action({
+  args: { uploadId: v.id("uploads") },
+  returns: v.object({ accepted: v.boolean() }),
+  handler: async (ctx, { uploadId }): Promise<{ accepted: boolean }> => {
+    const { key } = await ctx.runQuery(internal.media.pendingTrackUpload, { uploadId });
+    const head = await storage.head(key, audioBucket());
+    const accepted: boolean = await ctx.runMutation(internal.media.settleTrackUpload, { uploadId, head });
+    return { accepted };
+  },
+});
+
+/** Keys of an unbanned profile's tracks, in play order, at most 10. */
+export const playableTracks = internalQuery({
+  args: { username: v.string() },
+  returns: v.array(v.object({ id: v.id("tracks"), key: v.string() })),
+  handler: async (ctx, { username }) => {
+    const p = await profileByUsername(ctx, username);
+    if (p === null || p.banned) return [];
+    const rows = await ctx.db
+      .query("tracks")
+      .withIndex("by_profile_order", (q) => q.eq("profileId", p._id))
+      .take(MAX_TRACKS);
+    return rows.map((t) => ({ id: t._id, key: t.key }));
+  },
+});
+
+/**
+ * Short-lived playback URLs (15 minutes) for a profile's tracks. Anyone may call
+ * it: the usercontent route uses it to render the player and to refresh its URLs.
+ * Signs nothing for banned or missing profiles, and writes nothing.
+ */
+export const playbackUrls = action({
+  args: { username: v.string() },
+  returns: v.array(v.object({ id: v.id("tracks"), url: v.string() })),
+  handler: async (ctx, { username }): Promise<Array<{ id: Id<"tracks">; url: string }>> => {
+    // Without an audio bucket (local dev) there is nothing to sign.
+    if (!audioConfigured()) return [];
+    const tracks: Array<{ id: Id<"tracks">; key: string }> = await ctx.runQuery(internal.media.playableTracks, {
+      username,
+    });
+    return await Promise.all(tracks.map(async (t) => ({ id: t.id, url: await storage.playbackUrl(t.key) })));
   },
 });
 
@@ -286,7 +398,7 @@ export const deleteTrack = mutation({
 
 /** Deletes a track and its R2 object, and passes autoplay on to the next track. No access check. */
 export async function removeTrack(ctx: MutationCtx, track: Doc<"tracks">): Promise<void> {
-  await storage.remove(ctx, track.key);
+  await storage.remove(ctx, track.key, "track");
   await ctx.db.delete(track._id);
   if (track.autoplay) {
     const rest = await tracksFor(ctx, track.profileId);

@@ -6,6 +6,7 @@ import {
   bridgeScript,
   escapeHtml,
   formatDate,
+  playerScript,
   renderProfileDocument,
   type PublicCard,
   type PublicProfile,
@@ -559,3 +560,141 @@ describe("cspMeta option", () => {
     expect(renderProfileDocument(profile, opts)).not.toContain("http-equiv");
   });
 });
+
+describe("player protection", () => {
+  const html = renderProfileDocument(
+    artist({ tracks: [{ ...t("Red Dust", true), id: "k1" }] }),
+    { ...opts, usercontentOrigin: "http://127.0.0.1:3000" },
+  );
+
+  test("the audio element hides the download control", () => {
+    expect(html).toMatch(/<audio id="openspace-player"[^>]* controlsList="nodownload"/);
+  });
+
+  test("rows carry their track id and the player knows where to refresh URLs", () => {
+    expect(html).toContain('data-track-id="k1"');
+    expect(html).toContain('data-tracks-url="http://127.0.0.1:3000/lowveld?format=tracks"');
+  });
+
+  test("no refresh URL without a usercontent origin", () => {
+    const plain = renderProfileDocument(artist({ tracks: [t("Red Dust", true)] }), opts);
+    expect(plain).not.toContain('data-tracks-url="');
+  });
+});
+
+/** Runs the player script against a tiny fake DOM. */
+function runPlayer(tracksUrl: string | null = "http://127.0.0.1:3000/lowveld?format=tracks") {
+  type Handler = (e: Record<string, unknown>) => void;
+  const el = (attrs: Record<string, string> = {}) => {
+    const listeners: Record<string, Handler[]> = {};
+    return {
+      attrs,
+      listeners,
+      textContent: "",
+      style: {},
+      classList: { add() {}, remove() {} },
+      getAttribute: (k: string) => (k in attrs ? attrs[k] : null),
+      setAttribute: (k: string, v: string) => {
+        attrs[k] = String(v);
+      },
+      addEventListener: (type: string, fn: Handler) => {
+        (listeners[type] ??= []).push(fn);
+      },
+      querySelector: () => el(),
+      querySelectorAll: () => [] as unknown[],
+      contains: () => false,
+      getBoundingClientRect: () => ({ left: 0, width: 1 }),
+      fire(type: string) {
+        const ev = { prevented: false, target: null, preventDefault: () => (ev.prevented = true) };
+        for (const fn of listeners[type] ?? []) fn(ev);
+        return ev;
+      },
+    };
+  };
+  const items = [
+    el({ "data-src": "https://old/1", "data-track-id": "k1" }),
+    el({ "data-src": "https://old/2", "data-track-id": "k2" }),
+  ];
+  const ui = el({ "data-autoplay": "-1", ...(tracksUrl ? { "data-tracks-url": tracksUrl } : {}) });
+  ui.querySelectorAll = () => items;
+  const audio = Object.assign(el(), {
+    src: "https://old/1",
+    paused: true,
+    currentTime: 0,
+    duration: NaN,
+    play: () => Promise.resolve(),
+    pause() {},
+  });
+  const doc = el();
+  const fetches: string[] = [];
+  let reply: unknown = { tracks: [{ id: "k1", url: "https://new/1" }, { id: "k2", url: "javascript:x" }] };
+  const intervals: number[] = [];
+  runInNewContext(playerScript, {
+    document: Object.assign(doc, {
+      getElementById: (id: string) => (id === "openspace-player-ui" ? ui : id === "openspace-player" ? audio : null),
+    }),
+    fetch: (url: string) => {
+      fetches.push(url);
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(reply) });
+    },
+    setInterval: (_fn: () => void, ms: number) => intervals.push(ms),
+    Node: class {},
+    isFinite,
+    Math,
+    Number,
+    Array,
+    Promise,
+  });
+  doc.fire("DOMContentLoaded");
+  return {
+    ui,
+    audio,
+    items,
+    fetches,
+    intervals,
+    setReply: (r: unknown) => (reply = r),
+    settle: () => new Promise((r) => setTimeout(r, 0)),
+  };
+}
+
+describe("player script", () => {
+  test("blocks the context menu over the player", () => {
+    const p = runPlayer();
+    expect(p.ui.fire("contextmenu").prevented).toBe(true);
+  });
+
+  test("on an audio error it fetches ?format=tracks and retries with the fresh URL", async () => {
+    const p = runPlayer();
+    p.audio.fire("error");
+    expect(p.fetches).toEqual(["http://127.0.0.1:3000/lowveld?format=tracks"]);
+    await p.settle();
+    expect(p.items[0].attrs["data-src"]).toBe("https://new/1");
+    expect(p.audio.src).toBe("https://new/1");
+    // Only http(s) URLs are taken from the response.
+    expect(p.items[1].attrs["data-src"]).toBe("https://old/2");
+  });
+
+  test("a second error before playback recovers does not loop", async () => {
+    const p = runPlayer();
+    p.audio.fire("error");
+    await p.settle();
+    p.audio.fire("error");
+    await p.settle();
+    expect(p.fetches).toHaveLength(1);
+    p.audio.fire("playing");
+    p.audio.fire("error");
+    expect(p.fetches).toHaveLength(2);
+  });
+
+  test("refreshes the URLs every 12 minutes", () => {
+    expect(runPlayer().intervals).toEqual([12 * 60 * 1000]);
+  });
+
+  test("does nothing extra without a refresh URL", () => {
+    const p = runPlayer(null);
+    p.audio.fire("error");
+    expect(p.fetches).toEqual([]);
+    expect(p.intervals).toEqual([]);
+  });
+});
+

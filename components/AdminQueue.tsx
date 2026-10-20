@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { ConvexError } from "convex/values";
 import Link from "next/link";
@@ -13,6 +13,37 @@ import styles from "./Posts.module.css";
 
 function errorText(e: unknown): string {
   return e instanceof ConvexError && typeof e.data === "string" ? e.data : "Something went wrong.";
+}
+
+/**
+ * Tracks are private, so the queue asks for a 15 minute playback URL only when
+ * an admin presses Play.
+ */
+function TrackPlay({ trackId, title }: { trackId: Id<"tracks">; title: string }) {
+  const playbackUrl = useAction(api.moderation.trackPlaybackUrl);
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  if (url) {
+    return <audio controls autoPlay controlsList="nodownload" src={url} aria-label={`Play ${title}`} />;
+  }
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={`Play ${title}`}
+        onClick={() => {
+          setError("");
+          playbackUrl({ trackId }).then(
+            (u) => (u ? setUrl(u) : setError("This track no longer exists.")),
+            (e) => setError(errorText(e)),
+          );
+        }}
+      >
+        Play
+      </button>
+      {error && <span className={styles.muted}> {error}</span>}
+    </>
+  );
 }
 
 function Preview({ p }: { p: ReportPreview }) {
@@ -37,7 +68,7 @@ function Preview({ p }: { p: ReportPreview }) {
             Track &quot;{p.title}&quot; by{" "}
             {p.owner ? <Link href={`/${p.owner.username}`}>{p.owner.displayName}</Link> : "unknown"}
           </p>
-          {p.url && <audio controls preload="none" src={p.url} aria-label={`Play ${p.title}`} />}
+          <TrackPlay trackId={p.trackId} title={p.title} />
         </>
       );
     case "profile":
@@ -94,13 +125,7 @@ function ReportRow({ r }: { r: Row }) {
         <ul>
           {p.tracks.map((t) => (
             <li key={t.id}>
-              {t.title}{" "}
-              {t.url && (
-                <a href={t.url} target="_blank" rel="noreferrer">
-                  listen
-                </a>
-              )}{" "}
-              {deleteTrackButton(t.id, t.title)}
+              {t.title} <TrackPlay trackId={t.id} title={t.title} /> {deleteTrackButton(t.id, t.title)}
             </li>
           ))}
         </ul>

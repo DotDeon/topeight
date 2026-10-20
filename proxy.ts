@@ -16,10 +16,12 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
 
   // Host routing runs first so the usercontent host never touches auth
   // cookies or the /api/auth proxy.
-  const route = routeForHost(kind, request.nextUrl.pathname);
+  const route = routeForHost(kind, request.nextUrl.pathname, request.nextUrl.search);
   if (route.action === "rewrite") {
     const url = request.nextUrl.clone();
-    url.pathname = route.to;
+    const to = new URL(route.to, url);
+    url.pathname = to.pathname;
+    url.search = to.search;
     return NextResponse.rewrite(url);
   }
   if (route.action === "notFound") {

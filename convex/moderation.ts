@@ -1,11 +1,13 @@
 import { ConvexError, v } from "convex/values";
 import { validateUsername } from "../lib/validation";
 import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { action, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { isAdmin, requireProfile } from "./lib/access";
 import { toPublicCard, type PublicCard } from "./lib/cards";
 import { MAX_SCAN, rateLimiter } from "./lib/limits";
-import { MAX_TRACKS, trackUrl } from "./lib/media";
+import { MAX_TRACKS } from "./lib/media";
+import { storage } from "./lib/r2";
 import { removeTrack } from "./media";
 
 const MAX_REASON = 500;
@@ -68,7 +70,7 @@ async function profileTracks(ctx: Ctx, profileId: Id<"profiles">) {
     .query("tracks")
     .withIndex("by_profile_order", (q) => q.eq("profileId", profileId))
     .take(MAX_TRACKS);
-  return rows.map((t) => ({ id: t._id, title: t.title, url: trackUrl(t.key) }));
+  return rows.map((t) => ({ id: t._id, title: t.title }));
 }
 
 async function cardFor(ctx: Ctx, id: Id<"profiles">): Promise<PublicCard | null> {
@@ -85,14 +87,14 @@ export type ReportPreview =
       headline: string;
       aboutMe: string;
       banned: boolean;
-      tracks: { id: Id<"tracks">; title: string; url: string | null }[];
+      // No URLs: tracks are private. The admin page asks trackPlaybackUrl to play one.
+      tracks: { id: Id<"tracks">; title: string }[];
     }
   | { kind: "comment" | "bulletin"; body: string; authorId: Id<"profiles">; author: PublicCard | null }
   | {
       kind: "track";
       trackId: Id<"tracks">;
       title: string;
-      url: string | null;
       ownerId: Id<"profiles">;
       owner: PublicCard | null;
     }
@@ -128,7 +130,6 @@ async function preview(ctx: Ctx, report: Doc<"reports">): Promise<ReportPreview>
     kind: "track",
     trackId: t._id,
     title: t.title,
-    url: trackUrl(t.key),
     ownerId: t.profileId,
     owner: await cardFor(ctx, t.profileId),
   };
@@ -315,6 +316,26 @@ export const deleteTrack = mutation({
     await removeTrack(ctx, track);
     await actionAllOn(ctx, "track", trackId);
     return null;
+  },
+});
+
+/** Admin only: the key of any track, banned owners included. Null when the track is gone. */
+export const trackKeyForAdmin = internalQuery({
+  args: { trackId: v.id("tracks") },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, { trackId }) => {
+    await requireAdmin(ctx);
+    return (await ctx.db.get(trackId))?.key ?? null;
+  },
+});
+
+/** Admin: a 15 minute playback URL for any track, even on a banned profile. Null when the track is gone. */
+export const trackPlaybackUrl = action({
+  args: { trackId: v.id("tracks") },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, { trackId }): Promise<string | null> => {
+    const key: string | null = await ctx.runQuery(internal.moderation.trackKeyForAdmin, { trackId });
+    return key === null ? null : await storage.playbackUrl(key);
   },
 });
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Generates the seed media and uploads it to R2.
+// Generates the seed media and uploads it to R2. Tracks go to the private
+// R2_AUDIO_BUCKET, avatars to the public R2_BUCKET.
 //
 //   node scripts/seed-media.mjs            generate files, upload when R2_* vars are set
 //   node scripts/seed-media.mjs --dry-run  generate files and print what would upload
@@ -83,24 +84,24 @@ for (const n of [1, 2, 3]) {
         "-ac", "1", "-b:a", "32k", "-map_metadata", "-1", "-fflags", "+bitexact", path],
     );
   }
-  files.push({ path, key: `seed/silence-${n}.mp3`, type: "audio/mpeg" });
+  files.push({ path, key: `seed/silence-${n}.mp3`, type: "audio/mpeg", bucket: "R2_AUDIO_BUCKET" });
 }
 
 mkdirSync(avatarDir, { recursive: true });
 USERNAMES.forEach((name, i) => {
   const path = join(avatarDir, `avatar-${name}.png`);
   writeFileSync(path, solidPng(96, COLOURS[i % COLOURS.length]));
-  files.push({ path, key: `seed/avatar-${name}.png`, type: "image/png" });
+  files.push({ path, key: `seed/avatar-${name}.png`, type: "image/png", bucket: "R2_BUCKET" });
 });
 
-const required = ["R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_ENDPOINT", "R2_BUCKET"];
+const required = ["R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_ENDPOINT", "R2_BUCKET", "R2_AUDIO_BUCKET"];
 const missing = required.filter((k) => !process.env[k]);
 const dryRun = process.argv.includes("--dry-run");
 
 if (dryRun || missing.length > 0) {
   if (!dryRun) console.log(`R2 variables missing (${missing.join(", ")}), skipping upload.`);
   for (const f of files) {
-    console.log(`would upload ${f.key} (${readFileSync(f.path).length} bytes, ${f.type})`);
+    console.log(`would upload ${f.key} to ${f.bucket} (${readFileSync(f.path).length} bytes, ${f.type})`);
   }
 } else {
   const { PutObjectCommand, S3Client } = await import("@aws-sdk/client-s3");
@@ -115,12 +116,12 @@ if (dryRun || missing.length > 0) {
   for (const f of files) {
     await s3.send(
       new PutObjectCommand({
-        Bucket: process.env.R2_BUCKET,
+        Bucket: process.env[f.bucket],
         Key: f.key,
         Body: readFileSync(f.path),
         ContentType: f.type,
       }),
     );
-    console.log(`uploaded ${f.key}`);
+    console.log(`uploaded ${f.key} to ${f.bucket}`);
   }
 }

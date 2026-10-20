@@ -34,6 +34,10 @@ function plain(status: number, body: string, csp: string): Response {
  * rewrites `/<username>` there to this route and 404s `/usercontent/*` on the
  * main host; the host check here backs that up). No X-Frame-Options: the
  * main origin frames this page, and CSP frame-ancestors limits who may.
+ *
+ * Track URLs are signed here at render time (media.playbackUrls, 15 minutes).
+ * `?format=tracks` returns just those URLs as JSON, with the same 404 rules, for
+ * the player to refresh them from its opaque-origin frame.
  */
 export async function GET(request: NextRequest, ctx: RouteContext<"/usercontent/[username]">) {
   const mainOrigin = requireEnv("NEXT_PUBLIC_MAIN_ORIGIN");
@@ -50,17 +54,41 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/usercontent/
   const checked = validateUsername(username);
   if (!checked.ok || checked.username !== username) return plain(404, "Not found", csp);
 
+  const tracksOnly = new URL(request.url).searchParams.get("format") === "tracks";
   let profile;
+  let signed: Array<{ id: string; url: string }> | null;
   try {
     const client = new ConvexHttpClient(requireEnv("NEXT_PUBLIC_CONVEX_URL"));
-    profile = await client.query(api.profiles.getPublicProfile, { username });
+    [profile, signed] = await Promise.all([
+      client.query(api.profiles.getPublicProfile, { username }),
+      client.action(api.media.playbackUrls, { username }).catch((e: unknown) => {
+        console.error("usercontent: playbackUrls failed", e);
+        return null;
+      }),
+    ]);
   } catch (e) {
     console.error("usercontent: getPublicProfile failed", e);
     return plain(503, "Profile temporarily unavailable", csp);
   }
   if (profile === null || "unavailable" in profile) return plain(404, "Not found", csp);
 
-  return new Response(renderProfileDocument(profile, { mainOrigin }), {
+  if (tracksOnly) {
+    if (signed === null) return plain(503, "Tracks temporarily unavailable", csp);
+    return new Response(JSON.stringify({ tracks: signed.map(({ id, url }) => ({ id, url })) }), {
+      status: 200,
+      headers: {
+        ...baseHeaders(csp),
+        "Content-Type": "application/json; charset=utf-8",
+        // The player runs in a sandboxed, opaque-origin frame. No credentials are sent.
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }
+
+  // Without signed URLs the page still renders, just without a player.
+  const urls = new Map((signed ?? []).map((t) => [t.id, t.url]));
+  const tracks = profile.tracks.map((t) => ({ ...t, url: urls.get(t.id) ?? null }));
+  return new Response(renderProfileDocument({ ...profile, tracks }, { mainOrigin, usercontentOrigin }), {
     status: 200,
     headers: { ...baseHeaders(csp), "Content-Type": "text/html; charset=utf-8" },
   });

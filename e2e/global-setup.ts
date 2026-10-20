@@ -18,13 +18,22 @@ import { existsSync, readFileSync } from "node:fs";
  * It also adds the admin fixture's email to ADMIN_EMAILS on the deployment.
  * The value from before the run goes in E2E_PRIOR_ADMIN_EMAILS so the
  * teardown can put it back, or remove the variable if there was none.
- * When NEXT_PUBLIC_R2_PUBLIC_URL is unset it sets a dummy one for the run, so
- * fixture tracks get URLs, and teardown removes it.
+ * When NEXT_PUBLIC_R2_PUBLIC_URL is unset it sets a dummy one for the run, and
+ * teardown removes it. The same goes for each of the audio bucket variables in
+ * E2E_AUDIO_ENV, so fixture tracks get signed playback URLs (signing is local).
+ * The names it set go in E2E_SET_AUDIO_ENV for the teardown.
  */
 
 export const ADMIN_FIXTURE_EMAIL = "e2e-admin@fixture.invalid";
 /** Media base set for the run when the deployment has none. Port 9 refuses connections. */
 export const E2E_MEDIA_URL = "http://127.0.0.1:9/e2e-media";
+/** Audio bucket settings for the run when the deployment has none. Nothing is fetched: port 9 refuses connections. */
+export const E2E_AUDIO_ENV: Record<string, string> = {
+  R2_AUDIO_BUCKET: "e2e-audio",
+  R2_ENDPOINT: "http://127.0.0.1:9",
+  R2_ACCESS_KEY_ID: "e2e-dummy-key",
+  R2_SECRET_ACCESS_KEY: "e2e-dummy-secret",
+};
 
 function envFileValue(path: string, key: string): string | undefined {
   if (!existsSync(path)) return undefined;
@@ -94,6 +103,22 @@ export default function globalSetup() {
     convex("env", "set", ...envFile, "NEXT_PUBLIC_R2_PUBLIC_URL", E2E_MEDIA_URL);
     process.env.E2E_SET_MEDIA_URL = "1";
   }
+
+  // Playback URLs are signed with the audio bucket settings. Set dummies for any
+  // that are missing (or left over from a crashed run, so teardown removes them).
+  const setAudio: string[] = [];
+  for (const [name, dummy] of Object.entries(E2E_AUDIO_ENV)) {
+    const value = execFileSync("npx", ["convex", "env", "get", ...envFile, name], {
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .trim();
+    if (value === "" || value === dummy) {
+      convex("env", "set", ...envFile, name, dummy);
+      setAudio.push(name);
+    }
+  }
+  process.env.E2E_SET_AUDIO_ENV = setAudio.join(",");
 
   convex("run", ...envFile, "testing:seedSandboxFixture", JSON.stringify({ mainOrigin: `http://localhost:${port}` }));
   convex("run", ...envFile, "testing:seedCommenterFixture", JSON.stringify({ password }));

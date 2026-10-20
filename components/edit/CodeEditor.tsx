@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Doc } from "@/convex/_generated/dataModel";
@@ -18,6 +18,7 @@ export function CodeEditor({ me }: { me: Doc<"profiles"> }) {
   const artist = me.kind === "artist";
   const save = useMutation(api.profiles.updateCustomCode);
   const profile = useQuery(api.profiles.getPublicProfile, { username: me.username });
+  const playbackUrls = useAction(api.media.playbackUrls);
   const { status, busy, run } = useSaver();
   const [css, setCss] = useState(me.customCss);
   const [html, setHtml] = useState(me.customHtml);
@@ -27,15 +28,20 @@ export function CodeEditor({ me }: { me: Doc<"profiles"> }) {
   const total = bytes(css) + (artist ? bytes(html) + bytes(js) : 0);
   const over = total > MAX_BYTES;
 
-  function preview() {
+  async function preview() {
     if (!profile || "unavailable" in profile) return;
     const mainOrigin = process.env.NEXT_PUBLIC_MAIN_ORIGIN ?? window.location.origin;
+    const usercontentOrigin = process.env.NEXT_PUBLIC_USERCONTENT_ORIGIN ?? "";
     // The same policy the usercontent route sends, minus frame-ancestors, which a meta tag ignores.
-    const cspMeta = buildUsercontentCsp(process.env.NEXT_PUBLIC_USERCONTENT_ORIGIN ?? "");
+    const cspMeta = buildUsercontentCsp(usercontentOrigin);
+    // Track URLs are signed on demand, like the usercontent route does. No URLs, no player.
+    const signed = artist ? await playbackUrls({ username: me.username }).catch(() => []) : [];
+    const urls = new Map<string, string>(signed.map((t) => [t.id, t.url]));
+    const tracks = profile.tracks.map((t) => ({ ...t, url: urls.get(t.id) ?? null }));
     setSrcDoc(
       renderProfileDocument(
-        { ...profile, custom: { css, html: artist ? html : "", js: artist ? js : "" } },
-        { mainOrigin, cspMeta },
+        { ...profile, tracks, custom: { css, html: artist ? html : "", js: artist ? js : "" } },
+        { mainOrigin, cspMeta, usercontentOrigin: usercontentOrigin || undefined },
       ),
     );
   }
@@ -67,7 +73,7 @@ export function CodeEditor({ me }: { me: Doc<"profiles"> }) {
         </p>
         <div className={styles.actions}>
           <button type="submit" disabled={busy || over}>Save Code</button>
-          <button type="button" onClick={preview} disabled={!profile || "unavailable" in profile}>Preview</button>
+          <button type="button" onClick={() => void preview()} disabled={!profile || "unavailable" in profile}>Preview</button>
           <StatusLine status={status} />
         </div>
       </form>

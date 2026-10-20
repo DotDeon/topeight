@@ -18,12 +18,15 @@ OpenSpace serves the trusted site and user-written profile code from two differe
 3. In the Convex dashboard, create a production deployment, or run `npx convex deploy` to create one.
 4. Generate the Convex Auth keys with `npx @convex-dev/auth`, or follow the manual setup in the Convex Auth docs. You need `JWT_PRIVATE_KEY` and `JWKS`.
 
-## 3. Create the R2 bucket
+## 3. Create the R2 buckets
 
-1. In the Cloudflare dashboard, open R2 and create a bucket. The name goes in `R2_BUCKET`.
-2. Make the bucket publicly readable. Either attach a custom domain such as `https://media.example.com` under Settings, Custom Domains, or turn on the `r2.dev` URL. The URL goes in `NEXT_PUBLIC_R2_PUBLIC_URL`. A custom domain is the better choice for production because `r2.dev` is rate limited.
-3. Under R2, Manage API Tokens, create an API token with Object Read and Write on this bucket. Copy the access key ID and the secret access key. OpenSpace does not use the token value. Note the S3 endpoint, which looks like `https://<account-id>.r2.cloudflarestorage.com`.
-4. Open the bucket, then Settings, then CORS policy, and add:
+OpenSpace uses two buckets: a public one for photos and a private one for tracks.
+
+1. In the Cloudflare dashboard, open R2 and create the photo bucket. The name goes in `R2_BUCKET`.
+2. Make the photo bucket publicly readable. Either attach a custom domain such as `https://media.example.com` under Settings, Custom Domains, or turn on the `r2.dev` URL. The URL goes in `NEXT_PUBLIC_R2_PUBLIC_URL`. A custom domain is the better choice for production because `r2.dev` is rate limited.
+3. Create a second bucket for tracks. The name goes in `R2_AUDIO_BUCKET`. Keep it private: do not attach a custom domain and do not turn on the `r2.dev` URL. Nothing in it may ever be publicly reachable. Tracks play only through signed URLs that expire after 15 minutes, and artists upload a 128 kbps copy that their browser makes, never the original.
+4. Under R2, Manage API Tokens, create an API token with Object Read and Write on both buckets. Copy the access key ID and the secret access key. OpenSpace does not use the token value. Note the S3 endpoint, which looks like `https://<account-id>.r2.cloudflarestorage.com`.
+5. Open each bucket, then Settings, then CORS policy, and add the same policy to both:
 
 ```json
 [
@@ -67,8 +70,9 @@ These go on Convex:
 | `R2_ACCESS_KEY_ID` | From step 3 |
 | `R2_SECRET_ACCESS_KEY` | From step 3 |
 | `R2_ENDPOINT` | From step 3 |
-| `R2_BUCKET` | From step 3 |
-| `NEXT_PUBLIC_R2_PUBLIC_URL` | The public bucket URL, no trailing slash needed |
+| `R2_BUCKET` | From step 3, the public photo bucket |
+| `R2_AUDIO_BUCKET` | From step 3, the private track bucket |
+| `NEXT_PUBLIC_R2_PUBLIC_URL` | The public photo bucket URL, no trailing slash needed |
 
 Then push the functions with `npx convex deploy`.
 
@@ -103,7 +107,7 @@ Then push the functions with `npx convex deploy`.
 
 The seed creates 8 fans, 5 artists, tracks, shows, comments and bulletins so a fresh copy looks alive. The accounts have no email, so nobody can sign in as them. Use it only on a local or staging deployment. Never seed production.
 
-1. Upload the seed media. Set the `R2_*` variables in your shell, then run `node scripts/seed-media.mjs`. This uploads three silent MP3s and a small avatar for each seed user. Run it with `--dry-run` to only generate files.
+1. Upload the seed media. Set the `R2_*` variables in your shell, then run `node scripts/seed-media.mjs`. This uploads three silent MP3s to the audio bucket and a small avatar for each seed user to the photo bucket. Run it with `--dry-run` to only generate files.
 2. `npx convex env set OPENSPACE_ALLOW_SEED 1`
 3. `npx convex run seed:run`
 4. `npx convex env remove OPENSPACE_ALLOW_SEED`

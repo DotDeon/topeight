@@ -33,6 +33,8 @@ beforeEach(() => {
   vi.spyOn(storage, "remove").mockImplementation(async (_ctx, key: string) => {
     removed.push(key);
   });
+  // HEAD on the audio bucket, as if the client had uploaded the object.
+  vi.spyOn(storage, "head").mockImplementation(async (key: string) => objects.get(key) ?? null);
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -49,7 +51,8 @@ type File = { size: number; contentType: string };
 
 /**
  * Run the full flow for one file: begin with the declared file, get the URL,
- * "upload" the actual file (the declared one unless given), then the post-sync callback.
+ * "upload" the actual file (the declared one unless given), then confirm it:
+ * confirmTrackUpload for tracks, the component's post-sync callback for photos.
  */
 async function upload(
   t: T,
@@ -63,7 +66,8 @@ async function upload(
   const { uploadId } = await me.mutation(api.media.beginUpload, { purpose, title, ...file });
   const { key } = await me.mutation(api.media.generateUploadUrl, { uploadId });
   objects.set(key, actual);
-  await t.mutation(internal.media.onSyncMetadata, { key, bucket: "test", isNew: true });
+  if (purpose === "track") await me.action(api.media.confirmTrackUpload, { uploadId });
+  else await t.mutation(internal.media.onSyncMetadata, { key, bucket: "test", isNew: true });
   return key;
 }
 
@@ -164,7 +168,7 @@ describe("upload URLs and metadata sync", () => {
     const band = await addProfile(t, "band", { kind: "artist" });
     const thief = await addProfile(t, "thief", { kind: "artist" });
     const me = await as(t, band);
-    const { uploadId } = await me.mutation(api.media.beginUpload, { purpose: "track", ...mp3() });
+    const { uploadId } = await me.mutation(api.media.beginUpload, { purpose: "photo", ...jpeg() });
     const { key } = await me.mutation(api.media.generateUploadUrl, { uploadId });
     await expect((await as(t, thief)).mutation(api.media.syncMetadata, { key })).rejects.toThrow(
       "Not allowed",
@@ -175,7 +179,89 @@ describe("upload URLs and metadata sync", () => {
   });
 });
 
-describe("onSyncMetadata for tracks", () => {
+describe("confirmTrackUpload", () => {
+  test("accepts when the HEAD size and type match the pending row", async () => {
+    const t = mediaSetup();
+    const band = await addProfile(t, "band", { kind: "artist" });
+    const me = await as(t, band);
+    const { uploadId } = await me.mutation(api.media.beginUpload, { purpose: "track", title: "Song", ...mp3(1234) });
+    const { key } = await me.mutation(api.media.generateUploadUrl, { uploadId });
+    objects.set(key, mp3(1234));
+    expect(await me.action(api.media.confirmTrackUpload, { uploadId })).toEqual({ accepted: true });
+    expect(storage.head).toHaveBeenCalledWith(key, "test-audio-bucket");
+    expect((await tracksOf(t, band)).map((r) => [r.title, r.key, r.size])).toEqual([["Song", key, 1234]]);
+    expect(removed).toEqual([]);
+    expect(await pendingCount(t)).toBe(0);
+  });
+
+  test("rejects and deletes the object and the row when the size or type differ", async () => {
+    const t = mediaSetup();
+    const band = await addProfile(t, "band", { kind: "artist" });
+    const me = await as(t, band);
+    const keys: string[] = [];
+    for (const actual of [mp3(MB - 1), { size: MB, contentType: "text/html" }]) {
+      const { uploadId } = await me.mutation(api.media.beginUpload, { purpose: "track", ...mp3(MB) });
+      const { key } = await me.mutation(api.media.generateUploadUrl, { uploadId });
+      keys.push(key);
+      objects.set(key, actual);
+      expect(await me.action(api.media.confirmTrackUpload, { uploadId })).toEqual({ accepted: false });
+    }
+    expect(removed).toEqual(keys);
+    expect(await tracksOf(t, band)).toHaveLength(0);
+    expect(await pendingCount(t)).toBe(0);
+  });
+
+  test("rejects when nothing was uploaded", async () => {
+    const t = mediaSetup();
+    const band = await addProfile(t, "band", { kind: "artist" });
+    const me = await as(t, band);
+    const { uploadId } = await me.mutation(api.media.beginUpload, { purpose: "track", ...mp3() });
+    const { key } = await me.mutation(api.media.generateUploadUrl, { uploadId });
+    expect(await me.action(api.media.confirmTrackUpload, { uploadId })).toEqual({ accepted: false });
+    expect(removed).toEqual([key]);
+    expect(await pendingCount(t)).toBe(0);
+  });
+
+  test("refuses another user's upload and leaves it alone", async () => {
+    const t = mediaSetup();
+    const band = await addProfile(t, "band", { kind: "artist" });
+    const thief = await addProfile(t, "thief", { kind: "artist" });
+    const me = await as(t, band);
+    const { uploadId } = await me.mutation(api.media.beginUpload, { purpose: "track", ...mp3() });
+    const { key } = await me.mutation(api.media.generateUploadUrl, { uploadId });
+    objects.set(key, mp3());
+    await expect((await as(t, thief)).action(api.media.confirmTrackUpload, { uploadId })).rejects.toThrow(
+      "Not allowed",
+    );
+    await expect(t.action(api.media.confirmTrackUpload, { uploadId })).rejects.toThrow();
+    expect(storage.head).not.toHaveBeenCalled();
+    expect(removed).toEqual([]);
+    expect(await pendingCount(t)).toBe(1);
+  });
+
+  test("refuses a photo upload", async () => {
+    const t = mediaSetup();
+    const fan = await addProfile(t, "fan");
+    const me = await as(t, fan);
+    const { uploadId } = await me.mutation(api.media.beginUpload, { purpose: "photo", ...jpeg() });
+    await expect(me.action(api.media.confirmTrackUpload, { uploadId })).rejects.toThrow("Not allowed");
+  });
+
+  test("the component sync path refuses track keys, even from the owner", async () => {
+    const t = mediaSetup();
+    const band = await addProfile(t, "band", { kind: "artist" });
+    const me = await as(t, band);
+    const { uploadId } = await me.mutation(api.media.beginUpload, { purpose: "track", ...mp3() });
+    const { key } = await me.mutation(api.media.generateUploadUrl, { uploadId });
+    await expect(me.mutation(api.media.syncMetadata, { key })).rejects.toThrow("Not allowed");
+    objects.set(key, mp3());
+    await t.mutation(internal.media.onSyncMetadata, { key, bucket: "test", isNew: true });
+    expect(await tracksOf(t, band)).toHaveLength(0);
+    expect(await pendingCount(t)).toBe(1);
+  });
+});
+
+describe("track checks on confirm", () => {
   test("declared size or type over the limits is refused before any URL exists", async () => {
     const t = mediaSetup();
     const band = await addProfile(t, "band", { kind: "artist" });
@@ -263,7 +349,7 @@ describe("onSyncMetadata for tracks", () => {
     );
     const { key } = await me.mutation(api.media.generateUploadUrl, { uploadId: a.uploadId });
     objects.set(key, mp3());
-    await t.mutation(internal.media.onSyncMetadata, { key, bucket: "test", isNew: true });
+    await me.action(api.media.confirmTrackUpload, { uploadId: a.uploadId });
     expect(removed).toEqual([key]);
     expect(await tracksOf(t, band)).toHaveLength(10);
   });
@@ -308,14 +394,14 @@ describe("upload lifecycle", () => {
     const me = await as(t, band);
     const { uploadId } = await me.mutation(api.media.beginUpload, { purpose: "track", ...mp3(1234) });
     const { key } = await me.mutation(api.media.generateUploadUrl, { uploadId });
-    expect(storage.uploadUrl).toHaveBeenCalledWith({ key, size: 1234, contentType: "audio/mpeg" });
+    expect(storage.uploadUrl).toHaveBeenCalledWith({ key, size: 1234, contentType: "audio/mpeg", purpose: "track" });
   });
 
-  test("the owner's syncMetadata call resolves and schedules the component's metadata sync", async () => {
+  test("the owner's syncMetadata call for a photo resolves and schedules the component's metadata sync", async () => {
     const t = mediaSetup();
     const band = await addProfile(t, "band", { kind: "artist" });
     const me = await as(t, band);
-    const { uploadId } = await me.mutation(api.media.beginUpload, { purpose: "track", ...mp3() });
+    const { uploadId } = await me.mutation(api.media.beginUpload, { purpose: "photo", ...jpeg() });
     const { key } = await me.mutation(api.media.generateUploadUrl, { uploadId });
     await expect(me.mutation(api.media.syncMetadata, { key })).resolves.toBeNull();
     // The component's HEAD action is scheduled but never run: fake timers hold it.

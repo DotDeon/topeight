@@ -22,7 +22,8 @@
     "convex": "^1.47.0",
     "next": "16.4.2",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "wasm-media-encoders": "^0.7.0"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",

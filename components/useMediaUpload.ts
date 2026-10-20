@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { useCallback } from "react";
 import { api } from "@/convex/_generated/api";
 import { PHOTO_MAX_BYTES, PHOTO_TYPES, TRACK_MAX_BYTES, TRACK_TYPES } from "@/convex/lib/media";
@@ -8,16 +8,19 @@ import { PHOTO_MAX_BYTES, PHOTO_TYPES, TRACK_MAX_BYTES, TRACK_TYPES } from "@/co
 export type MediaPurpose = "photo" | "track";
 
 /**
- * Upload a photo or track: beginUpload, then a signed PUT to R2, then syncMetadata.
+ * Upload a photo or track: beginUpload, then a signed PUT to R2, then confirm it.
  * The upload URL only accepts this exact file size and type, and expires in 5 minutes.
- * Resolves with the object key once the file is in R2. The server checks size and
- * type after the sync and records the track or photo a moment later, so watch the
- * profile or track list queries for the result.
+ * Tracks are confirmed by confirmTrackUpload, which checks the object right away and
+ * throws if the server rejected it. Pass tracks through lib/transcode first: only the
+ * 128 kbps copy is uploaded. Photos go through the component's syncMetadata, and the
+ * server records them a moment later, so watch the profile query for the result.
+ * Resolves with the object key.
  */
 export function useMediaUpload() {
   const beginUpload = useMutation(api.media.beginUpload);
   const generateUploadUrl = useMutation(api.media.generateUploadUrl);
   const syncMetadata = useMutation(api.media.syncMetadata);
+  const confirmTrackUpload = useAction(api.media.confirmTrackUpload);
 
   return useCallback(
     async (file: File, opts: { purpose: MediaPurpose; title?: string }): Promise<string> => {
@@ -43,9 +46,14 @@ export function useMediaUpload() {
         headers: { "Content-Type": file.type, "If-None-Match": "*" },
       });
       if (!res.ok) throw new Error(`Upload failed (${res.status})`);
-      await syncMetadata({ key });
+      if (track) {
+        const { accepted } = await confirmTrackUpload({ uploadId });
+        if (!accepted) throw new Error("Upload failed: file was rejected");
+      } else {
+        await syncMetadata({ key });
+      }
       return key;
     },
-    [beginUpload, generateUploadUrl, syncMetadata],
+    [beginUpload, generateUploadUrl, syncMetadata, confirmTrackUpload],
   );
 }

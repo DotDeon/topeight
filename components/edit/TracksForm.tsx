@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useRef, useState, type FormEvent } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { TRACK_TITLE_MAX } from "@/convex/lib/media";
+import { TRACK_MAX_BYTES, TRACK_TITLE_MAX } from "@/convex/lib/media";
 import { useMediaUpload } from "../useMediaUpload";
 import { Box } from "../Box";
 import styles from "./Edit.module.css";
@@ -65,15 +65,26 @@ export function TracksForm() {
   const { status, busy, run } = useSaver();
   const [rowError, setRowError] = useState("");
   const [title, setTitle] = useState("");
+  const [converting, setConverting] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    const file = input.current?.files?.[0];
-    if (!file) return;
+    const original = input.current?.files?.[0];
+    if (!original) return;
     watch.begin();
     await run(async () => {
       try {
+        // Only a 128 kbps copy is uploaded. The encoder loads here, not with the page.
+        setConverting(true);
+        let file: File;
+        try {
+          const { transcodeToMp3_128 } = await import("@/lib/transcode");
+          file = await transcodeToMp3_128(original);
+        } finally {
+          setConverting(false);
+        }
+        if (file.size > TRACK_MAX_BYTES) throw new Error("That song is too long. Songs can be about 5 minutes.");
         await upload(file, { purpose: "track", title });
         watch.uploaded();
       } catch (err) {
@@ -122,6 +133,7 @@ export function TracksForm() {
         </div>
         <div className={styles.actions}>
           <button type="submit" disabled={busy || watch.checking}>Upload Track</button>
+          {converting && <span className={styles.note} role="status">Converting to 128 kbps…</span>}
           <StatusLine status={status} />
           {watch.arrived && <span className={styles.saved} role="status">Saved</span>}
           {watch.failed && <span className={styles.error} role="alert">Upload failed: file was rejected</span>}
