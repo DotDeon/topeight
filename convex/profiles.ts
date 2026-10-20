@@ -401,7 +401,7 @@ async function statsFor(ctx: QueryCtx | MutationCtx, profileId: Id<"profiles">) 
  * Counts one view. The profile page calls this once per page load; no sign-in
  * needed. Writes only to profileStats, so queries reading profile docs don't
  * re-run. Signed-in viewers are limited per profile, anonymous ones share one
- * global bucket. Over the limit the view is dropped without an error.
+ * bucket split across 10 shards (600/min total). Over the limit the view is dropped without an error.
  */
 export const recordView = mutation({
   args: { username: v.string() },

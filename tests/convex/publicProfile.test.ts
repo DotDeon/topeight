@@ -360,7 +360,7 @@ describe("recordView", () => {
     // Shards pick randomly, so some capacity may go unused, but the total never passes the limit.
     const counted = await views(t, "jess");
     expect(counted).toBeLessThanOrEqual(ANON_VIEWS_PER_MINUTE);
-    expect(counted).toBeGreaterThan(ANON_VIEWS_PER_MINUTE / 2);
+    expect(counted).toBeGreaterThan(500);
     // The window resets after a minute.
     vi.setSystemTime(NOW.getTime() + 61_000);
     await t.mutation(api.profiles.recordView, { username: "jess" });
