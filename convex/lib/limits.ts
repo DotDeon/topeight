@@ -14,6 +14,9 @@ export const VIEWS_PER_MINUTE = 60;
 /** Profile views counted per minute across every anonymous visitor together. */
 export const ANON_VIEWS_PER_MINUTE = 600;
 
+/** Buckets the anonymous view limit is split across. */
+export const ANON_VIEW_SHARDS = 10;
+
 /** Per-account limits keyed by profile id, plus the shared anonymous view bucket. */
 export const rateLimiter = new RateLimiter(components.rateLimiter, {
   friendRequest: { kind: "fixed window", rate: 50, period: HOUR },
@@ -23,6 +26,7 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   report: { kind: "fixed window", rate: 20, period: HOUR },
   // Keyed by the viewer's profile id.
   view: { kind: "fixed window", rate: VIEWS_PER_MINUTE, period: MINUTE },
-  // One global bucket: anonymous visitors have no key of their own.
-  anonView: { kind: "fixed window", rate: ANON_VIEWS_PER_MINUTE, period: MINUTE },
+  // One global bucket split across shards so concurrent anonymous views don't
+  // all write the same row. `rate` is the total, so each shard holds 60.
+  anonView: { kind: "fixed window", rate: ANON_VIEWS_PER_MINUTE, period: MINUTE, shards: ANON_VIEW_SHARDS },
 });

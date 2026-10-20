@@ -4,7 +4,7 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import { ANON_VIEWS_PER_MINUTE, MAX_SCAN, VIEWS_PER_MINUTE } from "../../convex/lib/limits";
+import { ANON_VIEWS_PER_MINUTE, MAX_SCAN, rateLimiter, VIEWS_PER_MINUTE } from "../../convex/lib/limits";
 import schema from "../../convex/schema";
 
 const modules = import.meta.glob("../../convex/**/*.*s");
@@ -344,17 +344,27 @@ describe("recordView", () => {
     expect(stats.some((s) => s.profileId === banned)).toBe(false);
   });
 
-  test("anonymous views share one bucket and stop counting silently at the limit", async () => {
+  test("the anonymous view limit is split across 10 shards at 600 per minute in total", () => {
+    const cfg = rateLimiter.limits?.anonView;
+    expect(cfg?.shards).toBe(10);
+    expect(cfg?.rate).toBe(600);
+    expect(ANON_VIEWS_PER_MINUTE).toBe(600);
+  });
+
+  test("anonymous views never exceed the limit and stop counting silently", async () => {
     const t = setup();
     await addProfile(t, "jess");
-    for (let i = 0; i < ANON_VIEWS_PER_MINUTE + 5; i++) {
+    for (let i = 0; i < ANON_VIEWS_PER_MINUTE + 100; i++) {
       await expect(t.mutation(api.profiles.recordView, { username: "jess" })).resolves.toBeNull();
     }
-    expect(await views(t, "jess")).toBe(ANON_VIEWS_PER_MINUTE);
+    // Shards pick randomly, so some capacity may go unused, but the total never passes the limit.
+    const counted = await views(t, "jess");
+    expect(counted).toBeLessThanOrEqual(ANON_VIEWS_PER_MINUTE);
+    expect(counted).toBeGreaterThan(ANON_VIEWS_PER_MINUTE / 2);
     // The window resets after a minute.
     vi.setSystemTime(NOW.getTime() + 61_000);
     await t.mutation(api.profiles.recordView, { username: "jess" });
-    expect(await views(t, "jess")).toBe(ANON_VIEWS_PER_MINUTE + 1);
+    expect(await views(t, "jess")).toBe(counted + 1);
   });
 
   test("signed-in viewers are limited per profile, apart from the anonymous bucket", async () => {
