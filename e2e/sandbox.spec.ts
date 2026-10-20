@@ -13,6 +13,7 @@ type Probes = {
   topNav?: string;
   fetch?: string;
   form?: string;
+  foreignReports?: number;
   violations?: string[];
   done?: boolean;
 };
@@ -152,6 +153,8 @@ test.describe("artist sandbox", () => {
 
     // Artist code asks to report a real track from another profile: dropped silently.
     await frame.locator("#probe-report-foreign").click();
+    // Both posts left the frame (API and raw postMessage).
+    await expect.poll(async () => JSON.parse(await profileFrame(page)!.title()).foreignReports).toBe(2);
     await page.waitForTimeout(800);
     await expect(dialog).toBeHidden();
     await expect(page.locator("[data-openspace-strip]").getByText("too many requests")).toBeHidden();

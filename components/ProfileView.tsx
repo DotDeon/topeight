@@ -5,13 +5,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { BridgeAction } from "@/lib/bridge-protocol";
 import { BRIDGE_RESET_MS, BridgeGate } from "@/lib/bridgeGate";
+import { findReportableTrack, type ProfileTrack } from "@/lib/reportableTrack";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
 import { PROFILE_ACTIONS, type DialogAction } from "./profileActions";
 import { ProfileFrame } from "./ProfileFrame";
 import { TrustedStrip } from "./TrustedStrip";
-
-/** A song on this profile as the server sent it. Report dialogs use only these. */
-export type ProfileTrack = { id: string; title: string };
 
 /** Trusted strip, sandboxed profile frame and the confirm dialog they share. */
 export function ProfileView({
@@ -42,7 +40,7 @@ export function ProfileView({
 
   const show = useCallback((action: DialogAction, fromBridge: boolean, track?: ProfileTrack) => {
     open.current = { action, fromBridge };
-    setRequest({ id: nextId.current++, action, ...(track ? { track: { id: track.id, title: track.title } } : {}) });
+    setRequest({ id: nextId.current++, action, ...(track ? { track } : {}) });
   }, []);
 
   const onStripAction = useCallback(
@@ -79,7 +77,7 @@ export function ProfileView({
   // server's title. Anything else is dropped before the gate sees it.
   const onReportTrack = useCallback(
     (trackId: string) => {
-      const track = tracks.find((t) => t.id === trackId);
+      const track = findReportableTrack(tracks, trackId);
       if (track) onBridgeAction("reportTrack", track);
     },
     [tracks, onBridgeAction],

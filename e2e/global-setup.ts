@@ -89,7 +89,8 @@ export default function globalSetup() {
   })
     .toString()
     .trim();
-  if (media === "") {
+  // A leftover dummy from a crashed run is ours too, so this run's teardown removes it.
+  if (media === "" || media === E2E_MEDIA_URL) {
     convex("env", "set", ...envFile, "NEXT_PUBLIC_R2_PUBLIC_URL", E2E_MEDIA_URL);
     process.env.E2E_SET_MEDIA_URL = "1";
   }

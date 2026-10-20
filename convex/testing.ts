@@ -75,6 +75,9 @@ function probeJs(mainOrigin: string, foreignTrackId: string): string {
   document.getElementById("probe-report-foreign").addEventListener("click", function () {
     window.openspace.reportTrack(FOREIGN_TRACK);
     window.parent.postMessage({ type: "openspace:reportTrack", trackId: FOREIGN_TRACK }, "*");
+    // Counts posts that were sent, so the spec knows the drop was not a missed click.
+    r.foreignReports = (r.foreignReports || 0) + 2;
+    write();
   });
   // Artist code can rewrite the track title it shows; the parent dialog must not use it.
   document.addEventListener("DOMContentLoaded", function () {
