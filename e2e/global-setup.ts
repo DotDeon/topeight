@@ -13,7 +13,7 @@ import { existsSync, readFileSync } from "node:fs";
  * E2E_CONVEX_ENV_FILE to pass `--env-file` (self-hosted backends).
  * The commenter's password is random per run and reaches the specs through
  * E2E_COMMENTER_PASSWORD. The editor artist's goes through E2E_EDITOR_PASSWORD,
- * the admin's through E2E_ADMIN_PASSWORD.
+ * the admin's through E2E_ADMIN_PASSWORD, the banned fixture's through E2E_BANNED_PASSWORD.
  *
  * It also adds the admin fixture's email to ADMIN_EMAILS on the deployment.
  * The value from before the run goes in E2E_PRIOR_ADMIN_EMAILS so the
@@ -77,6 +77,8 @@ export default function globalSetup() {
   process.env.E2E_EDITOR_PASSWORD = editorPassword;
   const adminPassword = randomBytes(18).toString("base64url");
   process.env.E2E_ADMIN_PASSWORD = adminPassword;
+  const bannedPassword = randomBytes(18).toString("base64url");
+  process.env.E2E_BANNED_PASSWORD = bannedPassword;
   const convex = (...args: string[]) => execFileSync("npx", ["convex", ...args], { stdio: "inherit" });
   convex("env", "set", ...envFile, "TOPEIGHT_TEST_FIXTURES", "1");
 
@@ -124,6 +126,7 @@ export default function globalSetup() {
   convex("run", ...envFile, "testing:seedCommenterFixture", JSON.stringify({ password }));
   convex("run", ...envFile, "testing:seedArtistLoginFixture", JSON.stringify({ password: editorPassword }));
   convex("run", ...envFile, "testing:seedAdminLoginFixture", JSON.stringify({ password: adminPassword }));
+  convex("run", ...envFile, "testing:seedBannedLoginFixture", JSON.stringify({ password: bannedPassword }));
   convex("run", ...envFile, "testing:seedCommenterFriendship");
   convex("run", ...envFile, "testing:seedEditorBlock");
 }

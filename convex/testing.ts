@@ -243,6 +243,7 @@ export const seedSandboxFixture = internalMutation({
 export const COMMENTER_EMAIL = "e2e-commenter@fixture.invalid";
 export const EDITOR_EMAIL = "e2e-editor@fixture.invalid";
 export const ADMIN_EMAIL = "e2e-admin@fixture.invalid";
+export const BANNED_EMAIL = "e2e-banned@fixture.invalid";
 
 /**
  * Creates or resets a password-login fixture. Refuses to touch any user whose
@@ -250,7 +251,7 @@ export const ADMIN_EMAIL = "e2e-admin@fixture.invalid";
  */
 async function seedLoginFixture(
   ctx: MutationCtx,
-  f: { username: string; displayName: string; email: string; kind: "fan" | "artist"; password: string },
+  f: { username: string; displayName: string; email: string; kind: "fan" | "artist"; password: string; banned?: boolean },
 ) {
   if (process.env.TOPEIGHT_TEST_FIXTURES !== "1") {
     throw new ConvexError("Set TOPEIGHT_TEST_FIXTURES=1 on this deployment to seed test fixtures");
@@ -273,7 +274,7 @@ async function seedLoginFixture(
     for (const c of comments) await ctx.db.delete(c._id);
     const reports = await ctx.db.query("reports").filter((q) => q.eq(q.field("reporterId"), existing._id)).take(100);
     for (const r of reports) await ctx.db.delete(r._id);
-    await ctx.db.patch(existing._id, { kind: f.kind, customHtml: "", customCss: "", customJs: "" });
+    await ctx.db.patch(existing._id, { kind: f.kind, customHtml: "", customCss: "", customJs: "", banned: f.banned ?? false });
     return null;
   }
   const taken = await ctx.db
@@ -295,6 +296,7 @@ async function seedLoginFixture(
     username: f.username,
     displayName: f.displayName,
     kind: f.kind,
+    banned: f.banned ?? false,
   });
   return null;
 }
@@ -340,6 +342,24 @@ export const seedAdminLoginFixture = internalMutation({
       email: ADMIN_EMAIL,
       kind: "fan",
       password,
+    }),
+});
+
+/**
+ * Fixture for e2e/suspended.spec.ts: a member who can log in and is banned. A
+ * dedicated user, so no shared fixture is ever banned. Same guards as the commenter.
+ */
+export const seedBannedLoginFixture = internalMutation({
+  args: { password: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { password }) =>
+    await seedLoginFixture(ctx, {
+      username: "e2ebanned",
+      displayName: "E2E Banned",
+      email: BANNED_EMAIL,
+      kind: "fan",
+      password,
+      banned: true,
     }),
 });
 
