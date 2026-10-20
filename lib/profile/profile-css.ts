@@ -20,6 +20,7 @@ button.linkish:hover { text-decoration: underline; }
 
 .name { font-size: 17px; font-weight: bold; margin: 0 0 4px; overflow-wrap: anywhere; }
 .basic { display: flex; gap: 8px; }
+.basic-photo { flex: none; width: 150px; }
 .basic-info { overflow-wrap: anywhere; }
 .photo-main { width: 150px; height: 170px; flex: none; }
 img.photo-main, .top8 img, .comment-who img { object-fit: cover; border: 1px solid #999; box-sizing: border-box; display: block; }

@@ -229,8 +229,8 @@ function renderLeft(p: PublicProfile, opts: RenderOptions): string {
       ])}</table></div>`;
 
   return `<div class="profile-left">
-<h1 class="name">${name}</h1>${p.online ? onlineNowHtml() : ""}
-<div class="basic">${photo(p.photoUrl, "photo-main")}<div class="basic-info">${facts.join("<br><br>")}</div></div>
+<h1 class="name">${name}</h1>
+<div class="basic"><div class="basic-photo">${photo(p.photoUrl, "photo-main")}${p.online ? onlineNowHtml() : ""}</div><div class="basic-info">${facts.join("<br><br>")}</div></div>
 <div class="view-my">View My: <span class="soon" title="Coming soon">Pics</span> | <span class="soon" title="Coming soon">Videos</span></div>
 ${renderPlayer(p, name, opts)}
 <div class="contact"><h5>Contacting ${name}</h5><table>

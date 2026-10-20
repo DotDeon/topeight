@@ -26,7 +26,7 @@ test("a signed-in member shows Online Now! on their profile until they turn it o
   await expect(badge).toContainText("Online Now!", { timeout: 20_000 });
 
   await page.goto("/edit");
-  const box = page.getByRole("checkbox", { name: /Show "Online Now!"/ });
+  const box = page.getByRole("checkbox", { name: "Show when I'm online" });
   await expect(box).toBeChecked({ timeout: 20_000 });
   await box.click();
   await expect(page.getByRole("status")).toHaveText("Saved");

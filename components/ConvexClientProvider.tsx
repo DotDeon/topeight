@@ -1,7 +1,7 @@
 "use client";
 
 import { ConvexAuthNextjsProvider } from "@convex-dev/auth/nextjs";
-import { ConvexReactClient, useConvexAuth, useMutation } from "convex/react";
+import { ConvexReactClient, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useEffect, type ReactNode } from "react";
 import { api } from "@/convex/_generated/api";
 
@@ -35,8 +35,11 @@ const HEARTBEAT_MS = 2 * 60 * 1000;
 function PresenceHeartbeat() {
   const { isAuthenticated } = useConvexAuth();
   const heartbeat = useMutation(api.presence.heartbeat);
+  const me = useQuery(api.profiles.me, isAuthenticated ? {} : "skip");
+  // Wait for the profile; send nothing without one or when Online Now! is off.
+  const sharing = me != null && !me.banned && me.showOnline !== false;
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!sharing) return;
     const beat = () => {
       if (document.visibilityState === "visible") void heartbeat().catch(() => {});
     };
@@ -47,7 +50,7 @@ function PresenceHeartbeat() {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", beat);
     };
-  }, [isAuthenticated, heartbeat]);
+  }, [sharing, heartbeat]);
   return null;
 }
 

@@ -55,6 +55,25 @@ describe("presence.heartbeat", () => {
     expect(rows[0].lastSeenAt).toBe(NOW.getTime() + 1000);
   });
 
+  test("deletes an existing row when showOnline is off", async () => {
+    const t = setup();
+    const id = await addProfile(t, "mia", { showOnline: false });
+    await t.run((ctx) => ctx.db.insert("presence", { profileId: id, lastSeenAt: Date.now() }));
+    await (await as(t, id)).mutation(api.presence.heartbeat, {});
+    expect(await presenceOf(t, id)).toHaveLength(0);
+  });
+
+  test("refuses banned and unverified members and writes nothing", async () => {
+    const t = setup();
+    const banned = await addProfile(t, "bob", { banned: true });
+    await expect((await as(t, banned)).mutation(api.presence.heartbeat, {})).rejects.toThrow("Account banned");
+    const unv = await addProfile(t, "una");
+    const p = await t.run((ctx) => ctx.db.get(unv));
+    await t.run((ctx) => ctx.db.patch(p!.userId, { emailVerificationTime: undefined }));
+    await expect((await as(t, unv)).mutation(api.presence.heartbeat, {})).rejects.toThrow("Email not verified");
+    expect(await t.run((ctx) => ctx.db.query("presence").collect())).toHaveLength(0);
+  });
+
   test("does nothing when showOnline is off", async () => {
     const t = setup();
     const id = await addProfile(t, "mia", { showOnline: false });

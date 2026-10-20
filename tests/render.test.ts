@@ -399,6 +399,8 @@ describe("URL schemes and escaping", () => {
     const own = renderProfileDocument(fan({ online: true }), opts);
     expect(own).toContain('class="online-now"');
     expect(own).toContain("Online Now!");
+    expect(own.indexOf(`class="photo-main"`)).toBeLessThan(own.indexOf("Online Now!"));
+    expect(own.indexOf("Online Now!")).toBeLessThan(own.indexOf(`class="basic-info"`));
     const friend = renderProfileDocument(fan({ top8: [{ ...card("amy"), online: true }, card("bob")] }), opts);
     expect(friend.match(/Online Now!/g)).toHaveLength(1);
     expect(friend.indexOf("Online Now!")).toBeGreaterThan(friend.indexOf("Amy"));

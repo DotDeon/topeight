@@ -17,7 +17,7 @@ export function OnlineSetting({ showOnline }: { showOnline: boolean | undefined 
           checked={showOnline !== false}
           onChange={(e) => void run(() => setShowOnline({ value: e.target.checked }), "Saved")}
         />{" "}
-        Show &quot;Online Now!&quot; on my profile and in friend lists
+        Show when I&apos;m online
       </label>{" "}
       <StatusLine status={status} />
     </Box>
