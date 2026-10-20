@@ -65,6 +65,8 @@ export type PublicProfile = {
    * deleted, artist banned or sharing off). `id` is the Convex track id; `url` is
    * null until the usercontent route merges in a signed one.
    */
+  /** Artists only: false when they have turned song sharing off, so no pick links show. */
+  shareSongs?: boolean;
   profileSong?: { id: string; title: string; url: string | null; artist: PublicCard } | null;
   shows: Array<{ date: string; venue: string; city: string }>;
   custom: { css: string; html: string; js: string };

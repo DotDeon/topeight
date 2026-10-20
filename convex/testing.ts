@@ -83,6 +83,13 @@ function probeJs(mainOrigin: string, foreignTrackId: string): string {
     r.foreignReports = (r.foreignReports || 0) + 2;
     write();
   });
+  // Picking a song that is not on this profile (or is not a track at all) must open no dialog.
+  document.getElementById("probe-pick-foreign").addEventListener("click", function () {
+    window.topeight.pickSong(FOREIGN_TRACK);
+    window.parent.postMessage({ type: "topeight:pickSong", trackId: FOREIGN_TRACK }, "*");
+    r.foreignPicks = (r.foreignPicks || 0) + 2;
+    write();
+  });
   // Artist code can rewrite the track title it shows; the parent dialog must not use it.
   document.addEventListener("DOMContentLoaded", function () {
     var title = document.querySelector(".player-track > span");
@@ -93,7 +100,8 @@ function probeJs(mainOrigin: string, foreignTrackId: string): string {
 
 const PROBE_HTML = `<p><button type="button" id="probe-add-friend">Probe: add friend</button>
 <button type="button" id="probe-navigate">Probe: navigate</button>
-<button type="button" id="probe-report-foreign">Probe: report foreign track</button></p>`;
+<button type="button" id="probe-report-foreign">Probe: report foreign track</button>
+<button type="button" id="probe-pick-foreign">Probe: pick foreign track</button></p>`;
 
 const FAN_CSS = `body { background: #fdf0ff; }
 .profile-left .name { color: #990066; }`;
@@ -649,15 +657,18 @@ export const resetOnlineFixture = internalMutation({
 });
 
 /**
- * Fixture for e2e/profile-song.spec.ts: clears the commenter fan's profile song
- * and pick row, turns sharing back on for the sandboxtest and e2eeditor artists,
- * and resets the pick and sharing limits. `shareSongs` (default true) is set on
- * sandboxtest so a spec can switch it off without an artist login.
+ * Fixture for e2e/profile-song.spec.ts and the song tests in e2e/edit.spec.ts.
+ * Without `editor`: clears the commenter fan's profile song and pick row, turns
+ * sharing back on for sandboxtest and resets the pick limit. With `editor`: only
+ * the editor group is touched (never the fan or sandboxtest), so the two specs
+ * never race. It clears the admin fixture's pick, turns the editor's sharing back
+ * on, resets limits, and leaves the editor with one track ("withTrack") or none
+ * ("plain").
  */
 export const resetProfileSongFixture = internalMutation({
-  args: { sandboxShares: v.optional(v.boolean()) },
+  args: { editor: v.optional(v.union(v.literal("plain"), v.literal("withTrack"))) },
   returns: v.null(),
-  handler: async (ctx, { sandboxShares }) => {
+  handler: async (ctx, { editor: editorMode }) => {
     if (process.env.TOPEIGHT_TEST_FIXTURES !== "1") {
       throw new ConvexError("Set TOPEIGHT_TEST_FIXTURES=1 on this deployment to seed test fixtures");
     }
@@ -672,15 +683,31 @@ export const resetProfileSongFixture = internalMutation({
       }
       return profile;
     };
-    const fan = await fixture("e2ecommenter", COMMENTER_EMAIL);
-    const editor = await fixture("e2eeditor", EDITOR_EMAIL);
-    const sandbox = await fixture("sandboxtest", null);
-    await clearPick(ctx, fan);
-    await ctx.db.patch(fan._id, { profileSong: undefined });
-    await ctx.db.patch(editor._id, { shareSongs: undefined });
-    await ctx.db.patch(sandbox._id, { shareSongs: sandboxShares === false ? false : undefined });
-    await rateLimiter.reset(ctx, "songPick", { key: fan._id });
-    await rateLimiter.reset(ctx, "shareSongs", { key: editor._id });
+    if (editorMode === undefined) {
+      const fan = await fixture("e2ecommenter", COMMENTER_EMAIL);
+      const sandbox = await fixture("sandboxtest", null);
+      await clearPick(ctx, fan);
+      await ctx.db.patch(fan._id, { profileSong: undefined });
+      await ctx.db.patch(sandbox._id, { shareSongs: undefined });
+      await rateLimiter.reset(ctx, "songPick", { key: fan._id });
+    } else {
+      const editor = await fixture("e2eeditor", EDITOR_EMAIL);
+      const admin = await fixture("e2eadmin", ADMIN_EMAIL);
+      await clearPick(ctx, admin);
+      await rateLimiter.reset(ctx, "songPick", { key: admin._id });
+      await ctx.db.patch(editor._id, { shareSongs: undefined });
+      await rateLimiter.reset(ctx, "shareSongs", { key: editor._id });
+      if (editorMode === "withTrack") {
+        await ensureFixtureTrack(ctx, editor._id, "Editor Song");
+      } else {
+        const rows = await ctx.db
+          .query("tracks")
+          .withIndex("by_profile_order", (q) => q.eq("profileId", editor._id))
+          .take(20);
+        for (const t of rows) await ctx.db.delete(t._id);
+        await syncMediaFlags(ctx, editor._id);
+      }
+    }
     return null;
   },
 });

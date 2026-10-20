@@ -8,7 +8,7 @@ import styles from "./ConfirmDialog.module.css";
 /** Confirm stays disabled this long after opening, so a click already on its way lands nowhere. */
 export const ARM_DELAY_MS = 500;
 
-/** `track` comes from the parent's own track list, for reportTrack. */
+/** `track` comes from the parent's own track list, for reportTrack and pickSong. */
 export type ConfirmRequest = { id: number; action: DialogAction; track?: { id: string; title: string; owner?: string } };
 
 /**

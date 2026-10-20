@@ -189,7 +189,7 @@ function renderPlayer(p: PublicProfile, name: string, opts: RenderOptions): stri
   if (tracks.length === 0) return "";
   const autoplay = tracks.findIndex((t) => t.autoplay);
   const first = autoplay >= 0 ? autoplay : 0;
-  const items = tracks.map((t, i) => playerRow(t, i, i === first, opts.hidePick === true)).join("");
+  const items = tracks.map((t, i) => playerRow(t, i, i === first, opts.hidePick === true || p.shareSongs === false)).join("");
   const refresh = opts.usercontentOrigin
     ? ` data-tracks-url="${escapeHtml(`${opts.usercontentOrigin.replace(/\/+$/, "")}/${encodeURIComponent(p.username)}?format=tracks`)}"`
     : "";

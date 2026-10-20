@@ -31,6 +31,21 @@ describe("hosts", () => {
       to: "/usercontent/lowveld",
     });
     expect(routeForHost("usercontent", "/a/b", "?format=tracks")).toEqual({ action: "notFound" });
+    expect(routeForHost("usercontent", "/lowveld", "?own=1")).toEqual({
+      action: "rewrite",
+      to: "/usercontent/lowveld?own=1",
+    });
+    expect(routeForHost("usercontent", "/lowveld", "?own=1&format=tracks")).toEqual({
+      action: "rewrite",
+      to: "/usercontent/lowveld?format=tracks&own=1",
+    });
+    // Only the exact value 1 counts.
+    for (const own of ["0", "true", "", "11", "1x"]) {
+      expect(routeForHost("usercontent", "/lowveld", `?own=${own}`)).toEqual({
+        action: "rewrite",
+        to: "/usercontent/lowveld",
+      });
+    }
     expect(routeForHost("main", "/lowveld", "?format=tracks")).toEqual({ action: "next" });
   });
 

@@ -474,6 +474,7 @@ export const getPublicProfile = query({
       latestBulletin: bulletin ? { body: bulletin.body, createdAt: bulletin._creationTime } : null,
       latestBlog: blog ? { id: blog._id, title: blog.title, createdAt: blog._creationTime } : null,
       tracks,
+      ...(isArtist ? { shareSongs: p.shareSongs !== false } : {}),
       // No URL here either: the usercontent route merges in the one playbackUrls signs.
       profileSong:
         song === null

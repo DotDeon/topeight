@@ -6,6 +6,8 @@ import { clampFrameHeight, navigatePath, parseBridgeMessage } from "@/lib/bridge
 import type { BridgeAction } from "@/lib/bridge-protocol";
 
 const INITIAL_HEIGHT = 900;
+/** How long the frame waits to learn whether the visitor is on their own page. */
+export const VIEWER_WAIT_MS = 3000;
 
 /**
  * The profile document from the usercontent origin. The sandbox has no
@@ -36,6 +38,13 @@ export function ProfileFrame({
   const ref = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(INITIAL_HEIGHT);
   const router = useRouter();
+  // If the viewer lookup hasn't answered in time (a dead websocket), load anyway with the links visible.
+  const [gaveUp, setGaveUp] = useState(false);
+  useEffect(() => {
+    if (hidePick !== undefined) return;
+    const timer = setTimeout(() => setGaveUp(true), VIEWER_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [hidePick]);
   const src = `${process.env.NEXT_PUBLIC_USERCONTENT_ORIGIN}/${username}${hidePick ? "?own=1" : ""}`;
 
   useEffect(() => {
@@ -57,9 +66,9 @@ export function ProfileFrame({
   // src; it is set here, after hydration.
   useEffect(() => {
     // Wait until we know whether the visitor is on their own page, so the frame loads once.
-    if (hidePick === undefined) return;
+    if (hidePick === undefined && !gaveUp) return;
     if (ref.current && ref.current.src !== src) ref.current.src = src;
-  }, [src, hidePick]);
+  }, [src, hidePick, gaveUp]);
 
   useEffect(() => {
     if (reloadKey > 0 && ref.current) ref.current.src = src;

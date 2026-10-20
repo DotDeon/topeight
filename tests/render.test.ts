@@ -206,6 +206,20 @@ describe("player pick links", () => {
     expect(html).toContain('data-topeight-report-track="k1"');
   });
 
+  test("an artist with sharing off gets no pick links but keeps Report", () => {
+    const html = renderProfileDocument(
+      artist({ shareSongs: false, tracks: [{ ...t("Red Dust", true), id: "k1" }] }),
+      opts,
+    );
+    expect(html).not.toContain('data-topeight-pick-track="');
+    expect(html).toContain('data-topeight-report-track="k1"');
+    const on = renderProfileDocument(
+      artist({ shareSongs: true, tracks: [{ ...t("Red Dust", true), id: "k1" }] }),
+      opts,
+    );
+    expect(on).toContain('data-topeight-pick-track="k1"');
+  });
+
   test("the profile song row has a Report link for the artist's track and no pick link", () => {
     const html = renderProfileDocument(withSong(), opts);
     const row = html.match(/<li class="player-song">.*?<\/li>/)?.[0] ?? "";
