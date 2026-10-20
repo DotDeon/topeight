@@ -9,7 +9,12 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "TopEight",
-  description: "A place for friends.",
+  description: "Remember when the internet was fun?",
+  openGraph: {
+    title: "TopEight",
+    description: "Remember when the internet was fun?",
+    images: ["/brand/og-image.png"],
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -1,0 +1,74 @@
+.zip {
+  font-weight: bold;
+}
+
+.grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.item {
+  border: 1px solid #ccc;
+  padding: 8px;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.preview {
+  height: 130px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+  border: 1px solid #ccc;
+}
+
+.blue {
+  background: #003399;
+}
+
+.white {
+  background: #fff;
+}
+
+.img {
+  max-width: 90%;
+  max-height: 110px;
+  width: auto;
+  height: auto;
+}
+
+.name {
+  font-weight: bold;
+}
+
+.size {
+  color: #666;
+  margin-bottom: 2px;
+}
+
+.swatches {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.swatch {
+  font-size: 11px;
+}
+
+.chip {
+  display: inline-block;
+  width: 28px;
+  height: 18px;
+  border: 1px solid #999;
+  vertical-align: middle;
+  margin-right: 4px;
+}

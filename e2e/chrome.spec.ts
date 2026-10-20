@@ -4,7 +4,7 @@ test("about page shows the classic chrome", async ({ page }) => {
   await page.goto("/about");
   const header = page.locator("header");
   await expect(header).toContainText("TopEight");
-  await expect(header).toContainText("a place for friends");
+  await expect(header).toContainText("remember when the internet was fun?");
   await expect(page.locator("nav a")).toHaveCount(12);
   await expect(page.locator("footer")).toContainText("Report Abuse");
   await expect(header.getByLabel("TopEight")).toBeChecked();

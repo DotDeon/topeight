@@ -14,6 +14,7 @@ export const RESERVED_USERNAMES: ReadonlySet<string> = new Set([
   "privacy",
   "safety",
   "usercontent",
+  "brand",
   "coming-soon",
   "static",
   "public",

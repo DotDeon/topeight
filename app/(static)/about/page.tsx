@@ -5,7 +5,7 @@ export default function AboutPage() {
     <div className="prose">
       <h1>About TopEight</h1>
       <p>
-        TopEight is a place for friends. You get a profile, a friend list, a comment wall and
+        TopEight is for people who remember when the internet was fun. You get a profile, a friend list, a comment wall and
         bulletins, laid out the way social sites looked in 2006. Artists can add music, shows
         and their own page code.
       </p>

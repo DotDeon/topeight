@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { HeaderAuthLinks } from "./HeaderAuthLinks";
 import styles from "./Header.module.css";
@@ -5,10 +6,12 @@ import styles from "./Header.module.css";
 export function Header() {
   return (
     <header className={styles.header}>
+      <div className={styles.brand}>
       <Link href="/" className={styles.logo}>
-        <span className={styles.big}>TopEight</span>
-        <span className={styles.small}>a place for friends</span>
+        <Image src="/brand/topeight-logo.svg" alt="TopEight" width={239} height={34} unoptimized priority className={styles.mark} />
       </Link>
+      <span className={styles.small}>remember when the internet was fun?</span>
+      </div>
       <div className={styles.right}>
         <HeaderAuthLinks />
         <form action="/search" method="get" className={styles.search}>
