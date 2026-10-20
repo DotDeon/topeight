@@ -224,7 +224,7 @@ function renderLeft(p: PublicProfile, opts: RenderOptions): string {
 ${renderPlayer(p, name, opts)}
 <div class="contact"><h5>Contacting ${name}</h5><table>
 <tr><td>&#9993; ${actionLink("message", "Send Message")}</td><td>&#10010; ${actionLink("addFriend", "Add to Friends")}</td></tr>
-<tr><td>&#10148; ${actionLink("forward", "Forward to Friend")}</td><td>&#9733; <span class="soon" title="Coming soon">Add to Favorites</span></td></tr>
+<tr><td>&#10148; ${actionLink("forward", "Forward to Friend")}</td><td>&#9733; ${actionLink("favorite", "Add to Favorites")}</td></tr>
 <tr><td>&#9888; ${actionLink("report", "Report")}</td><td>&#10006; ${actionLink("block", "Block User")}</td></tr>
 </table></div>
 <div class="profile-url"><b>TopEight URL:</b><br>${escapeHtml(host)}/${escapeHtml(p.username)}</div>

@@ -62,6 +62,14 @@ export default defineSchema({
       filterFields: ["kind", "banned"],
     }),
 
+  /** A member's saved profiles. One row per owner and profile. */
+  favorites: defineTable({
+    ownerId: v.id("profiles"),
+    profileId: v.id("profiles"),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_pair", ["ownerId", "profileId"]),
+
   /** Counters kept off the profiles doc so bumping them doesn't re-run queries that read profiles. */
   profileStats: defineTable({
     profileId: v.id("profiles"),

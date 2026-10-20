@@ -11,6 +11,7 @@
 import type * as auth from "../auth.js";
 import type * as bulletins from "../bulletins.js";
 import type * as comments from "../comments.js";
+import type * as favorites from "../favorites.js";
 import type * as home from "../home.js";
 import type * as http from "../http.js";
 import type * as lib_access from "../lib/access.js";
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   bulletins: typeof bulletins;
   comments: typeof comments;
+  favorites: typeof favorites;
   home: typeof home;
   http: typeof http;
   "lib/access": typeof lib_access;

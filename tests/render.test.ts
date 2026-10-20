@@ -273,7 +273,7 @@ describe("renderProfileDocument (hardening)", () => {
       fan({ top8: [card("tom")], comments: [c("hi")], commentCount: 57 }),
       opts,
     );
-    for (const a of ["addFriend", "addComment", "report", "block", "forward", "message"]) {
+    for (const a of ["addFriend", "addComment", "report", "block", "forward", "favorite", "message"]) {
       expect(html).toContain(`data-topeight-action="${a}"`);
     }
     expect(html).toContain('data-topeight-navigate="tom">');

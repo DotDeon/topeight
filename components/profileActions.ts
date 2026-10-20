@@ -67,6 +67,12 @@ const addFriend = (target: ActionTarget, client: ConvexReactClient) =>
     return result === "accepted" ? "You are now friends" : "Friend request sent";
   });
 
+const favorite = (target: ActionTarget, client: ConvexReactClient) =>
+  runSocial(target, client, "Log in to save Favorites", async () => {
+    const result = await client.mutation(api.favorites.add, { username: target.username });
+    return result === "exists" ? "Already in your Favorites" : "Saved to Favorites";
+  });
+
 const block = (target: ActionTarget, client: ConvexReactClient) =>
   runSocial(target, client, "Log in to block people", async (id) => {
     await client.mutation(api.social.block, { other: id });
@@ -130,6 +136,9 @@ export const PROFILE_ACTIONS: Record<DialogAction, ProfileAction> = {
     label: "Remove from Friends", question: (n) => `Remove ${n} from your friends?`, run: removeFriend,
   },
   unblock: { label: "Unblock", question: (n) => `Unblock ${n}?`, run: unblock },
+  favorite: {
+    label: "Add to Favorites", question: (n) => `Add ${n} to your Favorites?`, run: favorite,
+  },
   forward: { label: "Forward to Friend", question: () => "Forward to Friend is coming soon." },
   // Never opens a dialog: ProfileView sends the visitor to the compose page instead.
   message: { label: "Send Message", question: () => "" },

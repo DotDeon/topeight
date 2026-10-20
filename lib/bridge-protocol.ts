@@ -13,6 +13,7 @@ export const BRIDGE_ACTIONS = [
   "report",
   "block",
   "forward",
+  "favorite",
   "message",
 ] as const;
 
