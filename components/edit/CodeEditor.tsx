@@ -24,6 +24,7 @@ export function CodeEditor({ me }: { me: Doc<"profiles"> }) {
   const [html, setHtml] = useState(me.customHtml);
   const [js, setJs] = useState(me.customJs);
   const [srcDoc, setSrcDoc] = useState<string | null>(null);
+  const [tracksFailed, setTracksFailed] = useState(false);
 
   const total = bytes(css) + (artist ? bytes(html) + bytes(js) : 0);
   const over = total > MAX_BYTES;
@@ -35,7 +36,14 @@ export function CodeEditor({ me }: { me: Doc<"profiles"> }) {
     // The same policy the usercontent route sends, minus frame-ancestors, which a meta tag ignores.
     const cspMeta = buildUsercontentCsp(usercontentOrigin);
     // Track URLs are signed on demand, like the usercontent route does. No URLs, no player.
-    const signed = artist ? await playbackUrls({ username: me.username }).catch(() => []) : [];
+    let failed = false;
+    const signed = artist
+      ? await playbackUrls({ username: me.username }).catch(() => {
+          failed = true;
+          return [];
+        })
+      : [];
+    setTracksFailed(failed);
     const urls = new Map<string, string>(signed.map((t) => [t.id, t.url]));
     const tracks = profile.tracks.map((t) => ({ ...t, url: urls.get(t.id) ?? null }));
     setSrcDoc(
@@ -77,6 +85,7 @@ export function CodeEditor({ me }: { me: Doc<"profiles"> }) {
           <StatusLine status={status} />
         </div>
       </form>
+      {srcDoc !== null && tracksFailed && <p className={styles.note}>Tracks unavailable in preview</p>}
       {srcDoc !== null && (
         <iframe
           className={styles.preview}

@@ -144,7 +144,7 @@ async function trackIsOn(ctx: Ctx, track: Doc<"tracks">, username: string | unde
     .query("profiles")
     .withIndex("by_username", (q) => q.eq("username", checked.username))
     .unique();
-  return owner !== null && owner._id === track.profileId;
+  return owner !== null && !owner.banned && owner._id === track.profileId;
 }
 
 /**

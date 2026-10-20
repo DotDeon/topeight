@@ -131,6 +131,7 @@ export function TracksForm() {
           <label htmlFor="track-file">MP3 file</label>
           <div className={styles.val}>
             <input id="track-file" ref={input} type="file" accept="audio/mpeg,.mp3" required />
+            <span className={styles.note}>Songs up to about 5 minutes</span>
           </div>
         </div>
         <div className={styles.actions}>

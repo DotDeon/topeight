@@ -132,4 +132,50 @@ describe("moveTracksToAudioBucket", () => {
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(copies.sort()).toEqual([...legacy].sort());
   });
+
+  test("a 403 from R2 halts the run with a message naming the buckets", async () => {
+    const t = setup();
+    await addTracks(t, 3, "public");
+    vi.mocked(storage.copyToAudio).mockImplementation(async () => {
+      throw Object.assign(new Error("denied"), { name: "AccessDenied", $metadata: { httpStatusCode: 403 } });
+    });
+    await expect(t.action(internal.migrations.moveTracksToAudioBucket, {})).rejects.toThrow(
+      /access denied.*Object Read & Write.*test-bucket.*test-audio-bucket/,
+    );
+    expect(deletes).toEqual([]);
+    expect(vi.mocked(storage.copyToAudio)).toHaveBeenCalledTimes(1);
+  });
+
+  test("a 403 from HEAD halts the run too", async () => {
+    const t = setup();
+    await addTracks(t, 2, "public");
+    vi.mocked(storage.head).mockImplementation(async () => {
+      throw Object.assign(new Error("Forbidden"), { $metadata: { httpStatusCode: 403 } });
+    });
+    await expect(t.action(internal.migrations.moveTracksToAudioBucket, {})).rejects.toThrow("access denied");
+    expect(copies).toEqual([]);
+  });
+
+  test("logs moved, skipped and failed counts per page and at the end", async () => {
+    const t = setup();
+    await addTracks(t, 1, "audio");
+    await addTracks(t, 2, "public");
+    // A track in neither bucket cannot be copied.
+    const band = await addProfile(t, "ghost", { kind: "artist" });
+    await t.run((ctx) =>
+      ctx.db.insert("tracks", { profileId: band, title: "x", key: "tracks/ghost/x", size: 1, order: 0, autoplay: true }),
+    );
+    vi.mocked(storage.copyToAudio).mockImplementation(async (key: string) => {
+      if (key === "tracks/ghost/x") throw new Error("NoSuchKey");
+      copies.push(key);
+      buckets["test-audio-bucket"].add(key);
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    // The ghost has no object in the audio bucket, so head returns null and copy throws.
+    await runAll(t);
+    const lines = log.mock.calls.map((c) => String(c[0]));
+    expect(lines.some((l) => l.includes("page moved=2 skipped=1 failed=1"))).toBe(true);
+    expect(lines.some((l) => l.includes("done. moved=2 skipped=1 failed=1"))).toBe(true);
+  });
 });

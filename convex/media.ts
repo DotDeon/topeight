@@ -164,6 +164,8 @@ export const expireUpload = internalMutation({
     const row = await ctx.db.get(uploadId);
     if (row === null) return null;
     await storage.remove(ctx, row.key, row.purpose);
+    // An upload in flight when tracks moved buckets may have landed in the public one.
+    if (row.purpose === "track") await storage.removeLegacyPublic(ctx, row.key);
     await ctx.db.delete(row._id);
     return null;
   },
@@ -187,6 +189,7 @@ export const removeObject = internalMutation({
 async function reject(ctx: MutationCtx, row: Doc<"uploads">, reason: string) {
   console.warn(`Upload rejected: ${reason} (${row.key})`);
   await storage.remove(ctx, row.key, row.purpose);
+  if (row.purpose === "track") await storage.removeLegacyPublic(ctx, row.key);
   await ctx.db.delete(row._id);
   // The object is gone, so If-None-Match no longer blocks a second PUT on the same
   // URL. Sweep the key again once that URL has expired.

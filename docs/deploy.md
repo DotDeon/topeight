@@ -116,8 +116,19 @@ Running the seed again is safe. It updates the demo profiles and refreshes the s
 
 ## 10. After upgrading
 
-Run `npx convex run migrations:backfillMediaFlags` once. It sets the photo and track flags that Cool New People and Cool New Music read, on profiles made before those flags existed. It works through 100 profiles at a time and schedules itself until done. Running it again is safe.
+Follow these steps in order on an existing deployment.
 
-### Move existing songs to the private bucket
+1. Create the private audio bucket. Give it no public domain and leave the r2.dev URL off.
+2. Add its CORS policy, the same one as in section 3.
+3. Give the API token Object Read & Write on both buckets.
+4. Set `R2_AUDIO_BUCKET` on Convex: `npx convex env set R2_AUDIO_BUCKET <bucket name>`.
+5. Deploy.
+6. Run `npx convex run migrations:moveTracksToAudioBucket`.
+7. Run `npx convex run migrations:backfillMediaFlags`.
+8. Smoke test: upload a song, play it, delete it.
 
-Right after deploying the version with `R2_AUDIO_BUCKET`, run `npx convex run migrations:moveTracksToAudioBucket` once. Songs uploaded before then sit in the public photo bucket, where anyone with the link can reach them and where they no longer play. The migration copies each one to `R2_AUDIO_BUCKET` unless it is already there, then deletes the public copy. It works through 50 songs at a time and schedules itself until done. Running it again is safe, and songs that already moved are skipped. Set `R2_AUDIO_BUCKET` before you run it.
+Deletes fail until `R2_AUDIO_BUCKET` is set, so do not deploy before step 4.
+
+Step 6 copies songs uploaded before the audio bucket existed out of the public photo bucket, where anyone with the link can reach them and where they no longer play. It copies each one to `R2_AUDIO_BUCKET` unless it is already there, then deletes the public copy. It works through 50 songs at a time and schedules itself until done, logging moved, skipped and failed counts per page and at the end. Running it again is safe, and songs that already moved are skipped. If the token lacks access to either bucket, the run stops with an error that names the bucket. Fix the token and run it again.
+
+Step 7 sets the photo and track flags that Cool New People and Cool New Music read, on profiles made before those flags existed. It works through 100 profiles at a time and schedules itself until done. Running it again is safe.

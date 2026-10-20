@@ -459,6 +459,32 @@ describe("upload lifecycle", () => {
     await expect(me.mutation(api.media.generateUploadUrl, { uploadId })).rejects.toThrow("Upload expired");
   });
 
+  test("expireUpload also clears a public copy of a track, and not for photos", async () => {
+    const t = mediaSetup();
+    const band = await addProfile(t, "band", { kind: "artist" });
+    const me = await as(t, band);
+    const { uploadId } = await me.mutation(api.media.beginUpload, { purpose: "track", ...mp3() });
+    const { key } = await me.mutation(api.media.generateUploadUrl, { uploadId });
+    vi.advanceTimersByTime(EXPIRE_AFTER_MS + 1);
+    await t.finishInProgressScheduledFunctions();
+    expect(removed).toEqual([key]);
+    expect(legacyRemoved).toEqual([key]);
+  });
+
+  test("a rejected track also clears a public copy", async () => {
+    const t = mediaSetup();
+    const band = await addProfile(t, "band", { kind: "artist" });
+    const key = await upload(t, band, "track", mp3(), undefined, mp3(MB));
+    expect(legacyRemoved).toEqual([key]);
+  });
+
+  test("a rejected photo does not touch the public-copy cleanup", async () => {
+    const t = mediaSetup();
+    const band = await addProfile(t, "band", { kind: "artist" });
+    await upload(t, band, "photo", { size: 10, contentType: "image/jpeg" }, undefined, { size: 11, contentType: "image/jpeg" });
+    expect(legacyRemoved).toEqual([]);
+  });
+
   test("expireUpload does nothing once the upload was accepted", async () => {
     const t = mediaSetup();
     const band = await addProfile(t, "band", { kind: "artist" });

@@ -8,7 +8,12 @@ import { expect, test, type Page } from "@playwright/test";
  */
 function reseed(fn: "seedCommenterFriendship" | "seedEditorBlock") {
   const envFile = process.env.E2E_CONVEX_ENV_FILE ? ["--env-file", process.env.E2E_CONVEX_ENV_FILE] : [];
-  execFileSync("npx", ["convex", "run", ...envFile, `testing:${fn}`], { stdio: "inherit" });
+  // Never throws: this runs in finally blocks, and a reseed failure must not mask the test's own error.
+  try {
+    execFileSync("npx", ["convex", "run", ...envFile, `testing:${fn}`], { stdio: "inherit" });
+  } catch (e) {
+    console.error(`reseed ${fn} failed`, e);
+  }
 }
 
 async function login(page: Page, email: string, password: string | undefined, envName: string) {

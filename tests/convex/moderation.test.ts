@@ -146,6 +146,20 @@ describe("moderation.report", () => {
     expect(await reports(t)).toHaveLength(2);
   });
 
+  test("a track report is refused when the owner is banned", async () => {
+    const { t, reporter, target } = await world();
+    const mine = await addTrack(t, target, "Mine");
+    await t.run((ctx) => ctx.db.patch(target, { banned: true }));
+    await expect(
+      (await as(t, reporter)).mutation(api.moderation.report, {
+        targetType: "track",
+        targetId: mine,
+        profileUsername: "target",
+        reason: "x",
+      }),
+    ).rejects.toThrow("Not found");
+  });
+
   test("other target types ignore profileUsername", async () => {
     const { t, reporter, target } = await world();
     const comment = await addComment(t, target, target);

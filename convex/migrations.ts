@@ -40,36 +40,75 @@ export const trackKeysPage = internalQuery({
   },
 });
 
+/** True for an R2 permission failure: HTTP 403, AccessDenied or Forbidden. */
+function isAccessDenied(e: unknown): boolean {
+  const err = e as { name?: string; $metadata?: { httpStatusCode?: number } };
+  return err.$metadata?.httpStatusCode === 403 || err.name === "AccessDenied" || err.name === "Forbidden";
+}
+
+const counts = v.object({ moved: v.number(), skipped: v.number(), failed: v.number() });
+
 /**
  * Moves tracks uploaded before the private audio bucket existed out of the public
  * bucket. For each track: copy it to R2_AUDIO_BUCKET unless it is already there,
  * then delete the public copy if one exists. 50 tracks per run, then it schedules
- * itself with the continue cursor. Safe to run again.
+ * itself with the continue cursor and the running counts. Safe to run again.
+ *
+ * A 403 from R2 stops the run with an error: it means the API token cannot reach
+ * a bucket, and every later track would fail the same way. Other errors are
+ * logged, counted as failed, and the run continues.
  * Run it once right after deploying: npx convex run migrations:moveTracksToAudioBucket
  */
 export const moveTracksToAudioBucket = internalAction({
-  args: { cursor: v.optional(v.string()) },
+  args: { cursor: v.optional(v.string()), totals: v.optional(counts) },
   returns: v.null(),
-  handler: async (ctx, { cursor }) => {
+  handler: async (ctx, { cursor, totals }) => {
     const page: { keys: string[]; continueCursor: string; isDone: boolean } = await ctx.runQuery(
       internal.migrations.trackKeysPage,
       { cursor },
     );
     const audio = audioBucket();
     const pub = photoBucket();
+    const run = { moved: totals?.moved ?? 0, skipped: totals?.skipped ?? 0, failed: totals?.failed ?? 0 };
+    const pageCounts = { moved: 0, skipped: 0, failed: 0 };
     for (const key of page.keys) {
       try {
-        if ((await storage.head(key, audio)) === null) await storage.copyToAudio(key);
-        if ((await storage.head(key, pub)) !== null) await storage.removeLegacyPublic(ctx, key);
+        let didWork = false;
+        if ((await storage.head(key, audio)) === null) {
+          await storage.copyToAudio(key);
+          didWork = true;
+        }
+        if ((await storage.head(key, pub)) !== null) {
+          await storage.removeLegacyPublic(ctx, key);
+          didWork = true;
+        }
+        pageCounts[didWork ? "moved" : "skipped"]++;
       } catch (e) {
+        if (isAccessDenied(e)) {
+          throw new Error(
+            `moveTracksToAudioBucket: access denied on ${key}. Give the R2 API token Object Read & Write on both the photo bucket "${pub}" and the audio bucket "${audio}", then run it again. Stopped after moved=${run.moved + pageCounts.moved}, skipped=${run.skipped + pageCounts.skipped}, failed=${run.failed + pageCounts.failed}.`,
+          );
+        }
         // A key in neither bucket cannot be copied. Log it and keep going.
+        pageCounts.failed++;
         console.warn(`moveTracksToAudioBucket: ${key} failed`, e);
       }
     }
+    run.moved += pageCounts.moved;
+    run.skipped += pageCounts.skipped;
+    run.failed += pageCounts.failed;
+    console.log(
+      `moveTracksToAudioBucket: page moved=${pageCounts.moved} skipped=${pageCounts.skipped} failed=${pageCounts.failed}; total moved=${run.moved} skipped=${run.skipped} failed=${run.failed}`,
+    );
     if (!page.isDone) {
       await ctx.scheduler.runAfter(0, internal.migrations.moveTracksToAudioBucket, {
         cursor: page.continueCursor,
+        totals: run,
       });
+    } else {
+      console.log(
+        `moveTracksToAudioBucket: done. moved=${run.moved} skipped=${run.skipped} failed=${run.failed}`,
+      );
     }
     return null;
   },

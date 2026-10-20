@@ -12,7 +12,7 @@ const CHUNK = 1152 * 64;
 /** Longest song accepted, in seconds. 128 kbps for this long stays under 5 MB. */
 export const MAX_SONG_SECONDS = 327;
 export const TOO_LONG = "That song is too long. Songs can be about 5 minutes.";
-export const NOT_PLAYABLE = "That file isn't a playable MP3";
+export const NOT_PLAYABLE = "That file isn't playable audio";
 
 export async function transcodeToMp3_128(file: File): Promise<File> {
   // An OfflineAudioContext decodes and resamples to 44.1 kHz without needing
