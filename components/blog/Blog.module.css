@@ -1,0 +1,82 @@
+.entry {
+  margin: 0 0 12px;
+  border: 1px solid #b1d0f0;
+  background: #fff;
+}
+
+.dateBar {
+  margin: 0;
+  padding: 3px 6px;
+  background: #6698cb;
+  color: #fff;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.title {
+  margin: 6px 6px 2px;
+  font-size: 12px;
+  font-weight: bold;
+  overflow-wrap: anywhere;
+}
+
+.text {
+  margin: 4px 6px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.meta {
+  margin: 4px 6px;
+}
+
+.foot {
+  margin: 0;
+  padding: 4px 6px;
+  background: #d5e8fb;
+}
+
+.actions {
+  margin-left: 8px;
+}
+
+.form label {
+  display: block;
+  font-weight: bold;
+  margin: 6px 0 2px;
+}
+
+.form input[type="text"],
+.form textarea,
+.form select {
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.form input[type="text"],
+.form textarea {
+  width: 100%;
+}
+
+.moodRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.moodRow input[type="text"] {
+  flex: 1;
+}
+
+.error {
+  margin-left: 8px;
+  color: #c00;
+}
+
+.muted {
+  color: #666;
+}
+
+.feedItem {
+  margin: 0 0 6px;
+}

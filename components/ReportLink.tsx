@@ -9,8 +9,17 @@ import styles from "./Posts.module.css";
 
 const MAX_REASON = 500;
 
-/** A small Report button for one comment, bulletin or message. Asks for a reason with window.prompt. */
-export function ReportLink({ targetType, targetId }: { targetType: "comment" | "bulletin" | "message"; targetId: string }) {
+/** A small Report button for one comment, bulletin, message, blog post or blog comment. Asks for a reason with window.prompt. */
+type ReportTarget = "comment" | "bulletin" | "message" | "blogPost" | "blogComment";
+const TARGET_NAME: Record<ReportTarget, string> = {
+  comment: "comment",
+  bulletin: "bulletin",
+  message: "message",
+  blogPost: "blog post",
+  blogComment: "blog comment",
+};
+
+export function ReportLink({ targetType, targetId }: { targetType: ReportTarget; targetId: string }) {
   const { isAuthenticated } = useConvexAuth();
   const report = useMutation(api.moderation.report);
   const [note, setNote] = useState("");
@@ -22,7 +31,7 @@ export function ReportLink({ targetType, targetId }: { targetType: "comment" | "
     );
   }
   async function ask() {
-    const reason = window.prompt(`Why are you reporting this ${targetType}? (up to ${MAX_REASON} characters)`);
+    const reason = window.prompt(`Why are you reporting this ${TARGET_NAME[targetType]}? (up to ${MAX_REASON} characters)`);
     if (reason === null) return;
     if (reason.trim() === "") {
       setNote("Give a reason");
