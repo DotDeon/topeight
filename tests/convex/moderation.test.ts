@@ -108,6 +108,48 @@ describe("moderation.report", () => {
     await r.mutation(api.moderation.report, { targetType: "profile", targetId: reporter, reason: "x".repeat(500) });
   });
 
+  test("a track report succeeds only for a track on the named profile", async () => {
+    const { t, reporter, target } = await world();
+    const mine = await addTrack(t, target, "Mine");
+    const other = await addProfile(t, "other");
+    const foreign = await addTrack(t, other, "Elsewhere");
+    const r = await as(t, reporter);
+
+    await r.mutation(api.moderation.report, { targetType: "track", targetId: mine, profileUsername: "target", reason: " stolen " });
+    // Usernames are normalised the same way the rest of the site does.
+    await r.mutation(api.moderation.report, { targetType: "track", targetId: foreign, profileUsername: "Other", reason: "x" });
+    expect((await reports(t)).map((x) => [x.targetType, x.targetId, x.reason])).toEqual([
+      ["track", mine, "stolen"],
+      ["track", foreign, "x"],
+    ]);
+
+    for (const profileUsername of ["target", "nobody_here", "../admin", ""]) {
+      await expect(
+        r.mutation(api.moderation.report, { targetType: "track", targetId: foreign, profileUsername, reason: "x" }),
+      ).rejects.toThrow("Not found");
+    }
+    await expect(
+      r.mutation(api.moderation.report, { targetType: "track", targetId: mine, profileUsername: "other", reason: "x" }),
+    ).rejects.toThrow("Not found");
+    // profileUsername is required for tracks.
+    await expect(r.mutation(api.moderation.report, { targetType: "track", targetId: mine, reason: "x" })).rejects.toThrow(
+      "Not found",
+    );
+    expect(await reports(t)).toHaveLength(2);
+  });
+
+  test("other target types ignore profileUsername", async () => {
+    const { t, reporter, target } = await world();
+    const comment = await addComment(t, target, target);
+    await (await as(t, reporter)).mutation(api.moderation.report, {
+      targetType: "comment",
+      targetId: comment,
+      profileUsername: "nobody_here",
+      reason: "x",
+    });
+    expect(await reports(t)).toHaveLength(1);
+  });
+
   test("a second open report on the same target by the same reporter adds no row", async () => {
     const { t, boss, reporter, target } = await world();
     const comment = await addComment(t, target, target);
@@ -163,7 +205,7 @@ describe("admin functions", () => {
     vi.advanceTimersByTime(1000);
     await r.mutation(api.moderation.report, { targetType: "comment", targetId: comment, reason: "r2" });
     await r.mutation(api.moderation.report, { targetType: "bulletin", targetId: bulletin, reason: "r3" });
-    await r.mutation(api.moderation.report, { targetType: "track", targetId: track, reason: "r4" });
+    await r.mutation(api.moderation.report, { targetType: "track", targetId: track, profileUsername: "target", reason: "r4" });
 
     expect(await (await as(t, boss)).query(api.moderation.canModerate, {})).toBe(true);
     const list = await (await as(t, boss)).query(api.moderation.listOpen, {});
@@ -181,7 +223,14 @@ describe("admin functions", () => {
     });
     expect(list[1].preview).toMatchObject({ kind: "comment", body: "comment body", author: { username: "target" } });
     expect(list[2].preview).toMatchObject({ kind: "bulletin", body: "bulletin body" });
-    expect(list[3].preview).toMatchObject({ kind: "track", title: "Loud Song", url: `https://cdn.example.com/tracks/${target}/Loud Song` });
+    expect(list[3].preview).toEqual({
+      kind: "track",
+      trackId: track,
+      title: "Loud Song",
+      url: `https://cdn.example.com/tracks/${target}/Loud Song`,
+      ownerId: target,
+      owner: { username: "target", displayName: "TARGET", photoUrl: null, kind: "fan" },
+    });
 
     await t.run(async (ctx) => {
       for (let i = 0; i < 55; i++) {
@@ -226,7 +275,12 @@ describe("admin functions", () => {
     const { t, boss, reporter, target } = await world();
     const track = await addTrack(t, target, "Bad", 0);
     const next = await addTrack(t, target, "Good", 1);
-    await (await as(t, reporter)).mutation(api.moderation.report, { targetType: "track", targetId: track, reason: "x" });
+    await (await as(t, reporter)).mutation(api.moderation.report, {
+      targetType: "track",
+      targetId: track,
+      profileUsername: "target",
+      reason: "x",
+    });
     const [row] = await reports(t);
     await (await as(t, boss)).mutation(api.moderation.hide, { reportId: row._id });
     expect(await t.run((ctx) => ctx.db.get(track))).toBeNull();

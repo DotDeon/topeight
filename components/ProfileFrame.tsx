@@ -16,11 +16,14 @@ export function ProfileFrame({
   username,
   displayName,
   onAction,
+  onReportTrack,
   reloadKey = 0,
 }: {
   username: string;
   displayName: string;
   onAction: (action: BridgeAction) => void;
+  /** A track id the frame asked to report. Unchecked: the parent must look it up itself. */
+  onReportTrack: (trackId: string) => void;
   /** Bump this to load the profile document again, for example after a new comment. */
   reloadKey?: number;
 }) {
@@ -35,11 +38,12 @@ export function ProfileFrame({
       if (!msg) return;
       if (msg.type === "openspace:resize") setHeight(clampFrameHeight(msg.height));
       else if (msg.type === "openspace:navigate") router.push(navigatePath(msg));
+      else if (msg.type === "openspace:reportTrack") onReportTrack(msg.trackId);
       else onAction(msg.action);
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [router, onAction]);
+  }, [router, onAction, onReportTrack]);
 
   // The frame posts its height once on load and then only on change, so it
   // must not load before the listener above exists. The server markup has no

@@ -31,12 +31,14 @@ img.photo-main, .top8 img, .comment-who img { object-fit: cover; border: 1px sol
 .player-bar { height: 6px; background: #333; margin: 4px 0; cursor: pointer; }
 .player-bar i { display: block; width: 0; height: 100%; background: #ff9900; }
 .player-tracks { list-style: none; margin: 0; padding: 0; }
-.player-tracks li { border-bottom: 1px solid #333; }
-.player-track { display: flex; justify-content: space-between; width: 100%; background: none; border: 0; color: #ddd; font: inherit; padding: 2px 0; text-align: left; cursor: pointer; }
+.player-tracks li { display: flex; align-items: baseline; gap: 6px; border-bottom: 1px solid #333; }
+.player-track { display: flex; justify-content: space-between; flex: 1; min-width: 0; background: none; border: 0; color: #ddd; font: inherit; padding: 2px 0; text-align: left; cursor: pointer; }
 .player-track:hover { color: #fff; }
 .player-track .mark { visibility: hidden; }
 .player-track.current { color: #ff9900; }
 .player-track.current .mark { visibility: visible; }
+.player-report { color: #999; font-size: 9px; text-decoration: none; }
+.player-report:hover { color: #ccc; text-decoration: underline; }
 
 .contact { border: 1px solid #6698cb; margin-top: 8px; }
 .contact h5, .details h5 { margin: 0; background: #6698cb; color: #fff; font-size: 10px; padding: 3px 5px; }

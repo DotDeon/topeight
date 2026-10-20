@@ -6,6 +6,7 @@
 import {
   BRIDGE_ACTIONS,
   BRIDGE_PAGES,
+  MAX_TRACK_ID_LENGTH,
   type BridgeMessage,
 } from "@/lib/bridge-protocol";
 import { validateUsername } from "@/lib/validation";
@@ -53,6 +54,12 @@ export function parseBridgeMessage(
       if (msg.page === undefined) return { type: "openspace:navigate", username: checked.username };
       if (!isOneOf(BRIDGE_PAGES, msg.page)) return null;
       return { type: "openspace:navigate", username: checked.username, page: msg.page };
+    }
+
+    case "openspace:reportTrack": {
+      const id = msg.trackId;
+      if (typeof id !== "string" || id.length === 0 || id.length > MAX_TRACK_ID_LENGTH) return null;
+      return { type: "openspace:reportTrack", trackId: id };
     }
 
     default:

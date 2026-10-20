@@ -308,7 +308,8 @@ async function profileComments(ctx: QueryCtx, owner: Doc<"profiles">): Promise<P
 /**
  * Everything the public profile page shows. Null when the username does not
  * exist, { unavailable: true } when the profile is banned. Every read is
- * bounded. Nothing private (email, birth date, ids) is returned.
+ * bounded. Nothing private (email, birth date, user or profile ids) is
+ * returned. Track ids are public, for the player's Report links.
  */
 export const getPublicProfile = query({
   args: { username: v.string() },
@@ -344,7 +345,7 @@ export const getPublicProfile = query({
       .take(MAX_TRACKS);
     for (const t of trackRows) {
       const url = trackUrl(t.key);
-      if (url) tracks.push({ title: t.title, url, autoplay: t.autoplay });
+      if (url) tracks.push({ id: t._id, title: t.title, url, autoplay: t.autoplay });
     }
 
     const today = new Date().toISOString().slice(0, 10);

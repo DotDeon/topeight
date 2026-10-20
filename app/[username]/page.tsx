@@ -20,5 +20,7 @@ export default async function ProfilePage({ params }: PageProps<"/[username]">) 
       </Box>
     );
   }
-  return <ProfileView username={profile.username} displayName={profile.displayName} />;
+  // Only ids and titles: the report dialog looks up songs here, never in the frame.
+  const tracks = profile.tracks.map((t) => ({ id: t.id, title: t.title }));
+  return <ProfileView username={profile.username} displayName={profile.displayName} tracks={tracks} />;
 }

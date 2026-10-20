@@ -32,18 +32,13 @@ function Preview({ p }: { p: ReportPreview }) {
       );
     case "track":
       return (
-        <p>
-          Track &quot;{p.title}&quot; by{" "}
-          {p.owner ? <Link href={`/${p.owner.username}`}>{p.owner.displayName}</Link> : "unknown"}
-          {p.url && (
-            <>
-              {" "}
-              <a href={p.url} target="_blank" rel="noreferrer">
-                listen
-              </a>
-            </>
-          )}
-        </p>
+        <>
+          <p>
+            Track &quot;{p.title}&quot; by{" "}
+            {p.owner ? <Link href={`/${p.owner.username}`}>{p.owner.displayName}</Link> : "unknown"}
+          </p>
+          {p.url && <audio controls preload="none" src={p.url} aria-label={`Play ${p.title}`} />}
+        </>
       );
     case "profile":
       return (
@@ -76,6 +71,16 @@ function ReportRow({ r }: { r: Row }) {
   const bannedId: Id<"profiles"> | null =
     p.kind === "comment" || p.kind === "bulletin" ? p.authorId : p.kind === "track" ? p.ownerId : null;
   const banPrompt = "Ban this user? They are signed out and their profile disappears.";
+  const deleteTrackButton = (trackId: Id<"tracks">, title: string) => (
+    <button
+      type="button"
+      onClick={() => {
+        if (window.confirm(`Delete the track "${title}"?`)) run(deleteTrack({ trackId }));
+      }}
+    >
+      Delete track
+    </button>
+  );
 
   return (
     <div data-report="" style={{ borderBottom: "1px solid #6698cb", padding: "6px 0" }}>
@@ -95,20 +100,16 @@ function ReportRow({ r }: { r: Row }) {
                   listen
                 </a>
               )}{" "}
-              <button
-                type="button"
-                onClick={() => {
-                  if (window.confirm(`Delete the track "${t.title}"?`)) run(deleteTrack({ trackId: t.id }));
-                }}
-              >
-                Delete track
-              </button>
+              {deleteTrackButton(t.id, t.title)}
             </li>
           ))}
         </ul>
       )}
       <p>
-        {p.kind === "profile" ? (
+        {p.kind === "track" ? (
+          // Deleting the track also closes every open report on it.
+          deleteTrackButton(p.trackId, p.title)
+        ) : p.kind === "profile" ? (
           <button
             type="button"
             onClick={() => {

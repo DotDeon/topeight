@@ -55,6 +55,7 @@ const c = (body: string, createdAt = Date.UTC(2026, 9, 19, 21, 14)) => ({
   createdAt,
 });
 const t = (title: string, autoplay = false) => ({
+  id: `trk_${title.length}`,
   title,
   url: `https://media.example/${encodeURIComponent(title)}.mp3`,
   autoplay,
@@ -147,6 +148,29 @@ describe("fan facts", () => {
     const html = renderProfileDocument(artist({ genre: "Rock", age: 30 }), opts);
     expect(facts(html)).not.toContain("years old");
     expect(facts(html)).toContain("Rock<br><br>Cape Town");
+  });
+});
+
+describe("player report links", () => {
+  test("every track row gets a Report link with its id, outside the play button", () => {
+    const html = renderProfileDocument(
+      artist({ tracks: [{ ...t("Red Dust", true), id: "k1" }, { ...t("Blue Smoke"), id: "k2" }] }),
+      opts,
+    );
+    const rows = html.match(/<li>.*?<\/li>/g) ?? [];
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain('<a href="#" class="player-report" data-openspace-report-track="k1">Report</a>');
+    expect(rows[1]).toContain('data-openspace-report-track="k2"');
+    // The link sits after the button, so clicking it never reaches the play handler.
+    for (const row of rows) expect(row).toMatch(/<\/button><a [^>]*data-openspace-report-track=/);
+  });
+
+  test("tracks without a playable URL get no Report link", () => {
+    const html = renderProfileDocument(
+      artist({ tracks: [{ ...t("Bad"), url: "javascript:alert(1)", id: "k9" }] }),
+      opts,
+    );
+    expect(html).not.toContain('data-openspace-report-track="');
   });
 });
 
@@ -310,11 +334,20 @@ describe("URL schemes and escaping", () => {
 
   test("a data: track URL produces no player", () => {
     const html = renderProfileDocument(
-      artist({ tracks: [{ title: "x", url: "data:audio/mpeg;base64,AAAA", autoplay: true }] }),
+      artist({ tracks: [{ id: "trk_x", title: "x", url: "data:audio/mpeg;base64,AAAA", autoplay: true }] }),
       opts,
     );
     expect(html).not.toContain('id="openspace-player"');
     expect(html).not.toContain('src="data:');
+  });
+
+  test("a track id cannot break out of its report attribute", () => {
+    const html = renderProfileDocument(
+      artist({ tracks: [{ ...t("Song", true), id: '"><img src=x onerror=alert(1)>' }] }),
+      opts,
+    );
+    expect(html).not.toContain("<img src=x onerror");
+    expect(html).toContain('data-openspace-report-track="&quot;&gt;&lt;img src=x onerror=alert(1)&gt;"');
   });
 
   test("markup in names, headline, venue and track title is escaped", () => {
@@ -366,6 +399,7 @@ function runBridge() {
     openspace: undefined as unknown as {
       request: (a: unknown) => void;
       navigate: (u: unknown, p?: unknown) => void;
+      reportTrack: (id: unknown) => void;
     },
   };
   const document = {
@@ -444,11 +478,29 @@ describe("bridge script", () => {
     b.click({ "data-openspace-navigate": "jess", "data-openspace-page": "comments" });
     b.click({ "data-openspace-navigate": "jess", "data-openspace-page": "../admin" });
     b.click({ "data-openspace-action": "deleteAccount" });
+    expect(b.click({ "data-openspace-report-track": "k57abc" })).toBe(true);
+    b.click({ "data-openspace-report-track": "" });
+    b.click({ "data-openspace-report-track": "x".repeat(65) });
     expect(b.messages().slice(1)).toEqual([
       { type: "openspace:action", action: "addFriend" },
       { type: "openspace:navigate", username: "tom" },
       { type: "openspace:navigate", username: "jess", page: "comments" },
       { type: "openspace:navigate", username: "jess" },
+      { type: "openspace:reportTrack", trackId: "k57abc" },
+    ]);
+  });
+
+  test("window.openspace.reportTrack posts only string ids of 1 to 64 characters", () => {
+    const b = runBridge();
+    b.window.openspace.reportTrack("k57abc");
+    b.window.openspace.reportTrack("x".repeat(64));
+    b.window.openspace.reportTrack("x".repeat(65));
+    b.window.openspace.reportTrack("");
+    b.window.openspace.reportTrack(42);
+    b.window.openspace.reportTrack({ toString: () => "k1" });
+    expect(b.messages().slice(1)).toEqual([
+      { type: "openspace:reportTrack", trackId: "k57abc" },
+      { type: "openspace:reportTrack", trackId: "x".repeat(64) },
     ]);
   });
 

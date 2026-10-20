@@ -48,7 +48,8 @@ export type PublicProfile = {
   /** Visible comments, counted up to 1001. Over 1000 renders as "1000+". */
   commentCount: number;
   latestBulletin: { body: string; createdAt: number } | null;
-  tracks: Array<{ title: string; url: string; autoplay: boolean }>;
+  /** `id` is the Convex track id, used by the player's Report links. */
+  tracks: Array<{ id: string; title: string; url: string; autoplay: boolean }>;
   shows: Array<{ date: string; venue: string; city: string }>;
   custom: { css: string; html: string; js: string };
 };

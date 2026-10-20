@@ -134,9 +134,25 @@ async function preview(ctx: Ctx, report: Doc<"reports">): Promise<ReportPreview>
   };
 }
 
-/** Report a profile, comment, bulletin or track. A repeat open report by the same member adds nothing. */
+/** True when the track belongs to the profile with this username. Unknown or malformed names are false. */
+async function trackIsOn(ctx: Ctx, track: Doc<"tracks">, username: string | undefined): Promise<boolean> {
+  if (username === undefined) return false;
+  const checked = validateUsername(username);
+  if (!checked.ok) return false;
+  const owner = await ctx.db
+    .query("profiles")
+    .withIndex("by_username", (q) => q.eq("username", checked.username))
+    .unique();
+  return owner !== null && owner._id === track.profileId;
+}
+
+/**
+ * Report a profile, comment, bulletin or track. A repeat open report by the
+ * same member adds nothing. A track report must name the profile it was seen
+ * on in `profileUsername`, and the track must belong to it.
+ */
 export const report = mutation({
-  args: { targetType, targetId: v.string(), reason: v.string() },
+  args: { targetType, targetId: v.string(), reason: v.string(), profileUsername: v.optional(v.string()) },
   returns: v.null(),
   handler: async (ctx, args) => {
     const me = await requireProfile(ctx);
@@ -146,6 +162,9 @@ export const report = mutation({
     }
     const target = await loadTarget(ctx, args.targetType, args.targetId);
     if (target === null) throw new ConvexError("Not found");
+    if (args.targetType === "track" && !(await trackIsOn(ctx, target as Doc<"tracks">, args.profileUsername))) {
+      throw new ConvexError("Not found");
+    }
     const targetId = target._id as string;
 
     const open = await openReportsOn(ctx, args.targetType, targetId, MAX_SCAN);

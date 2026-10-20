@@ -4,8 +4,14 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { BridgeAction } from "@/lib/bridge-protocol";
 
-/** Who the action is about. Later tasks add what their mutations need. */
-export type ActionTarget = { username: string; displayName: string };
+/**
+ * Who the action is about. `track` is set for reportTrack only, and always
+ * comes from the parent's server-loaded track list, never from the frame.
+ */
+export type ActionTarget = { username: string; displayName: string; track?: { id: string; title: string } };
+
+/** Everything the confirm dialog can do: the bridge actions plus reporting one song. */
+export type DialogAction = BridgeAction | "reportTrack";
 
 /** What an action did: `ok` is true only when it went through, `text` is what the dialog shows. */
 export type ActionResult = { ok: boolean; text: string };
@@ -14,7 +20,7 @@ export type ProfileAction = {
   /** Button and link text. */
   label: string;
   /** The question the confirm dialog asks. */
-  question: (name: string) => string;
+  question: (name: string, target: ActionTarget) => string;
   /**
    * Runs after the visitor clicks Confirm in the parent page. Returns the
    * text the dialog shows next. Absent means the feature is coming soon and
@@ -25,6 +31,15 @@ export type ProfileAction = {
   input?: { label: string; maxLength: number };
 };
 
+
+/** Dialog text for a failed mutation. */
+function failure(e: unknown, loggedOut: string): ActionResult {
+  const message = e instanceof ConvexError && typeof e.data === "string" ? e.data : "Something went wrong.";
+  if (message === "Not signed in") return { ok: false, text: loggedOut };
+  if (message === "Email not verified") return { ok: false, text: "Verify your email first" };
+  if (message === "No profile") return { ok: false, text: "Finish setting up your profile" };
+  return { ok: false, text: message };
+}
 
 /** Runs a social mutation on the profile being viewed and turns the outcome into dialog text. */
 async function runSocial(
@@ -38,11 +53,7 @@ async function runSocial(
     if (id === null) return { ok: false, text: "Profile not found" };
     return { ok: true, text: await go(id) };
   } catch (e) {
-    const message = e instanceof ConvexError && typeof e.data === "string" ? e.data : "Something went wrong.";
-    if (message === "Not signed in") return { ok: false, text: loggedOut };
-    if (message === "Email not verified") return { ok: false, text: "Verify your email first" };
-    if (message === "No profile") return { ok: false, text: "Finish setting up your profile" };
-    return { ok: false, text: message };
+    return failure(e, loggedOut);
   }
 }
 
@@ -70,7 +81,23 @@ const report = (target: ActionTarget, client: ConvexReactClient, text: string) =
     return "Thanks. An admin will review this profile.";
   });
 
-export const PROFILE_ACTIONS: Record<BridgeAction, ProfileAction> = {
+/** The server checks the track belongs to the profile being viewed. */
+async function reportTrack(target: ActionTarget, client: ConvexReactClient, text: string): Promise<ActionResult> {
+  if (!target.track) return { ok: false, text: "Not found" };
+  try {
+    await client.mutation(api.moderation.report, {
+      targetType: "track",
+      targetId: target.track.id,
+      profileUsername: target.username,
+      reason: text,
+    });
+    return { ok: true, text: "Thanks, a moderator will review it" };
+  } catch (e) {
+    return failure(e, "Log in to report");
+  }
+}
+
+export const PROFILE_ACTIONS: Record<DialogAction, ProfileAction> = {
   addFriend: { label: "Add to Friends", question: (n) => `Add ${n} to your friends?`, run: addFriend },
   addComment: {
     label: "Add Comment", question: (n) => `Add a comment to ${n}'s profile?`,
@@ -85,6 +112,11 @@ export const PROFILE_ACTIONS: Record<BridgeAction, ProfileAction> = {
   block: { label: "Block", question: (n) => `Block ${n}?`, run: block },
   forward: { label: "Forward to Friend", question: () => "Forward to Friend is coming soon." },
   message: { label: "Send Message", question: () => "Send Message is coming soon." },
+  reportTrack: {
+    label: "Report", question: (_n, t) => `Report the song "${t.track?.title ?? ""}"?`,
+    run: reportTrack,
+    input: { label: "What's wrong?", maxLength: 500 },
+  },
 };
 
 /** Actions the trusted strip shows, in order. */

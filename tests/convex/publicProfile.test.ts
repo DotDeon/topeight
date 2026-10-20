@@ -275,15 +275,15 @@ describe("getPublicProfile", () => {
   test("tracks are ordered with public URLs", async () => {
     const t = setup();
     const me = await addProfile(t, "band", { kind: "artist" });
-    await t.run(async (ctx) => {
-      await ctx.db.insert("tracks", { profileId: me, title: "Two", key: "t/2.mp3", size: 1, order: 1, autoplay: true });
-      await ctx.db.insert("tracks", { profileId: me, title: "One", key: "t/1.mp3", size: 1, order: 0, autoplay: false });
-    });
+    const [two, one] = await t.run(async (ctx) => [
+      await ctx.db.insert("tracks", { profileId: me, title: "Two", key: "t/2.mp3", size: 1, order: 1, autoplay: true }),
+      await ctx.db.insert("tracks", { profileId: me, title: "One", key: "t/1.mp3", size: 1, order: 0, autoplay: false }),
+    ]);
     const p = await get(t, "band");
     if (!p || "unavailable" in p) throw new Error("expected a profile");
     expect(p.tracks).toEqual([
-      { title: "One", url: "https://cdn.example.com/t/1.mp3", autoplay: false },
-      { title: "Two", url: "https://cdn.example.com/t/2.mp3", autoplay: true },
+      { id: one, title: "One", url: "https://cdn.example.com/t/1.mp3", autoplay: false },
+      { id: two, title: "Two", url: "https://cdn.example.com/t/2.mp3", autoplay: true },
     ]);
   });
 

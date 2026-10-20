@@ -23,7 +23,15 @@ export const BRIDGE_PAGES = ["friends", "comments"] as const;
 
 export type BridgePage = (typeof BRIDGE_PAGES)[number];
 
+/** Longest track id a reportTrack message may carry. Convex ids are shorter. */
+export const MAX_TRACK_ID_LENGTH = 64;
+
 export type BridgeMessage =
   | { type: "openspace:action"; action: BridgeAction }
   | { type: "openspace:navigate"; username: string; page?: BridgePage }
-  | { type: "openspace:resize"; height: number };
+  | { type: "openspace:resize"; height: number }
+  /**
+   * Report one song in the player. The parent only acts on ids in its own
+   * server-loaded track list for this profile, and shows that list's title.
+   */
+  | { type: "openspace:reportTrack"; trackId: string };

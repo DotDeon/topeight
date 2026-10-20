@@ -144,6 +144,34 @@ test.describe("artist sandbox", () => {
     await expect(dialog).toContainText("Add Sandbox Test to your friends?");
   });
 
+  test("song reports use the server's track list and title", async ({ page }) => {
+    await page.goto("/sandboxtest");
+    await probes(page);
+    const frame = page.frameLocator("iframe[data-openspace-profile]");
+    const dialog = page.locator("[data-openspace-confirm]");
+
+    // Artist code asks to report a real track from another profile: dropped silently.
+    await frame.locator("#probe-report-foreign").click();
+    await page.waitForTimeout(800);
+    await expect(dialog).toBeHidden();
+    await expect(page.locator("[data-openspace-strip]").getByText("too many requests")).toBeHidden();
+
+    // The probe renamed the track in the frame; the dialog still shows the server's title.
+    const row = frame.locator(".player-tracks li").first();
+    await expect(row).toContainText("Spoofed title");
+    await row.locator("[data-openspace-report-track]").click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('Report the song "Probe Song"?');
+    await expect(dialog).not.toContainText("Spoofed");
+    // Clicking Report did not start the song.
+    await expect(frame.locator(".player-play")).toHaveText("Play");
+
+    await dialog.getByLabel("What's wrong?").fill("not their song");
+    await dialog.getByRole("button", { name: "Confirm" }).click();
+    // Signed out, the server refuses; a failed text action keeps the dialog open to retry.
+    await expect(dialog.getByRole("alert")).toHaveText("Log in to report");
+  });
+
   test("main-host pages cannot be framed", async ({ request }) => {
     for (const path of ["/", "/sandboxtest", "/about"]) {
       const h = (await request.get(`${MAIN}${path}`)).headers();

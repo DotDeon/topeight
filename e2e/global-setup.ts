@@ -18,9 +18,13 @@ import { existsSync, readFileSync } from "node:fs";
  * It also adds the admin fixture's email to ADMIN_EMAILS on the deployment.
  * The value from before the run goes in E2E_PRIOR_ADMIN_EMAILS so the
  * teardown can put it back, or remove the variable if there was none.
+ * When NEXT_PUBLIC_R2_PUBLIC_URL is unset it sets a dummy one for the run, so
+ * fixture tracks get URLs, and teardown removes it.
  */
 
 export const ADMIN_FIXTURE_EMAIL = "e2e-admin@fixture.invalid";
+/** Media base set for the run when the deployment has none. Port 9 refuses connections. */
+export const E2E_MEDIA_URL = "http://127.0.0.1:9/e2e-media";
 
 function envFileValue(path: string, key: string): string | undefined {
   if (!existsSync(path)) return undefined;
@@ -77,6 +81,18 @@ export default function globalSetup() {
   const others = prior.split(",").map((e) => e.trim()).filter((e) => e && e !== ADMIN_FIXTURE_EMAIL);
   process.env.E2E_PRIOR_ADMIN_EMAILS = others.join(",");
   convex("env", "set", ...envFile, "ADMIN_EMAILS", [...others, ADMIN_FIXTURE_EMAIL].join(","));
+
+  // Track URLs need a public media base. Without one the fixture tracks have no
+  // URL and no player. Nothing is fetched from it; teardown removes it again.
+  const media = execFileSync("npx", ["convex", "env", "get", ...envFile, "NEXT_PUBLIC_R2_PUBLIC_URL"], {
+    stdio: ["ignore", "pipe", "ignore"],
+  })
+    .toString()
+    .trim();
+  if (media === "") {
+    convex("env", "set", ...envFile, "NEXT_PUBLIC_R2_PUBLIC_URL", E2E_MEDIA_URL);
+    process.env.E2E_SET_MEDIA_URL = "1";
+  }
 
   convex("run", ...envFile, "testing:seedSandboxFixture", JSON.stringify({ mainOrigin: `http://localhost:${port}` }));
   convex("run", ...envFile, "testing:seedCommenterFixture", JSON.stringify({ password }));

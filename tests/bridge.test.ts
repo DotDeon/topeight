@@ -129,6 +129,26 @@ describe("parseBridgeMessage: payload checks", () => {
   });
 });
 
+describe("parseBridgeMessage: reportTrack", () => {
+  test("accepts a track id of 1 to 64 characters and drops extra fields", () => {
+    for (const trackId of ["k", "k57c8x2r1yq4m0f9a3t6b", "x".repeat(64)]) {
+      expect(
+        parseBridgeMessage(ev({ type: "openspace:reportTrack", trackId, title: "Spoofed" }), frame),
+      ).toEqual({ type: "openspace:reportTrack", trackId });
+    }
+  });
+
+  test.each([undefined, null, "", 42, {}, ["abc"], "x".repeat(65)])("rejects track id %j", (trackId) => {
+    expect(parseBridgeMessage(ev({ type: "openspace:reportTrack", trackId }), frame)).toBeNull();
+  });
+
+  test("rejects a reportTrack from anywhere but the frame", () => {
+    const msg = { type: "openspace:reportTrack", trackId: "abc" };
+    expect(parseBridgeMessage(ev(msg, { origin: "http://127.0.0.1:3000" }), frame)).toBeNull();
+    expect(parseBridgeMessage(ev(msg, { source: { name: "other" } }), frame)).toBeNull();
+  });
+});
+
 describe("clampFrameHeight", () => {
   test("clamps to 150..20000 and rounds up", () => {
     expect(clampFrameHeight(0)).toBe(150);

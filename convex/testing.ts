@@ -23,9 +23,10 @@ import { hashPassword } from "./lib/password";
  * one exception, see below.
  */
 
-function probeJs(mainOrigin: string): string {
+function probeJs(mainOrigin: string, foreignTrackId: string): string {
   return `(function () {
   var MAIN = ${JSON.stringify(mainOrigin)};
+  var FOREIGN_TRACK = ${JSON.stringify(foreignTrackId)};
   var r = { done: false, violations: [] };
   function write() { document.title = JSON.stringify(r); }
   document.addEventListener("securitypolicyviolation", function (e) {
@@ -70,11 +71,22 @@ function probeJs(mainOrigin: string): string {
   document.getElementById("probe-navigate").addEventListener("click", function () {
     window.openspace.navigate("sandboxtest", "friends");
   });
+  // A real track id from another profile, posted the API way and the raw way.
+  document.getElementById("probe-report-foreign").addEventListener("click", function () {
+    window.openspace.reportTrack(FOREIGN_TRACK);
+    window.parent.postMessage({ type: "openspace:reportTrack", trackId: FOREIGN_TRACK }, "*");
+  });
+  // Artist code can rewrite the track title it shows; the parent dialog must not use it.
+  document.addEventListener("DOMContentLoaded", function () {
+    var title = document.querySelector(".player-track > span");
+    if (title && title.lastChild) title.lastChild.textContent = "Spoofed title";
+  });
 })();`;
 }
 
 const PROBE_HTML = `<p><button type="button" id="probe-add-friend">Probe: add friend</button>
-<button type="button" id="probe-navigate">Probe: navigate</button></p>`;
+<button type="button" id="probe-navigate">Probe: navigate</button>
+<button type="button" id="probe-report-foreign">Probe: report foreign track</button></p>`;
 
 const FAN_CSS = `body { background: #fdf0ff; }
 .profile-left .name { color: #990066; }`;
@@ -108,6 +120,26 @@ async function findFixture(ctx: MutationCtx, username: string) {
     throw new ConvexError(`"${username}" belongs to a real member; refusing to touch it`);
   }
   return profile;
+}
+
+/**
+ * The fixture profile's first track, added if it has none. The key points at
+ * no real object; the specs never play it. Call only with fixture profiles.
+ */
+async function ensureFixtureTrack(ctx: MutationCtx, profileId: Id<"profiles">, title: string): Promise<Id<"tracks">> {
+  const first = await ctx.db
+    .query("tracks")
+    .withIndex("by_profile_order", (q) => q.eq("profileId", profileId))
+    .first();
+  if (first !== null) return first._id;
+  return await ctx.db.insert("tracks", {
+    profileId,
+    title,
+    key: `e2e-fixture/${profileId}.mp3`,
+    size: 1,
+    order: 0,
+    autoplay: false,
+  });
 }
 
 export const seedSandboxFixture = internalMutation({
@@ -147,13 +179,16 @@ export const seedSandboxFixture = internalMutation({
       fan = (await ctx.db.get(id))!;
     }
 
+    // A track on the fan, so the foreign-id probe has a real id from another profile.
+    const foreignTrack = await ensureFixtureTrack(ctx, fan._id, "Foreign Song");
     const artistFields = {
       customHtml: PROBE_HTML,
-      customJs: probeJs(origin),
+      customJs: probeJs(origin, foreignTrack),
     };
     const existing = await findFixture(ctx, "sandboxtest");
     if (existing !== null) {
       await ctx.db.patch(existing._id, artistFields);
+      await ensureFixtureTrack(ctx, existing._id, "Probe Song");
       return null;
     }
 
@@ -180,6 +215,7 @@ export const seedSandboxFixture = internalMutation({
       top8: [fan._id],
     });
     await ctx.db.insert("friendships", friendshipPair(artistId, fan._id));
+    await ensureFixtureTrack(ctx, artistId, "Probe Song");
     await ctx.db.insert("comments", {
       profileId: artistId,
       authorId: fan._id,

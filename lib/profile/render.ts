@@ -1,4 +1,4 @@
-import { BRIDGE_ACTIONS, BRIDGE_PAGES, type BridgePage } from "@/lib/bridge-protocol";
+import { BRIDGE_ACTIONS, BRIDGE_PAGES, MAX_TRACK_ID_LENGTH, type BridgePage } from "@/lib/bridge-protocol";
 import { tokenizeComment } from "@/lib/validation";
 import { PROFILE_CSS } from "./profile-css";
 import type { PublicProfile } from "./types";
@@ -148,7 +148,8 @@ function renderPlayer(p: PublicProfile, name: string): string {
   const items = tracks
     .map(
       (t, i) =>
-        `<li><button type="button" class="player-track${i === first ? " current" : ""}" data-index="${i}" data-src="${escapeHtml(t.url)}"><span><span class="mark">&#9654; </span>${escapeHtml(t.title)}</span><span class="dur"></span></button></li>`,
+        // The Report link sits outside the button, so clicking it never toggles playback.
+        `<li><button type="button" class="player-track${i === first ? " current" : ""}" data-index="${i}" data-src="${escapeHtml(t.url)}"><span><span class="mark">&#9654; </span>${escapeHtml(t.title)}</span><span class="dur"></span></button><a href="#" class="player-report" data-openspace-report-track="${escapeHtml(t.id)}">Report</a></li>`,
     )
     .join("");
   return `<div class="player" id="openspace-player-ui" data-autoplay="${autoplay}">
@@ -290,6 +291,7 @@ export function bridgeScript(mainOrigin: string): string {
   var ORIGIN = ${scriptJson(mainOrigin)};
   var ACTIONS = ${scriptJson(BRIDGE_ACTIONS)};
   var PAGES = ${scriptJson(BRIDGE_PAGES)};
+  var MAX_TRACK_ID = ${MAX_TRACK_ID_LENGTH};
   function post(msg) { try { window.parent.postMessage(msg, ORIGIN); } catch (e) {} }
   function request(action) {
     if (ACTIONS.indexOf(action) === -1) return;
@@ -301,15 +303,21 @@ export function bridgeScript(mainOrigin: string): string {
     if (PAGES.indexOf(page) !== -1) msg.page = page;
     post(msg);
   }
-  window.openspace = { request: request, navigate: navigate };
+  function reportTrack(trackId) {
+    if (typeof trackId !== "string" || !trackId || trackId.length > MAX_TRACK_ID) return;
+    post({ type: "openspace:reportTrack", trackId: trackId });
+  }
+  window.openspace = { request: request, navigate: navigate, reportTrack: reportTrack };
   document.addEventListener("click", function (e) {
     var t = e.target;
     if (!(t instanceof Element)) return;
-    var el = t.closest("[data-openspace-action],[data-openspace-navigate]");
+    var el = t.closest("[data-openspace-action],[data-openspace-navigate],[data-openspace-report-track]");
     if (!el) return;
     e.preventDefault();
     var action = el.getAttribute("data-openspace-action");
+    var track = el.getAttribute("data-openspace-report-track");
     if (action !== null) request(action);
+    else if (track !== null) reportTrack(track);
     else navigate(el.getAttribute("data-openspace-navigate"), el.getAttribute("data-openspace-page"));
   });
 

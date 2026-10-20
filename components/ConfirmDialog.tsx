@@ -2,14 +2,14 @@
 
 import { useConvex } from "convex/react";
 import { useEffect, useRef, useState } from "react";
-import type { BridgeAction } from "@/lib/bridge-protocol";
-import { PROFILE_ACTIONS, type ActionResult, type ActionTarget } from "./profileActions";
+import { PROFILE_ACTIONS, type ActionResult, type ActionTarget, type DialogAction } from "./profileActions";
 import styles from "./ConfirmDialog.module.css";
 
 /** Confirm stays disabled this long after opening, so a click already on its way lands nowhere. */
 export const ARM_DELAY_MS = 500;
 
-export type ConfirmRequest = { id: number; action: BridgeAction };
+/** `track` comes from the parent's own track list, for reportTrack. */
+export type ConfirmRequest = { id: number; action: DialogAction; track?: { id: string; title: string } };
 
 /**
  * The parent page's own confirmation step. It is a modal <dialog> in the top
@@ -28,10 +28,10 @@ export function ConfirmDialog({
   target: ActionTarget;
   onClose: (outcome: "cancelled" | "done") => void;
   /** Called with the text the dialog shows after an action ran. */
-  onResult?: (action: BridgeAction, result: ActionResult) => void;
+  onResult?: (action: DialogAction, result: ActionResult) => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const [lastAction, setLastAction] = useState<BridgeAction | null>(null);
+  const [lastAction, setLastAction] = useState<DialogAction | null>(null);
   const outcome = useRef<"cancelled" | "done">("cancelled");
 
   useEffect(() => {
@@ -59,7 +59,7 @@ export function ConfirmDialog({
         <DialogBody
           key={request.id}
           action={request.action}
-          target={target}
+          target={request.track ? { ...target, track: request.track } : target}
           onResult={onResult}
           onRan={(a) => {
             outcome.current = "done";
@@ -79,10 +79,10 @@ function DialogBody({
   onResult,
   onDismiss,
 }: {
-  action: BridgeAction;
+  action: DialogAction;
   target: ActionTarget;
-  onResult?: (action: BridgeAction, result: ActionResult) => void;
-  onRan: (action: BridgeAction) => void;
+  onResult?: (action: DialogAction, result: ActionResult) => void;
+  onRan: (action: DialogAction) => void;
   onDismiss: () => void;
 }) {
   const spec = PROFILE_ACTIONS[action];
@@ -124,7 +124,7 @@ function DialogBody({
         {spec.label}
       </h4>
       <div className={styles.inner}>
-        <p className={styles.question}>{spec.question(target.displayName)}</p>
+        <p className={styles.question}>{spec.question(target.displayName, target)}</p>
         {spec.input && phase !== "done" && (
           <label className={styles.field}>
             {spec.input.label}

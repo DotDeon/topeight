@@ -6,17 +6,29 @@ import { api } from "@/convex/_generated/api";
 import type { BridgeAction } from "@/lib/bridge-protocol";
 import { BRIDGE_RESET_MS, BridgeGate } from "@/lib/bridgeGate";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
-import { PROFILE_ACTIONS } from "./profileActions";
+import { PROFILE_ACTIONS, type DialogAction } from "./profileActions";
 import { ProfileFrame } from "./ProfileFrame";
 import { TrustedStrip } from "./TrustedStrip";
 
+/** A song on this profile as the server sent it. Report dialogs use only these. */
+export type ProfileTrack = { id: string; title: string };
+
 /** Trusted strip, sandboxed profile frame and the confirm dialog they share. */
-export function ProfileView({ username, displayName }: { username: string; displayName: string }) {
+export function ProfileView({
+  username,
+  displayName,
+  tracks,
+}: {
+  username: string;
+  displayName: string;
+  /** This profile's tracks from getPublicProfile, at most 10. */
+  tracks: readonly ProfileTrack[];
+}) {
   const [request, setRequest] = useState<ConfirmRequest | null>(null);
   const [throttled, setThrottled] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const nextId = useRef(1);
-  const open = useRef<{ action: BridgeAction; fromBridge: boolean } | null>(null);
+  const open = useRef<{ action: DialogAction; fromBridge: boolean } | null>(null);
   const gate = useRef(new BridgeGate());
   const noteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -28,9 +40,9 @@ export function ProfileView({ username, displayName }: { username: string; displ
     void recordView({ username }).catch(() => {});
   }, [username, recordView]);
 
-  const show = useCallback((action: BridgeAction, fromBridge: boolean) => {
+  const show = useCallback((action: DialogAction, fromBridge: boolean, track?: ProfileTrack) => {
     open.current = { action, fromBridge };
-    setRequest({ id: nextId.current++, action });
+    setRequest({ id: nextId.current++, action, ...(track ? { track: { id: track.id, title: track.title } } : {}) });
   }, []);
 
   const onStripAction = useCallback(
@@ -46,7 +58,7 @@ export function ProfileView({ username, displayName }: { username: string; displ
   // A request from the frame never replaces an open dialog, so artist code
   // cannot swap what the visitor is about to confirm.
   const onBridgeAction = useCallback(
-    (action: BridgeAction) => {
+    (action: DialogAction, track?: ProfileTrack) => {
       if (open.current) return;
       const verdict = gate.current.check(Date.now());
       if (verdict === "cooldown") return;
@@ -58,9 +70,19 @@ export function ProfileView({ username, displayName }: { username: string; displ
         return;
       }
       setThrottled(false);
-      show(action, true);
+      show(action, true, track);
     },
     [show],
+  );
+
+  // Only ids in the server's list for this profile open a dialog, with the
+  // server's title. Anything else is dropped before the gate sees it.
+  const onReportTrack = useCallback(
+    (trackId: string) => {
+      const track = tracks.find((t) => t.id === trackId);
+      if (track) onBridgeAction("reportTrack", track);
+    },
+    [tracks, onBridgeAction],
   );
 
   const onClose = useCallback((outcome: "cancelled" | "done") => {
@@ -83,7 +105,13 @@ export function ProfileView({ username, displayName }: { username: string; displ
   return (
     <>
       <TrustedStrip displayName={displayName} onAction={onStripAction} throttled={throttled} />
-      <ProfileFrame username={username} displayName={displayName} onAction={onBridgeAction} reloadKey={reloadKey} />
+      <ProfileFrame
+        username={username}
+        displayName={displayName}
+        onAction={onBridgeAction}
+        onReportTrack={onReportTrack}
+        reloadKey={reloadKey}
+      />
       <ConfirmDialog
         request={request}
         target={target}
