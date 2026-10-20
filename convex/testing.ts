@@ -18,7 +18,7 @@ import { hashPassword } from "./lib/password";
  * sandbox and writes what happened into document.title as JSON.
  * `sandboxfan` is a fan with custom CSS, a friend of sandboxtest.
  *
- * Runs only when the deployment has OPENSPACE_TEST_FIXTURES=1 (global-setup
+ * Runs only when the deployment has TOPEIGHT_TEST_FIXTURES=1 (global-setup
  * sets it, global-teardown unsets it), and never touches a profile whose user
  * has an email (these fixture users have none). The commenter fixture is the
  * one exception, see below.
@@ -67,15 +67,15 @@ function probeJs(mainOrigin: string, foreignTrackId: string): string {
   }, 1500);
 
   document.getElementById("probe-add-friend").addEventListener("click", function () {
-    window.openspace.request("addFriend");
+    window.topeight.request("addFriend");
   });
   document.getElementById("probe-navigate").addEventListener("click", function () {
-    window.openspace.navigate("sandboxtest", "friends");
+    window.topeight.navigate("sandboxtest", "friends");
   });
   // A real track id from another profile, posted the API way and the raw way.
   document.getElementById("probe-report-foreign").addEventListener("click", function () {
-    window.openspace.reportTrack(FOREIGN_TRACK);
-    window.parent.postMessage({ type: "openspace:reportTrack", trackId: FOREIGN_TRACK }, "*");
+    window.topeight.reportTrack(FOREIGN_TRACK);
+    window.parent.postMessage({ type: "topeight:reportTrack", trackId: FOREIGN_TRACK }, "*");
     // Counts posts that were sent, so the spec knows the drop was not a missed click.
     r.foreignReports = (r.foreignReports || 0) + 2;
     write();
@@ -153,8 +153,8 @@ export const seedSandboxFixture = internalMutation({
   returns: v.null(),
   handler: async (ctx, { mainOrigin }) => {
     // Dev and preview deployments only. Never set this on production.
-    if (process.env.OPENSPACE_TEST_FIXTURES !== "1") {
-      throw new ConvexError("Set OPENSPACE_TEST_FIXTURES=1 on this deployment to seed test fixtures");
+    if (process.env.TOPEIGHT_TEST_FIXTURES !== "1") {
+      throw new ConvexError("Set TOPEIGHT_TEST_FIXTURES=1 on this deployment to seed test fixtures");
     }
     const origin = mainOrigin ?? process.env.SITE_URL ?? "http://localhost:3000";
 
@@ -238,7 +238,7 @@ export const seedSandboxFixture = internalMutation({
  * Fixture for e2e/comments.spec.ts: a verified fan who can log in with a
  * password, so the browser test can sign in for real. The email ends in
  * `@fixture.invalid`, which no real member can have, and only such users are
- * ever touched. Same OPENSPACE_TEST_FIXTURES guard as above.
+ * ever touched. Same TOPEIGHT_TEST_FIXTURES guard as above.
  */
 export const COMMENTER_EMAIL = "e2e-commenter@fixture.invalid";
 export const EDITOR_EMAIL = "e2e-editor@fixture.invalid";
@@ -252,8 +252,8 @@ async function seedLoginFixture(
   ctx: MutationCtx,
   f: { username: string; displayName: string; email: string; kind: "fan" | "artist"; password: string },
 ) {
-  if (process.env.OPENSPACE_TEST_FIXTURES !== "1") {
-    throw new ConvexError("Set OPENSPACE_TEST_FIXTURES=1 on this deployment to seed test fixtures");
+  if (process.env.TOPEIGHT_TEST_FIXTURES !== "1") {
+    throw new ConvexError("Set TOPEIGHT_TEST_FIXTURES=1 on this deployment to seed test fixtures");
   }
   const secret = await hashPassword(f.password);
   const existing = await ctx.db
@@ -345,8 +345,8 @@ export const seedAdminLoginFixture = internalMutation({
 
 /** A fixture profile: findFixture's guard, plus a missing profile is an error. */
 async function requireFixture(ctx: MutationCtx, username: string) {
-  if (process.env.OPENSPACE_TEST_FIXTURES !== "1") {
-    throw new ConvexError("Set OPENSPACE_TEST_FIXTURES=1 on this deployment to seed test fixtures");
+  if (process.env.TOPEIGHT_TEST_FIXTURES !== "1") {
+    throw new ConvexError("Set TOPEIGHT_TEST_FIXTURES=1 on this deployment to seed test fixtures");
   }
   const profile = await findFixture(ctx, username);
   if (profile === null) throw new ConvexError(`Fixture "${username}" is not seeded`);

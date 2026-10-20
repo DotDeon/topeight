@@ -8,7 +8,7 @@ import { SuspendedGate } from "@/components/SuspendedGate";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "OpenSpace",
+  title: "TopEight",
   description: "A place for friends.",
 };
 

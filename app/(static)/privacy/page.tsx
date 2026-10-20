@@ -1,11 +1,11 @@
-export const metadata = { title: "Privacy - OpenSpace" };
+export const metadata = { title: "Privacy - TopEight" };
 
 export default function PrivacyPage() {
   return (
     <div className="prose">
       <h1>Privacy</h1>
       <p>
-        OpenSpace stores your email address, date of birth, profile and the things you post. Your
+        TopEight stores your email address, date of birth, profile and the things you post. Your
         email address and date of birth are not shown to other members.
       </p>
       <p>
@@ -19,7 +19,7 @@ export default function PrivacyPage() {
       </p>
       <p>
         We use a login cookie to keep you signed in. We do not sell your data. To delete your
-        account and its content, contact whoever runs this copy of OpenSpace.
+        account and its content, contact whoever runs this copy of TopEight.
       </p>
     </div>
   );

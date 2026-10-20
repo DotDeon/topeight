@@ -71,7 +71,7 @@ describe("usercontent route", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     expectBaseHeaders(res);
-    expect(await res.text()).toContain("window.openspace");
+    expect(await res.text()).toContain("window.topeight");
   });
 
   test("404s on the main host without querying", async () => {

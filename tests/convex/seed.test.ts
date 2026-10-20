@@ -7,9 +7,9 @@ import { addProfile, setup } from "./helpers";
 
 describe("seed.run", () => {
   beforeEach(() => {
-    vi.stubEnv("OPENSPACE_ALLOW_SEED", "1");
-    vi.stubEnv("HOUSE_USERNAME", "openspace");
-    vi.stubEnv("HOUSE_DISPLAY_NAME", "OpenSpace");
+    vi.stubEnv("TOPEIGHT_ALLOW_SEED", "1");
+    vi.stubEnv("HOUSE_USERNAME", "topeight");
+    vi.stubEnv("HOUSE_DISPLAY_NAME", "TopEight");
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -120,8 +120,8 @@ describe("seed.run", () => {
     expect(after.others).toBe(0);
   });
 
-  test("throws unless OPENSPACE_ALLOW_SEED is 1", async () => {
-    vi.stubEnv("OPENSPACE_ALLOW_SEED", "");
+  test("throws unless TOPEIGHT_ALLOW_SEED is 1", async () => {
+    vi.stubEnv("TOPEIGHT_ALLOW_SEED", "");
     const t = setup();
     await expect(t.mutation(internal.seed.run, {})).rejects.toThrow("Seeding is disabled");
   });

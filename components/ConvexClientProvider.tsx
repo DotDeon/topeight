@@ -7,7 +7,7 @@ import { api } from "@/convex/_generated/api";
 
 const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
-const TOUCHED_KEY = "openspace:touchedLogin";
+const TOUCHED_KEY = "topeight:touchedLogin";
 
 /** Calls touchLogin once per browser session after the user is signed in. */
 function TouchLogin() {

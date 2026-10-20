@@ -6,7 +6,7 @@ export function Header() {
   return (
     <header className={styles.header}>
       <Link href="/" className={styles.logo}>
-        <span className={styles.big}>OpenSpace</span>
+        <span className={styles.big}>TopEight</span>
         <span className={styles.small}>a place for friends</span>
       </Link>
       <div className={styles.right}>
@@ -14,7 +14,7 @@ export function Header() {
         <form action="/search" method="get" className={styles.search}>
           <div>
             <label>
-              <input type="radio" name="type" value="openspace" defaultChecked /> OpenSpace
+              <input type="radio" name="type" value="topeight" defaultChecked /> TopEight
             </label>{" "}
             <label>
               <input type="radio" name="type" value="people" /> People

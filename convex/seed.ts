@@ -7,7 +7,7 @@ import { syncMediaFlags } from "./lib/media";
 
 /**
  * Demo content so a fresh copy looks alive. Run with `npx convex run seed:run`
- * after setting OPENSPACE_ALLOW_SEED=1 on the deployment, and unset it again.
+ * after setting TOPEIGHT_ALLOW_SEED=1 on the deployment, and unset it again.
  *
  * Seed users have a `users` row and no email, so nobody can log in as them.
  * Tracks and photos point at fixed R2 keys that `scripts/seed-media.mjs` uploads.
@@ -318,7 +318,7 @@ async function findByUsername(ctx: MutationCtx, username: string): Promise<Doc<"
 export const run = internalMutation({
   args: {},
   handler: async (ctx) => {
-    if (process.env.OPENSPACE_ALLOW_SEED !== "1") {
+    if (process.env.TOPEIGHT_ALLOW_SEED !== "1") {
       throw new ConvexError("Seeding is disabled");
     }
 

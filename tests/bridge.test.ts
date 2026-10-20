@@ -12,8 +12,8 @@ const ev = (data: unknown, extra: Partial<{ origin: string; source: unknown }> =
 
 describe("parseBridgeMessage: sender checks", () => {
   test("accepts a message from the frame with the opaque origin", () => {
-    expect(parseBridgeMessage(ev({ type: "openspace:action", action: "addFriend" }), frame)).toEqual({
-      type: "openspace:action",
+    expect(parseBridgeMessage(ev({ type: "topeight:action", action: "addFriend" }), frame)).toEqual({
+      type: "topeight:action",
       action: "addFriend",
     });
   });
@@ -25,18 +25,18 @@ describe("parseBridgeMessage: sender checks", () => {
     "",
     "undefined",
   ])("rejects origin %j", (origin) => {
-    expect(parseBridgeMessage(ev({ type: "openspace:action", action: "addFriend" }, { origin }), frame)).toBeNull();
+    expect(parseBridgeMessage(ev({ type: "topeight:action", action: "addFriend" }, { origin }), frame)).toBeNull();
   });
 
   test("rejects a message from any other source", () => {
-    const msg = { type: "openspace:action", action: "addFriend" };
+    const msg = { type: "topeight:action", action: "addFriend" };
     expect(parseBridgeMessage(ev(msg, { source: { name: "other" } }), frame)).toBeNull();
     expect(parseBridgeMessage(ev(msg, { source: null }), frame)).toBeNull();
     expect(parseBridgeMessage(ev(msg, { source: undefined }), frame)).toBeNull();
   });
 
   test("rejects everything when there is no frame yet", () => {
-    const msg = { type: "openspace:action", action: "addFriend" };
+    const msg = { type: "topeight:action", action: "addFriend" };
     expect(parseBridgeMessage(ev(msg, { source: null }), null)).toBeNull();
     expect(parseBridgeMessage(ev(msg, { source: undefined }), undefined)).toBeNull();
   });
@@ -44,16 +44,16 @@ describe("parseBridgeMessage: sender checks", () => {
 
 describe("parseBridgeMessage: strip-only actions", () => {
   test.each(["removeFriend", "unblock", "reportTrack"])("drops %s as an action", (action) => {
-    expect(parseBridgeMessage(ev({ type: "openspace:action", action }), frame)).toBeNull();
+    expect(parseBridgeMessage(ev({ type: "topeight:action", action }), frame)).toBeNull();
   });
 });
 
 describe("parseBridgeMessage: payload checks", () => {
-  test.each([null, undefined, "openspace:action", 42, [], true])("rejects non-object data %j", (data) => {
+  test.each([null, undefined, "topeight:action", 42, [], true])("rejects non-object data %j", (data) => {
     expect(parseBridgeMessage(ev(data), frame)).toBeNull();
   });
 
-  test.each(["openspace:evil", "openspace:login", "", "OPENSPACE:ACTION", undefined])(
+  test.each(["topeight:evil", "topeight:login", "", "TOPEIGHT:ACTION", undefined])(
     "rejects unknown type %j",
     (type) => {
       expect(parseBridgeMessage(ev({ type, action: "addFriend" }), frame)).toBeNull();
@@ -62,28 +62,28 @@ describe("parseBridgeMessage: payload checks", () => {
 
   test("accepts every known action and nothing else", () => {
     for (const action of BRIDGE_ACTIONS) {
-      expect(parseBridgeMessage(ev({ type: "openspace:action", action }), frame)).toEqual({
-        type: "openspace:action",
+      expect(parseBridgeMessage(ev({ type: "topeight:action", action }), frame)).toEqual({
+        type: "topeight:action",
         action,
       });
     }
     for (const action of ["deleteAccount", "toString", "__proto__", "constructor", "", 1, null]) {
-      expect(parseBridgeMessage(ev({ type: "openspace:action", action }), frame)).toBeNull();
+      expect(parseBridgeMessage(ev({ type: "topeight:action", action }), frame)).toBeNull();
     }
   });
 
   test("drops extra fields", () => {
     const parsed = parseBridgeMessage(
-      ev({ type: "openspace:action", action: "block", target: "someone-else" }),
+      ev({ type: "topeight:action", action: "block", target: "someone-else" }),
       frame,
     );
-    expect(parsed).toEqual({ type: "openspace:action", action: "block" });
+    expect(parsed).toEqual({ type: "topeight:action", action: "block" });
   });
 
   test("accepts finite heights up to 50000", () => {
     for (const height of [0, 1, 150.5, 4000, 50000]) {
-      expect(parseBridgeMessage(ev({ type: "openspace:resize", height }), frame)).toEqual({
-        type: "openspace:resize",
+      expect(parseBridgeMessage(ev({ type: "topeight:resize", height }), frame)).toEqual({
+        type: "topeight:resize",
         height,
       });
     }
@@ -92,13 +92,13 @@ describe("parseBridgeMessage: payload checks", () => {
   test.each(["800", null, undefined, NaN, Infinity, -Infinity, -1, 50001, 1e9, {}])(
     "rejects height %j",
     (height) => {
-      expect(parseBridgeMessage(ev({ type: "openspace:resize", height }), frame)).toBeNull();
+      expect(parseBridgeMessage(ev({ type: "topeight:resize", height }), frame)).toBeNull();
     },
   );
 
   test("accepts navigate to a valid username, normalised", () => {
-    expect(parseBridgeMessage(ev({ type: "openspace:navigate", username: "Lowveld" }), frame)).toEqual({
-      type: "openspace:navigate",
+    expect(parseBridgeMessage(ev({ type: "topeight:navigate", username: "Lowveld" }), frame)).toEqual({
+      type: "topeight:navigate",
       username: "lowveld",
     });
   });
@@ -106,8 +106,8 @@ describe("parseBridgeMessage: payload checks", () => {
   test("accepts navigate with a known page", () => {
     for (const page of ["friends", "comments"]) {
       expect(
-        parseBridgeMessage(ev({ type: "openspace:navigate", username: "lowveld", page }), frame),
-      ).toEqual({ type: "openspace:navigate", username: "lowveld", page });
+        parseBridgeMessage(ev({ type: "topeight:navigate", username: "lowveld", page }), frame),
+      ).toEqual({ type: "topeight:navigate", username: "lowveld", page });
     }
   });
 
@@ -125,12 +125,12 @@ describe("parseBridgeMessage: payload checks", () => {
     42,
     null,
   ])("rejects navigate username %j", (username) => {
-    expect(parseBridgeMessage(ev({ type: "openspace:navigate", username }), frame)).toBeNull();
+    expect(parseBridgeMessage(ev({ type: "topeight:navigate", username }), frame)).toBeNull();
   });
 
   test.each(["edit", "../admin", "", "friends/x", 1, null])("rejects navigate page %j", (page) => {
     expect(
-      parseBridgeMessage(ev({ type: "openspace:navigate", username: "lowveld", page }), frame),
+      parseBridgeMessage(ev({ type: "topeight:navigate", username: "lowveld", page }), frame),
     ).toBeNull();
   });
 });
@@ -139,17 +139,17 @@ describe("parseBridgeMessage: reportTrack", () => {
   test("accepts a track id of 1 to 64 characters and drops extra fields", () => {
     for (const trackId of ["k", "k57c8x2r1yq4m0f9a3t6b", "x".repeat(64)]) {
       expect(
-        parseBridgeMessage(ev({ type: "openspace:reportTrack", trackId, title: "Spoofed" }), frame),
-      ).toEqual({ type: "openspace:reportTrack", trackId });
+        parseBridgeMessage(ev({ type: "topeight:reportTrack", trackId, title: "Spoofed" }), frame),
+      ).toEqual({ type: "topeight:reportTrack", trackId });
     }
   });
 
   test.each([undefined, null, "", 42, {}, ["abc"], "x".repeat(65)])("rejects track id %j", (trackId) => {
-    expect(parseBridgeMessage(ev({ type: "openspace:reportTrack", trackId }), frame)).toBeNull();
+    expect(parseBridgeMessage(ev({ type: "topeight:reportTrack", trackId }), frame)).toBeNull();
   });
 
   test("rejects a reportTrack from anywhere but the frame", () => {
-    const msg = { type: "openspace:reportTrack", trackId: "abc" };
+    const msg = { type: "topeight:reportTrack", trackId: "abc" };
     expect(parseBridgeMessage(ev(msg, { origin: "http://127.0.0.1:3000" }), frame)).toBeNull();
     expect(parseBridgeMessage(ev(msg, { source: { name: "other" } }), frame)).toBeNull();
   });
@@ -167,11 +167,11 @@ describe("clampFrameHeight", () => {
 
 describe("navigatePath", () => {
   test("builds main-origin paths only", () => {
-    expect(navigatePath({ type: "openspace:navigate", username: "lowveld" })).toBe("/lowveld");
-    expect(navigatePath({ type: "openspace:navigate", username: "lowveld", page: "friends" })).toBe(
+    expect(navigatePath({ type: "topeight:navigate", username: "lowveld" })).toBe("/lowveld");
+    expect(navigatePath({ type: "topeight:navigate", username: "lowveld", page: "friends" })).toBe(
       "/lowveld/friends",
     );
-    expect(navigatePath({ type: "openspace:navigate", username: "lowveld", page: "comments" })).toBe(
+    expect(navigatePath({ type: "topeight:navigate", username: "lowveld", page: "comments" })).toBe(
       "/lowveld/comments",
     );
   });

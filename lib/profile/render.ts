@@ -118,12 +118,12 @@ function photo(url: string | null, className: string): string {
 }
 
 function navLink(username: string, label: string, page?: BridgePage): string {
-  const pageAttr = page ? ` data-openspace-page="${page}"` : "";
-  return `<a href="#" data-openspace-navigate="${escapeHtml(username)}"${pageAttr}>${label}</a>`;
+  const pageAttr = page ? ` data-topeight-page="${page}"` : "";
+  return `<a href="#" data-topeight-navigate="${escapeHtml(username)}"${pageAttr}>${label}</a>`;
 }
 
 function actionLink(action: string, label: string): string {
-  return `<a href="#" data-openspace-action="${action}">${label}</a>`;
+  return `<a href="#" data-topeight-action="${action}">${label}</a>`;
 }
 
 /** Plain text with image URLs as <img> and other http(s) URLs as links. */
@@ -154,15 +154,15 @@ function renderPlayer(p: PublicProfile, name: string, opts: RenderOptions): stri
     .map(
       (t, i) =>
         // The Report link sits outside the button, so clicking it never toggles playback.
-        `<li><button type="button" class="player-track${i === first ? " current" : ""}" data-index="${i}" data-track-id="${escapeHtml(t.id)}" data-src="${escapeHtml(t.url)}"><span><span class="mark">&#9654; </span>${escapeHtml(t.title)}</span><span class="dur"></span></button><a href="#" class="player-report" data-openspace-report-track="${escapeHtml(t.id)}">Report</a></li>`,
+        `<li><button type="button" class="player-track${i === first ? " current" : ""}" data-index="${i}" data-track-id="${escapeHtml(t.id)}" data-src="${escapeHtml(t.url)}"><span><span class="mark">&#9654; </span>${escapeHtml(t.title)}</span><span class="dur"></span></button><a href="#" class="player-report" data-topeight-report-track="${escapeHtml(t.id)}">Report</a></li>`,
     )
     .join("");
   const refresh = opts.usercontentOrigin
     ? ` data-tracks-url="${escapeHtml(`${opts.usercontentOrigin.replace(/\/+$/, "")}/${encodeURIComponent(p.username)}?format=tracks`)}"`
     : "";
-  return `<div class="player" id="openspace-player-ui" data-autoplay="${autoplay}"${refresh}>
+  return `<div class="player" id="topeight-player-ui" data-autoplay="${autoplay}"${refresh}>
 <b>${name}</b> &middot; music player
-<audio id="openspace-player" preload="metadata" controlsList="nodownload" src="${escapeHtml(tracks[first].url)}"></audio>
+<audio id="topeight-player" preload="metadata" controlsList="nodownload" src="${escapeHtml(tracks[first].url)}"></audio>
 <div class="player-controls"><button type="button" class="player-play">Play</button><button type="button" class="player-mute">Mute</button><span class="player-time">0:00</span></div>
 <div class="player-bar"><i></i></div>
 <ul class="player-tracks">${items}</ul>
@@ -227,7 +227,7 @@ ${renderPlayer(p, name, opts)}
 <tr><td>&#10148; ${actionLink("forward", "Forward to Friend")}</td><td>&#9733; <span class="soon" title="Coming soon">Add to Favorites</span></td></tr>
 <tr><td>&#9888; ${actionLink("report", "Report")}</td><td>&#10006; ${actionLink("block", "Block User")}</td></tr>
 </table></div>
-<div class="profile-url"><b>OpenSpace URL:</b><br>${escapeHtml(host)}/${escapeHtml(p.username)}</div>
+<div class="profile-url"><b>TopEight URL:</b><br>${escapeHtml(host)}/${escapeHtml(p.username)}</div>
 ${details}
 </div>`;
 }
@@ -292,7 +292,7 @@ function renderRight(p: PublicProfile): string {
 /**
  * In-iframe half of the bridge (see lib/bridge-protocol.ts). Runs before any
  * custom code. It holds its own references, so artist code replacing
- * window.openspace does not change what the Contacting box links do.
+ * window.topeight does not change what the Contacting box links do.
  */
 export function bridgeScript(mainOrigin: string): string {
   return `(function () {
@@ -303,30 +303,30 @@ export function bridgeScript(mainOrigin: string): string {
   function post(msg) { try { window.parent.postMessage(msg, ORIGIN); } catch (e) {} }
   function request(action) {
     if (ACTIONS.indexOf(action) === -1) return;
-    post({ type: "openspace:action", action: action });
+    post({ type: "topeight:action", action: action });
   }
   function navigate(username, page) {
     if (typeof username !== "string" || !username) return;
-    var msg = { type: "openspace:navigate", username: username };
+    var msg = { type: "topeight:navigate", username: username };
     if (PAGES.indexOf(page) !== -1) msg.page = page;
     post(msg);
   }
   function reportTrack(trackId) {
     if (typeof trackId !== "string" || !trackId || trackId.length > MAX_TRACK_ID) return;
-    post({ type: "openspace:reportTrack", trackId: trackId });
+    post({ type: "topeight:reportTrack", trackId: trackId });
   }
-  window.openspace = { request: request, navigate: navigate, reportTrack: reportTrack };
+  window.topeight = { request: request, navigate: navigate, reportTrack: reportTrack };
   document.addEventListener("click", function (e) {
     var t = e.target;
     if (!(t instanceof Element)) return;
-    var el = t.closest("[data-openspace-action],[data-openspace-navigate],[data-openspace-report-track]");
+    var el = t.closest("[data-topeight-action],[data-topeight-navigate],[data-topeight-report-track]");
     if (!el) return;
     e.preventDefault();
-    var action = el.getAttribute("data-openspace-action");
-    var track = el.getAttribute("data-openspace-report-track");
+    var action = el.getAttribute("data-topeight-action");
+    var track = el.getAttribute("data-topeight-report-track");
     if (action !== null) request(action);
     else if (track !== null) reportTrack(track);
-    else navigate(el.getAttribute("data-openspace-navigate"), el.getAttribute("data-openspace-page"));
+    else navigate(el.getAttribute("data-topeight-navigate"), el.getAttribute("data-topeight-page"));
   });
 
   // Height of the content, not the viewport: body's offset from the top of
@@ -356,7 +356,7 @@ export function bridgeScript(mainOrigin: string): string {
     }
     lastHeight = height;
     lastViewport = viewport;
-    post({ type: "openspace:resize", height: height });
+    post({ type: "topeight:resize", height: height });
   }
   function schedule() {
     if (queued) return;
@@ -378,8 +378,8 @@ export function bridgeScript(mainOrigin: string): string {
  * failure, until playback works again). No download control, no context menu.
  */
 export const playerScript = `document.addEventListener("DOMContentLoaded", function () {
-  var ui = document.getElementById("openspace-player-ui");
-  var audio = document.getElementById("openspace-player");
+  var ui = document.getElementById("topeight-player-ui");
+  var audio = document.getElementById("topeight-player");
   if (!ui || !audio) return;
   var playBtn = ui.querySelector(".player-play");
   var muteBtn = ui.querySelector(".player-mute");
@@ -487,7 +487,7 @@ export const playerScript = `document.addEventListener("DOMContentLoaded", funct
 
 /**
  * Full HTML document for a profile, served from the usercontent origin into
- * a sandboxed iframe. OpenSpace scripts sit in <head> so custom HTML in the
+ * a sandboxed iframe. TopEight scripts sit in <head> so custom HTML in the
  * body cannot swallow them. Fans get custom CSS only.
  */
 export function renderProfileDocument(p: PublicProfile, opts: RenderOptions): string {
@@ -511,11 +511,11 @@ export function renderProfileDocument(p: PublicProfile, opts: RenderOptions): st
 <html lang="en">
 <head>
 ${opts.cspMeta ? `<meta http-equiv="Content-Security-Policy" content="${escapeHtml(opts.cspMeta)}">\n` : ""}<meta charset="utf-8">
-<title>${escapeHtml(p.displayName)} | OpenSpace</title>
+<title>${escapeHtml(p.displayName)} | TopEight</title>
 <style>${PROFILE_CSS}</style>
 <style>${neutraliseStyle(p.custom.css)}</style>
 <script>
-window.OPENSPACE = ${scriptJson(publicData)};
+window.TOPEIGHT = ${scriptJson(publicData)};
 ${bridgeScript(opts.mainOrigin)}
 ${playerScript}
 </script>

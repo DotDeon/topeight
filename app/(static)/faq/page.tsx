@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export const metadata = { title: "FAQ - OpenSpace" };
+export const metadata = { title: "FAQ - TopEight" };
 
 export default function FaqPage() {
   return (

@@ -19,7 +19,7 @@ test("a member reports a profile from the trusted strip and the admin dismisses 
   await logIn(member, COMMENTER, process.env.E2E_COMMENTER_PASSWORD);
   await member.goto("/sandboxtest");
   await member.getByRole("button", { name: "Report" }).click();
-  const dialog = member.locator("dialog[data-openspace-confirm]");
+  const dialog = member.locator("dialog[data-topeight-confirm]");
   await dialog.locator("textarea").fill(reason);
   await dialog.getByRole("button", { name: "Confirm" }).click();
   await expect(dialog.getByRole("status")).toHaveText("Thanks. An admin will review this profile.");

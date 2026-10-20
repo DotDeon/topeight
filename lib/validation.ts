@@ -27,7 +27,7 @@ export const RESERVED_USERNAMES: ReadonlySet<string> = new Set([
   "root",
   "system",
   "moderator",
-  "openspace",
+  "topeight",
   "www",
   "_next",
   "favicon",

@@ -34,6 +34,6 @@ test("an artist pastes custom HTML, saves, and the profile frame shows it", asyn
   await expect(code.getByRole("status")).toHaveText("Saved");
 
   await page.goto("/e2eeditor");
-  const frame = page.frameLocator("iframe[data-openspace-profile]");
+  const frame = page.frameLocator("iframe[data-topeight-profile]");
   await expect(frame.locator("marquee")).toHaveText("hi", { timeout: 15_000 });
 });

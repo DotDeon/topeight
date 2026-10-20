@@ -123,9 +123,9 @@ describe("renderProfileDocument (brief)", () => {
   });
 });
 
-function extractOpenspaceJson(html: string): string {
-  const m = /window\.OPENSPACE = ([^\n]*);\n/.exec(html);
-  if (!m) throw new Error("window.OPENSPACE not found");
+function extractTopeightJson(html: string): string {
+  const m = /window\.TOPEIGHT = ([^\n]*);\n/.exec(html);
+  if (!m) throw new Error("window.TOPEIGHT not found");
   return m[1];
 }
 
@@ -160,10 +160,10 @@ describe("player report links", () => {
     );
     const rows = html.match(/<li>.*?<\/li>/g) ?? [];
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toContain('<a href="#" class="player-report" data-openspace-report-track="k1">Report</a>');
-    expect(rows[1]).toContain('data-openspace-report-track="k2"');
+    expect(rows[0]).toContain('<a href="#" class="player-report" data-topeight-report-track="k1">Report</a>');
+    expect(rows[1]).toContain('data-topeight-report-track="k2"');
     // The link sits after the button, so clicking it never reaches the play handler.
-    for (const row of rows) expect(row).toMatch(/<\/button><a [^>]*data-openspace-report-track=/);
+    for (const row of rows) expect(row).toMatch(/<\/button><a [^>]*data-topeight-report-track=/);
   });
 
   test("tracks without a playable URL get no Report link", () => {
@@ -171,15 +171,15 @@ describe("player report links", () => {
       artist({ tracks: [{ ...t("Bad"), url: "javascript:alert(1)", id: "k9" }] }),
       opts,
     );
-    expect(html).not.toContain('data-openspace-report-track="');
+    expect(html).not.toContain('data-topeight-report-track="');
   });
 });
 
 describe("renderProfileDocument (hardening)", () => {
-  test("window.OPENSPACE JSON escapes </script> and U+2028/U+2029", () => {
+  test("window.TOPEIGHT JSON escapes </script> and U+2028/U+2029", () => {
     const p = artist({ aboutMe: "</script><script>alert(1)</script>\u2028\u2029&" });
     const html = renderProfileDocument(p, opts);
-    const json = extractOpenspaceJson(html);
+    const json = extractTopeightJson(html);
     expect(json).not.toMatch(/[<>&\u2028\u2029]/);
     expect(json).toContain("\\u003c/script\\u003e");
     expect(json).toContain("\\u2028");
@@ -187,23 +187,23 @@ describe("renderProfileDocument (hardening)", () => {
     expect(JSON.parse(json).aboutMe).toBe(p.aboutMe);
   });
 
-  test("window.OPENSPACE holds the public profile fields, minus custom code", () => {
+  test("window.TOPEIGHT holds the public profile fields, minus custom code", () => {
     const p = artist({
       tracks: [t("Red Dust", true)],
       custom: { css: "", html: "", js: "window.SECRET_ISH=1" },
     });
-    const data = JSON.parse(extractOpenspaceJson(renderProfileDocument(p, opts)));
+    const data = JSON.parse(extractTopeightJson(renderProfileDocument(p, opts)));
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { custom, ...rest } = p;
     expect(data).toEqual(rest);
   });
 
-  test("window.OPENSPACE comments carry bodyHtml, the same safe markup the page shows", () => {
+  test("window.TOPEIGHT comments carry bodyHtml, the same safe markup the page shows", () => {
     const evil = '<img src=x onerror="alert(1)">';
     const pic = "https://x.com/a.gif";
     const p = fan({ comments: [c(evil), c(pic)] });
     const html = renderProfileDocument(p, opts);
-    const json = extractOpenspaceJson(html);
+    const json = extractTopeightJson(html);
     // The raw markup never appears in the JSON, not even JSON-escaped.
     expect(json).not.toContain("onerror=\"alert");
     expect(json).not.toContain("\\u003cimg src=x");
@@ -256,7 +256,7 @@ describe("renderProfileDocument (hardening)", () => {
       artist({ custom: { css: "", html: "", js: "window.ARTIST_MARKER=1" } }),
       opts,
     );
-    const bridge = html.indexOf("window.openspace =");
+    const bridge = html.indexOf("window.topeight =");
     const custom = html.indexOf("window.ARTIST_MARKER=1");
     expect(bridge).toBeGreaterThan(-1);
     expect(custom).toBeGreaterThan(bridge);
@@ -274,13 +274,13 @@ describe("renderProfileDocument (hardening)", () => {
       opts,
     );
     for (const a of ["addFriend", "addComment", "report", "block", "forward", "message"]) {
-      expect(html).toContain(`data-openspace-action="${a}"`);
+      expect(html).toContain(`data-topeight-action="${a}"`);
     }
-    expect(html).toContain('data-openspace-navigate="tom">');
-    expect(html).toContain('data-openspace-navigate="nightjar">');
-    expect(html).toContain('data-openspace-navigate="jess" data-openspace-page="comments">View All<');
-    expect(html).toContain('data-openspace-navigate="jess" data-openspace-page="friends">');
-    expect(html).not.toMatch(/data-openspace-navigate="[^"]*\//);
+    expect(html).toContain('data-topeight-navigate="tom">');
+    expect(html).toContain('data-topeight-navigate="nightjar">');
+    expect(html).toContain('data-topeight-navigate="jess" data-topeight-page="comments">View All<');
+    expect(html).toContain('data-topeight-navigate="jess" data-topeight-page="friends">');
+    expect(html).not.toMatch(/data-topeight-navigate="[^"]*\//);
     expect(html).toContain("Displaying 1 of 57 comments");
   });
 
@@ -298,12 +298,12 @@ describe("renderProfileDocument (hardening)", () => {
   });
 
   test("no tracks means no player", () => {
-    expect(renderProfileDocument(artist({ tracks: [] }), opts)).not.toContain('id="openspace-player"');
+    expect(renderProfileDocument(artist({ tracks: [] }), opts)).not.toContain('id="topeight-player"');
     expect(renderProfileDocument(fan({ tracks: [t("x")] }), opts)).not.toContain(
-      'id="openspace-player"',
+      'id="topeight-player"',
     );
     const html = renderProfileDocument(artist({ tracks: [t("Red Dust", true)] }), opts);
-    expect(html).toContain('id="openspace-player"');
+    expect(html).toContain('id="topeight-player"');
     expect(html).toContain("pointerdown");
   });
 
@@ -338,7 +338,7 @@ describe("URL schemes and escaping", () => {
       artist({ tracks: [{ id: "trk_x", title: "x", url: "data:audio/mpeg;base64,AAAA", autoplay: true }] }),
       opts,
     );
-    expect(html).not.toContain('id="openspace-player"');
+    expect(html).not.toContain('id="topeight-player"');
     expect(html).not.toContain('src="data:');
   });
 
@@ -348,7 +348,7 @@ describe("URL schemes and escaping", () => {
       opts,
     );
     expect(html).not.toContain("<img src=x onerror");
-    expect(html).toContain('data-openspace-report-track="&quot;&gt;&lt;img src=x onerror=alert(1)&gt;"');
+    expect(html).toContain('data-topeight-report-track="&quot;&gt;&lt;img src=x onerror=alert(1)&gt;"');
   });
 
   test("markup in names, headline, venue and track title is escaped", () => {
@@ -397,7 +397,7 @@ function runBridge() {
     scrollY: 0,
     parent: { postMessage: (msg: unknown, origin: string) => posted.push({ msg, origin }) },
     addEventListener: (type: string, fn: () => void) => (winListeners[type] ??= []).push(fn),
-    openspace: undefined as unknown as {
+    topeight: undefined as unknown as {
       request: (a: unknown) => void;
       navigate: (u: unknown, p?: unknown) => void;
       reportTrack: (id: unknown) => void;
@@ -434,7 +434,7 @@ function runBridge() {
 describe("bridge script", () => {
   test("posts the content height to the main origin on load", () => {
     const b = runBridge();
-    expect(b.messages()).toEqual([{ type: "openspace:resize", height: 900 }]);
+    expect(b.messages()).toEqual([{ type: "topeight:resize", height: 900 }]);
     expect(b.posted[0].origin).toBe("http://localhost:3000");
   });
 
@@ -444,7 +444,7 @@ describe("bridge script", () => {
     b.env.scrollHeight = 500;
     b.env.marginBottom = "8.4px";
     b.resize();
-    expect(b.messages().at(-1)).toEqual({ type: "openspace:resize", height: 517 });
+    expect(b.messages().at(-1)).toEqual({ type: "topeight:resize", height: 517 });
   });
 
   test("shrinks, and ignores changes under 2px", () => {
@@ -454,7 +454,7 @@ describe("bridge script", () => {
     expect(b.posted).toHaveLength(1);
     b.env.scrollHeight = 400;
     b.resize();
-    expect(b.messages().at(-1)).toEqual({ type: "openspace:resize", height: 400 });
+    expect(b.messages().at(-1)).toEqual({ type: "topeight:resize", height: 400 });
   });
 
   test("does not chase content sized from the viewport", () => {
@@ -462,7 +462,7 @@ describe("bridge script", () => {
     // body { min-height: 100vh; padding-bottom: 20px } with little content
     b.env.scrollHeight = b.window.innerHeight + 20;
     b.resize();
-    expect(b.messages().at(-1)).toEqual({ type: "openspace:resize", height: 170 });
+    expect(b.messages().at(-1)).toEqual({ type: "topeight:resize", height: 170 });
     const count = b.posted.length;
     for (let i = 0; i < 5; i++) {
       b.window.innerHeight = 170; // parent applied the height
@@ -474,46 +474,46 @@ describe("bridge script", () => {
 
   test("click delegation posts action and navigate messages", () => {
     const b = runBridge();
-    expect(b.click({ "data-openspace-action": "addFriend" })).toBe(true);
-    b.click({ "data-openspace-navigate": "tom" });
-    b.click({ "data-openspace-navigate": "jess", "data-openspace-page": "comments" });
-    b.click({ "data-openspace-navigate": "jess", "data-openspace-page": "../admin" });
-    b.click({ "data-openspace-action": "deleteAccount" });
-    expect(b.click({ "data-openspace-report-track": "k57abc" })).toBe(true);
-    b.click({ "data-openspace-report-track": "" });
-    b.click({ "data-openspace-report-track": "x".repeat(65) });
+    expect(b.click({ "data-topeight-action": "addFriend" })).toBe(true);
+    b.click({ "data-topeight-navigate": "tom" });
+    b.click({ "data-topeight-navigate": "jess", "data-topeight-page": "comments" });
+    b.click({ "data-topeight-navigate": "jess", "data-topeight-page": "../admin" });
+    b.click({ "data-topeight-action": "deleteAccount" });
+    expect(b.click({ "data-topeight-report-track": "k57abc" })).toBe(true);
+    b.click({ "data-topeight-report-track": "" });
+    b.click({ "data-topeight-report-track": "x".repeat(65) });
     expect(b.messages().slice(1)).toEqual([
-      { type: "openspace:action", action: "addFriend" },
-      { type: "openspace:navigate", username: "tom" },
-      { type: "openspace:navigate", username: "jess", page: "comments" },
-      { type: "openspace:navigate", username: "jess" },
-      { type: "openspace:reportTrack", trackId: "k57abc" },
+      { type: "topeight:action", action: "addFriend" },
+      { type: "topeight:navigate", username: "tom" },
+      { type: "topeight:navigate", username: "jess", page: "comments" },
+      { type: "topeight:navigate", username: "jess" },
+      { type: "topeight:reportTrack", trackId: "k57abc" },
     ]);
   });
 
-  test("window.openspace.reportTrack posts only string ids of 1 to 64 characters", () => {
+  test("window.topeight.reportTrack posts only string ids of 1 to 64 characters", () => {
     const b = runBridge();
-    b.window.openspace.reportTrack("k57abc");
-    b.window.openspace.reportTrack("x".repeat(64));
-    b.window.openspace.reportTrack("x".repeat(65));
-    b.window.openspace.reportTrack("");
-    b.window.openspace.reportTrack(42);
-    b.window.openspace.reportTrack({ toString: () => "k1" });
+    b.window.topeight.reportTrack("k57abc");
+    b.window.topeight.reportTrack("x".repeat(64));
+    b.window.topeight.reportTrack("x".repeat(65));
+    b.window.topeight.reportTrack("");
+    b.window.topeight.reportTrack(42);
+    b.window.topeight.reportTrack({ toString: () => "k1" });
     expect(b.messages().slice(1)).toEqual([
-      { type: "openspace:reportTrack", trackId: "k57abc" },
-      { type: "openspace:reportTrack", trackId: "x".repeat(64) },
+      { type: "topeight:reportTrack", trackId: "k57abc" },
+      { type: "topeight:reportTrack", trackId: "x".repeat(64) },
     ]);
   });
 
-  test("window.openspace API validates its input", () => {
+  test("window.topeight API validates its input", () => {
     const b = runBridge();
-    b.window.openspace.request("block");
-    b.window.openspace.navigate("tom", "friends");
-    b.window.openspace.navigate(42);
-    b.window.openspace.navigate("");
+    b.window.topeight.request("block");
+    b.window.topeight.navigate("tom", "friends");
+    b.window.topeight.navigate(42);
+    b.window.topeight.navigate("");
     expect(b.messages().slice(1)).toEqual([
-      { type: "openspace:action", action: "block" },
-      { type: "openspace:navigate", username: "tom", page: "friends" },
+      { type: "topeight:action", action: "block" },
+      { type: "topeight:navigate", username: "tom", page: "friends" },
     ]);
   });
 
@@ -568,7 +568,7 @@ describe("player protection", () => {
   );
 
   test("the audio element hides the download control", () => {
-    expect(html).toMatch(/<audio id="openspace-player"[^>]* controlsList="nodownload"/);
+    expect(html).toMatch(/<audio id="topeight-player"[^>]* controlsList="nodownload"/);
   });
 
   test("rows carry their track id and the player knows where to refresh URLs", () => {
@@ -631,7 +631,7 @@ function runPlayer(tracksUrl: string | null = "http://127.0.0.1:3000/lowveld?for
   const intervals: number[] = [];
   runInNewContext(playerScript, {
     document: Object.assign(doc, {
-      getElementById: (id: string) => (id === "openspace-player-ui" ? ui : id === "openspace-player" ? audio : null),
+      getElementById: (id: string) => (id === "topeight-player-ui" ? ui : id === "topeight-player" ? audio : null),
     }),
     fetch: (url: string) => {
       fetches.push(url);

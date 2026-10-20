@@ -1,12 +1,12 @@
 <img src="assets/icon.svg" width="64" height="64" alt="">
 
-# OpenSpace
+# TopEight
 
-## What OpenSpace is
+## What TopEight is
 
-OpenSpace is an open source rebuild of 2006-era MySpace. It has the classic 800 pixel layout, a Top 8, profile comments, bulletins and artist pages with music players and show dates. Members can restyle their profile with CSS, and artists can add their own HTML, CSS and JavaScript. It runs on Next.js 16 and Convex.
+TopEight is an open source rebuild of 2006-era MySpace. It has the classic 800 pixel layout, a Top 8, profile comments, bulletins and artist pages with music players and show dates. Members can restyle their profile with CSS, and artists can add their own HTML, CSS and JavaScript. It runs on Next.js 16 and Convex.
 
-![The OpenSpace homepage with demo members, artists and upcoming shows](docs/screenshot-home.png)
+![The TopEight homepage with demo members, artists and upcoming shows](docs/screenshot-home.png)
 
 ## Features
 
@@ -22,14 +22,14 @@ OpenSpace is an open source rebuild of 2006-era MySpace. It has the classic 800 
 
 ## How the artist sandbox works
 
-Artists can run their own JavaScript on their profile. That is the feature that made MySpace fun, and also the one that let the 2005 Samy worm spread to more than a million profiles in a day. Samy's code ran in the same origin as the logged-in site, so it could act as whoever viewed the page. OpenSpace keeps that power and removes the risk.
+Artists can run their own JavaScript on their profile. That is the feature that made MySpace fun, and also the one that let the 2005 Samy worm spread to more than a million profiles in a day. Samy's code ran in the same origin as the logged-in site, so it could act as whoever viewed the page. TopEight keeps that power and removes the risk.
 
 - **Two origins.** The trusted site, with sign-in, editing and the friend buttons, is served from the main origin. Profile documents are served from a second origin on a different registrable domain, so browsers never share cookies between them.
 - **Sandboxed iframe.** The main site shows each profile in an iframe with `sandbox="allow-scripts allow-popups"`. It never has `allow-same-origin`, so profile code cannot read the parent page, cookies or storage.
 - **Content Security Policy.** The usercontent origin sends a strict CSP. `connect-src` allows only the usercontent origin and `form-action` is `'none'`, so profile code cannot call the main site's APIs or post a form to it. The CSP also carries `sandbox allow-scripts allow-popups`, so a profile document opened directly in its own tab still runs in an opaque origin and cannot set or read cookies or storage on the usercontent origin.
 - **The trusted strip.** The bar above every profile is drawn by the main site, outside the iframe. It holds the Add Friend, Comment and Report actions, so artist code cannot hide, fake or restyle it. When profile code asks for an action, it goes through a message to the parent, which asks the viewer to confirm.
 
-The full design is in [docs/superpowers/specs/2026-10-19-openspace-design.md](docs/superpowers/specs/2026-10-19-openspace-design.md).
+The full design is in [docs/superpowers/specs/2026-10-19-topeight-design.md](docs/superpowers/specs/2026-10-19-topeight-design.md).
 
 ## Running locally
 
@@ -39,7 +39,7 @@ You need Node 20 or newer. Run these from the repo root.
 2. Copy the example settings with `cp .env.example .env.local`.
 3. Run `npx convex dev` once and create a Convex project. It writes `NEXT_PUBLIC_CONVEX_URL` into `.env.local`. Stop it when the first push finishes.
 4. Fill in `.env.local`. For local work you need the two origins (`http://localhost:3000` and `http://127.0.0.1:3000`, which reach the same server by different host names, so cookies stay separate), `HOUSE_USERNAME` and `HOUSE_DISPLAY_NAME`.
-5. Set the same values on the Convex deployment and add the Convex Auth keys, for example `npx convex env set HOUSE_USERNAME openspace`. [docs/deploy.md](docs/deploy.md) lists every variable and where it goes.
+5. Set the same values on the Convex deployment and add the Convex Auth keys, for example `npx convex env set HOUSE_USERNAME topeight`. [docs/deploy.md](docs/deploy.md) lists every variable and where it goes.
 6. Start everything with `npm run dev`. This runs Next.js and `npx convex dev` together. Open `http://localhost:3000`.
 
 Without `AUTH_RESEND_KEY`, sign-up and reset codes are printed to the Convex logs. Without the R2 variables, photo and track uploads do not work and tracks do not play.
@@ -49,9 +49,9 @@ Without `AUTH_RESEND_KEY`, sign-up and reset codes are printed to the Convex log
 The seed creates 8 fans, 5 artists, tracks, shows, comments and bulletins. The seed accounts have no email, so nobody can sign in as them.
 
 1. `node scripts/seed-media.mjs` generates three silent MP3s and small avatars, and uploads them to R2 when the `R2_*` variables are set. The MP3s go to `R2_AUDIO_BUCKET`, the avatars to `R2_BUCKET`. Add `--dry-run` to skip the upload.
-2. `npx convex env set OPENSPACE_ALLOW_SEED 1`
+2. `npx convex env set TOPEIGHT_ALLOW_SEED 1`
 3. `npx convex run seed:run`
-4. `npx convex env remove OPENSPACE_ALLOW_SEED`
+4. `npx convex env remove TOPEIGHT_ALLOW_SEED`
 
 Running the seed again is safe.
 
@@ -85,8 +85,8 @@ Running the seed again is safe.
 | `R2_BUCKET` | Convex, seed script | Public R2 bucket for photos |
 | `R2_AUDIO_BUCKET` | Convex, seed script | Private R2 bucket for tracks. Keep it private: no public domain and no `r2.dev` URL |
 | `NEXT_PUBLIC_R2_PUBLIC_URL` | Convex | Public base URL of the photo bucket |
-| `OPENSPACE_TEST_FIXTURES` | Convex, dev only | Enables e2e test fixtures. Never set in production |
-| `OPENSPACE_ALLOW_SEED` | Convex, dev only | Allows `seed:run`. Never leave set in production |
+| `TOPEIGHT_TEST_FIXTURES` | Convex, dev only | Enables e2e test fixtures. Never set in production |
+| `TOPEIGHT_ALLOW_SEED` | Convex, dev only | Allows `seed:run`. Never leave set in production |
 | `PORT` | Local shell | Port for the dev server and e2e tests |
 
 ## Admins and the house account
@@ -95,6 +95,6 @@ Anyone whose verified email is in `ADMIN_EMAILS` can use the admin queue at `/ad
 
 ## License
 
-OpenSpace is licensed under the [GNU Affero General Public License v3.0](LICENSE). If you run a modified copy as a public site, you must share your changes.
+TopEight is licensed under the [GNU Affero General Public License v3.0](LICENSE). If you run a modified copy as a public site, you must share your changes.
 
-OpenSpace is not affiliated with MySpace. It contains no MySpace logos, icons or images.
+TopEight is not affiliated with MySpace. It contains no MySpace logos, icons or images.

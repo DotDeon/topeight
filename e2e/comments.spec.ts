@@ -17,7 +17,7 @@ test("a signed-in user comments from the trusted strip, then deletes it on the c
 
   await page.goto("/sandboxtest");
   await page.getByRole("button", { name: "Add Comment" }).click();
-  const dialog = page.locator("dialog[data-openspace-confirm]");
+  const dialog = page.locator("dialog[data-topeight-confirm]");
   const confirm = dialog.getByRole("button", { name: "Confirm" });
   await expect(confirm).toBeDisabled();
   await dialog.locator("textarea").fill(body);
@@ -27,7 +27,7 @@ test("a signed-in user comments from the trusted strip, then deletes it on the c
   await dialog.getByRole("button", { name: "Close" }).click();
 
   // The iframe reloads and the new comment shows in the profile document.
-  const frame = page.frameLocator("iframe[data-openspace-profile]");
+  const frame = page.frameLocator("iframe[data-topeight-profile]");
   await expect(frame.getByText(body)).toBeVisible({ timeout: 15_000 });
   expect(page.frames().some((f) => f.url().startsWith(`${USERCONTENT}/sandboxtest`))).toBe(true);
 

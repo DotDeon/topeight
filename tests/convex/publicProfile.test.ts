@@ -383,7 +383,7 @@ describe("recordView", () => {
 
 describe("seedSandboxFixture", () => {
   test("creates the sandboxtest artist once", async () => {
-    vi.stubEnv("OPENSPACE_TEST_FIXTURES", "1");
+    vi.stubEnv("TOPEIGHT_TEST_FIXTURES", "1");
     const t = setup();
     await t.mutation(internal.testing.seedSandboxFixture, {});
     await t.mutation(internal.testing.seedSandboxFixture, {});
@@ -397,17 +397,17 @@ describe("seedSandboxFixture", () => {
     expect(p && "username" in p).toBe(true);
   });
 
-  test("refuses to run unless OPENSPACE_TEST_FIXTURES is 1", async () => {
+  test("refuses to run unless TOPEIGHT_TEST_FIXTURES is 1", async () => {
     const t = setup();
-    await expect(t.mutation(internal.testing.seedSandboxFixture, {})).rejects.toThrow(/OPENSPACE_TEST_FIXTURES/);
-    vi.stubEnv("OPENSPACE_TEST_FIXTURES", "true");
-    await expect(t.mutation(internal.testing.seedSandboxFixture, {})).rejects.toThrow(/OPENSPACE_TEST_FIXTURES/);
+    await expect(t.mutation(internal.testing.seedSandboxFixture, {})).rejects.toThrow(/TOPEIGHT_TEST_FIXTURES/);
+    vi.stubEnv("TOPEIGHT_TEST_FIXTURES", "true");
+    await expect(t.mutation(internal.testing.seedSandboxFixture, {})).rejects.toThrow(/TOPEIGHT_TEST_FIXTURES/);
     const count = await t.run(async (ctx) => (await ctx.db.query("profiles").collect()).length);
     expect(count).toBe(0);
   });
 
   test.each(["sandboxtest", "sandboxfan"])("never overwrites a real member named %s", async (username) => {
-    vi.stubEnv("OPENSPACE_TEST_FIXTURES", "1");
+    vi.stubEnv("TOPEIGHT_TEST_FIXTURES", "1");
     const t = setup();
     const id = await addProfile(t, username, { customJs: "real code" });
     await expect(t.mutation(internal.testing.seedSandboxFixture, {})).rejects.toThrow(/real member/);

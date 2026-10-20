@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
  * Seeds the e2e fixtures (convex/testing.ts) into the Convex deployment the
  * dev server talks to. The fixtures are internalMutations, so only the CLI
  * with deploy credentials can run them, and they refuse to run unless the
- * deployment has OPENSPACE_TEST_FIXTURES=1. This setup sets that flag, and
+ * deployment has TOPEIGHT_TEST_FIXTURES=1. This setup sets that flag, and
  * e2e/global-teardown.ts unsets it.
  *
  * It refuses to touch anything but a local Convex backend. Set
@@ -78,7 +78,7 @@ export default function globalSetup() {
   const adminPassword = randomBytes(18).toString("base64url");
   process.env.E2E_ADMIN_PASSWORD = adminPassword;
   const convex = (...args: string[]) => execFileSync("npx", ["convex", ...args], { stdio: "inherit" });
-  convex("env", "set", ...envFile, "OPENSPACE_TEST_FIXTURES", "1");
+  convex("env", "set", ...envFile, "TOPEIGHT_TEST_FIXTURES", "1");
 
   // `env get` prints nothing on stdout when the variable is unset.
   const prior = execFileSync("npx", ["convex", "env", "get", ...envFile, "ADMIN_EMAILS"], {

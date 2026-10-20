@@ -3,11 +3,11 @@ import { expect, test } from "@playwright/test";
 test("about page shows the classic chrome", async ({ page }) => {
   await page.goto("/about");
   const header = page.locator("header");
-  await expect(header).toContainText("OpenSpace");
+  await expect(header).toContainText("TopEight");
   await expect(header).toContainText("a place for friends");
   await expect(page.locator("nav a")).toHaveCount(12);
   await expect(page.locator("footer")).toContainText("Report Abuse");
-  await expect(header.getByLabel("OpenSpace")).toBeChecked();
+  await expect(header.getByLabel("TopEight")).toBeChecked();
   await expect(page.getByText("Log In")).toBeVisible();
 });
 

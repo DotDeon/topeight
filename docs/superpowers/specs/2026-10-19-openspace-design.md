@@ -1,5 +1,7 @@
 # OpenSpace design
 
+Renamed to TopEight on 2026-10-20; the design is unchanged.
+
 Date: 2026-10-19
 Status: approved by owner, 2026-10-19
 

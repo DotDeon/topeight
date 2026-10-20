@@ -36,9 +36,9 @@ export function ProfileFrame({
     function onMessage(ev: MessageEvent) {
       const msg = parseBridgeMessage(ev, ref.current?.contentWindow);
       if (!msg) return;
-      if (msg.type === "openspace:resize") setHeight(clampFrameHeight(msg.height));
-      else if (msg.type === "openspace:navigate") router.push(navigatePath(msg));
-      else if (msg.type === "openspace:reportTrack") onReportTrack(msg.trackId);
+      if (msg.type === "topeight:resize") setHeight(clampFrameHeight(msg.height));
+      else if (msg.type === "topeight:navigate") router.push(navigatePath(msg));
+      else if (msg.type === "topeight:reportTrack") onReportTrack(msg.trackId);
       else onAction(msg.action);
     }
     window.addEventListener("message", onMessage);
@@ -60,7 +60,7 @@ export function ProfileFrame({
     <iframe
       ref={ref}
       title={`${displayName}'s profile`}
-      data-openspace-profile=""
+      data-topeight-profile=""
       sandbox="allow-scripts allow-popups"
       allow="autoplay"
       referrerPolicy="no-referrer"

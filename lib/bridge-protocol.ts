@@ -27,11 +27,11 @@ export type BridgePage = (typeof BRIDGE_PAGES)[number];
 export const MAX_TRACK_ID_LENGTH = 64;
 
 export type BridgeMessage =
-  | { type: "openspace:action"; action: BridgeAction }
-  | { type: "openspace:navigate"; username: string; page?: BridgePage }
-  | { type: "openspace:resize"; height: number }
+  | { type: "topeight:action"; action: BridgeAction }
+  | { type: "topeight:navigate"; username: string; page?: BridgePage }
+  | { type: "topeight:resize"; height: number }
   /**
    * Report one song in the player. The parent only acts on ids in its own
    * server-loaded track list for this profile, and shows that list's title.
    */
-  | { type: "openspace:reportTrack"; trackId: string };
+  | { type: "topeight:reportTrack"; trackId: string };

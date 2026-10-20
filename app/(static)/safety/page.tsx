@@ -1,4 +1,4 @@
-export const metadata = { title: "Safety tips - OpenSpace" };
+export const metadata = { title: "Safety tips - TopEight" };
 
 export default function SafetyPage() {
   return (

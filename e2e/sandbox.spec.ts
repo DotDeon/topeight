@@ -46,7 +46,7 @@ async function probes(page: Page): Promise<Probes> {
 test.describe("artist sandbox", () => {
   test("profile iframe is sandboxed without same-origin", async ({ page }) => {
     await page.goto("/sandboxtest");
-    const iframe = page.locator("iframe[data-openspace-profile]");
+    const iframe = page.locator("iframe[data-topeight-profile]");
     await expect(iframe).toHaveAttribute("sandbox", "allow-scripts allow-popups");
     await expect(iframe).toHaveAttribute("allow", "autoplay");
     await expect(iframe).toHaveAttribute("src", `${USERCONTENT}/sandboxtest`);
@@ -76,10 +76,10 @@ test.describe("artist sandbox", () => {
   test("bridge actions need a click in the parent's own dialog", async ({ page }) => {
     await page.goto("/sandboxtest");
     await probes(page);
-    const dialog = page.locator("[data-openspace-confirm]");
+    const dialog = page.locator("[data-topeight-confirm]");
     await expect(dialog).toBeHidden();
 
-    await page.frameLocator("iframe[data-openspace-profile]").locator("#probe-add-friend").click();
+    await page.frameLocator("iframe[data-topeight-profile]").locator("#probe-add-friend").click();
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("Add Sandbox Test to your friends?");
     // Nothing has run yet.
@@ -95,8 +95,8 @@ test.describe("artist sandbox", () => {
   test("the dialog starts on Cancel and Enter does not confirm", async ({ page }) => {
     await page.goto("/sandboxtest");
     await probes(page);
-    const dialog = page.locator("[data-openspace-confirm]");
-    await page.frameLocator("iframe[data-openspace-profile]").locator("#probe-add-friend").click();
+    const dialog = page.locator("[data-topeight-confirm]");
+    await page.frameLocator("iframe[data-topeight-profile]").locator("#probe-add-friend").click();
     await expect(dialog).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.activeElement?.textContent)).toBe("Cancel");
     // Wait past the arm delay so Confirm is live, then press Enter.
@@ -109,14 +109,14 @@ test.describe("artist sandbox", () => {
   test("frame dialogs are throttled visibly, coming-soon ones never count", async ({ page }) => {
     await page.goto("/sandboxtest");
     await probes(page);
-    const frame = page.frameLocator("iframe[data-openspace-profile]");
-    const dialog = page.locator("[data-openspace-confirm]");
-    const note = page.locator("[data-openspace-strip]").getByText("This profile is sending too many requests");
+    const frame = page.frameLocator("iframe[data-topeight-profile]");
+    const dialog = page.locator("[data-topeight-confirm]");
+    const note = page.locator("[data-topeight-strip]").getByText("This profile is sending too many requests");
     const pastCooldown = () => page.waitForTimeout(1_100);
 
     // Closing coming-soon dialogs (Forward to Friend) never counts.
     for (let i = 0; i < 4; i++) {
-      await frame.locator('[data-openspace-action="forward"]').click();
+      await frame.locator('[data-topeight-action="forward"]').click();
       await expect(dialog).toContainText("Forward to Friend is coming soon.");
       await dialog.getByRole("button", { name: "Close" }).click();
       await expect(dialog).toBeHidden();
@@ -137,7 +137,7 @@ test.describe("artist sandbox", () => {
     await expect(dialog).toBeHidden();
 
     // Any trusted strip click lifts the throttle.
-    await page.locator("[data-openspace-strip]").getByRole("button", { name: "Report" }).click();
+    await page.locator("[data-topeight-strip]").getByRole("button", { name: "Report" }).click();
     await expect(note).toBeHidden();
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await pastCooldown();
@@ -148,8 +148,8 @@ test.describe("artist sandbox", () => {
   test("song reports use the server's track list and title", async ({ page }) => {
     await page.goto("/sandboxtest");
     await probes(page);
-    const frame = page.frameLocator("iframe[data-openspace-profile]");
-    const dialog = page.locator("[data-openspace-confirm]");
+    const frame = page.frameLocator("iframe[data-topeight-profile]");
+    const dialog = page.locator("[data-topeight-confirm]");
 
     // Artist code asks to report a real track from another profile: dropped silently.
     await frame.locator("#probe-report-foreign").click();
@@ -157,12 +157,12 @@ test.describe("artist sandbox", () => {
     await expect.poll(async () => JSON.parse(await profileFrame(page)!.title()).foreignReports).toBe(2);
     await page.waitForTimeout(800);
     await expect(dialog).toBeHidden();
-    await expect(page.locator("[data-openspace-strip]").getByText("too many requests")).toBeHidden();
+    await expect(page.locator("[data-topeight-strip]").getByText("too many requests")).toBeHidden();
 
     // The probe renamed the track in the frame; the dialog still shows the server's title.
     const row = frame.locator(".player-tracks li").first();
     await expect(row).toContainText("Spoofed title");
-    await row.locator("[data-openspace-report-track]").click();
+    await row.locator("[data-topeight-report-track]").click();
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText('Report the song "Probe Song"?');
     await expect(dialog).not.toContainText("Spoofed");
@@ -178,8 +178,8 @@ test.describe("artist sandbox", () => {
   test("the player plays signed, short-lived URLs and offers no download", async ({ page, request }) => {
     await page.goto("/sandboxtest");
     await probes(page);
-    const frame = page.frameLocator("iframe[data-openspace-profile]");
-    const audio = frame.locator("audio#openspace-player");
+    const frame = page.frameLocator("iframe[data-topeight-profile]");
+    const audio = frame.locator("audio#topeight-player");
     await expect(audio).toHaveAttribute("controlslist", "nodownload");
     const src = new URL((await audio.getAttribute("src")) ?? "");
     expect(src.searchParams.get("X-Amz-Expires")).toBe("900");
@@ -207,8 +207,8 @@ test.describe("artist sandbox", () => {
   test("cancel runs nothing", async ({ page }) => {
     await page.goto("/sandboxtest");
     await probes(page);
-    const dialog = page.locator("[data-openspace-confirm]");
-    await page.frameLocator("iframe[data-openspace-profile]").locator("#probe-add-friend").click();
+    const dialog = page.locator("[data-topeight-confirm]");
+    await page.frameLocator("iframe[data-topeight-profile]").locator("#probe-add-friend").click();
     await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await expect(dialog).toBeHidden();
@@ -217,9 +217,9 @@ test.describe("artist sandbox", () => {
 
   test("trusted strip opens the same dialog", async ({ page }) => {
     await page.goto("/sandboxtest");
-    const strip = page.locator("[data-openspace-strip]");
+    const strip = page.locator("[data-topeight-strip]");
     await strip.getByRole("button", { name: "Block" }).click();
-    const dialog = page.locator("[data-openspace-confirm]");
+    const dialog = page.locator("[data-topeight-confirm]");
     await expect(dialog).toContainText("Block Sandbox Test?");
     await dialog.getByRole("button", { name: "Confirm" }).click();
     await expect(dialog).toHaveAttribute("data-last-action", "block");
@@ -233,7 +233,7 @@ test.describe("artist sandbox", () => {
       const margin = parseFloat(getComputedStyle(b).marginBottom) || 0;
       return Math.ceil(b.getBoundingClientRect().top + window.scrollY + b.scrollHeight + margin);
     });
-    const iframe = page.locator("iframe[data-openspace-profile]");
+    const iframe = page.locator("iframe[data-topeight-profile]");
     await expect
       .poll(async () => Math.abs(((await iframe.boundingBox())?.height ?? 0) - Math.max(150, content)))
       .toBeLessThan(3);
@@ -242,7 +242,7 @@ test.describe("artist sandbox", () => {
   test("navigate messages move the parent to a profile path", async ({ page }) => {
     await page.goto("/sandboxtest");
     await probes(page);
-    await page.frameLocator("iframe[data-openspace-profile]").locator("#probe-navigate").click();
+    await page.frameLocator("iframe[data-topeight-profile]").locator("#probe-navigate").click();
     // The first visit compiles the route in dev, so allow time.
     await expect(page).toHaveURL(`${MAIN}/sandboxtest/friends`, { timeout: 30_000 });
   });
@@ -267,7 +267,7 @@ test.describe("artist sandbox", () => {
     expect(h["cache-control"]).toContain("no-store");
     expect(h["x-frame-options"]).toBeUndefined();
     expect(h["set-cookie"]).toBeUndefined();
-    expect(await res.text()).toContain("window.openspace");
+    expect(await res.text()).toContain("window.topeight");
   });
 
   test("usercontent origin 404s unknown profiles and other paths", async ({ request }) => {
@@ -283,7 +283,7 @@ test.describe("artist sandbox", () => {
 
   test("fan profile renders in the frame", async ({ page }) => {
     await page.goto("/sandboxfan");
-    const frame = page.frameLocator("iframe[data-openspace-profile]");
+    const frame = page.frameLocator("iframe[data-topeight-profile]");
     await expect(frame.locator("h1.name")).toHaveText("Sandbox Fan");
   });
 });

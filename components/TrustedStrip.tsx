@@ -5,7 +5,7 @@ import type { StripButton } from "./stripActions";
 import styles from "./TrustedStrip.module.css";
 
 /**
- * OpenSpace's own controls for a profile, outside the artist's iframe. These
+ * TopEight's own controls for a profile, outside the artist's iframe. These
  * always work, whatever the artist's code does inside the frame.
  */
 export function TrustedStrip({
@@ -21,10 +21,10 @@ export function TrustedStrip({
   throttled: boolean;
 }) {
   return (
-    <div className={styles.strip} data-openspace-strip="" role="toolbar" aria-label={`OpenSpace controls for ${displayName}`}>
+    <div className={styles.strip} data-topeight-strip="" role="toolbar" aria-label={`TopEight controls for ${displayName}`}>
       <span className={styles.name}>{displayName}</span>
       {throttled && (
-        <span className={styles.note} role="status" data-openspace-throttled="">
+        <span className={styles.note} role="status" data-topeight-throttled="">
           This profile is sending too many requests
         </span>
       )}

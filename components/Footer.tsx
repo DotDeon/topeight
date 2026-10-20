@@ -7,7 +7,7 @@ const LINKS = [
   { label: "Terms", href: "/terms" },
   { label: "Privacy", href: "/privacy" },
   { label: "Safety Tips", href: "/safety" },
-  { label: "Contact OpenSpace", href: "/about#contact" },
+  { label: "Contact TopEight", href: "/about#contact" },
   { label: "Report Abuse", href: "/safety#report" },
 ];
 

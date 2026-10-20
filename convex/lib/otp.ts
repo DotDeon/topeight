@@ -22,7 +22,7 @@ async function sendCode(email: string, subject: string, code: string) {
   const apiKey = process.env.AUTH_RESEND_KEY;
   if (!apiKey) {
     // Local development without email: read the code from the Convex logs.
-    console.log(`[OpenSpace] ${subject} for ${email}: ${code}`);
+    console.log(`[TopEight] ${subject} for ${email}: ${code}`);
     return;
   }
   const from = process.env.AUTH_EMAIL_FROM;
@@ -37,7 +37,7 @@ async function sendCode(email: string, subject: string, code: string) {
       from,
       to: [email],
       subject,
-      text: `Your OpenSpace code is ${code}\n\nIt expires in 15 minutes. If you did not ask for this, ignore this email.`,
+      text: `Your TopEight code is ${code}\n\nIt expires in 15 minutes. If you did not ask for this, ignore this email.`,
     }),
   });
   if (!res.ok) {
@@ -58,8 +58,8 @@ function otpProvider(id: string, subject: string) {
   });
 }
 
-export const ResendOTP = otpProvider("resend-otp", "Verify your OpenSpace email");
+export const ResendOTP = otpProvider("resend-otp", "Verify your TopEight email");
 export const ResendOTPPasswordReset = otpProvider(
   "resend-otp-password-reset",
-  "Reset your OpenSpace password",
+  "Reset your TopEight password",
 );

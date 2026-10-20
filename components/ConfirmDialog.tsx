@@ -50,9 +50,9 @@ export function ConfirmDialog({
     <dialog
       ref={ref}
       className={styles.dialog}
-      data-openspace-confirm=""
+      data-topeight-confirm=""
       data-last-action={lastAction ?? undefined}
-      aria-labelledby="openspace-confirm-title"
+      aria-labelledby="topeight-confirm-title"
       onClose={() => onClose(outcome.current)}
     >
       {request && (
@@ -120,7 +120,7 @@ function DialogBody({
 
   return (
     <div className={styles.body}>
-      <h4 id="openspace-confirm-title" className={styles.title}>
+      <h4 id="topeight-confirm-title" className={styles.title}>
         {spec.label}
       </h4>
       <div className={styles.inner}>

@@ -38,28 +38,28 @@ export function parseBridgeMessage(
   const msg = data as Record<string, unknown>;
 
   switch (msg.type) {
-    case "openspace:action":
-      return isOneOf(BRIDGE_ACTIONS, msg.action) ? { type: "openspace:action", action: msg.action } : null;
+    case "topeight:action":
+      return isOneOf(BRIDGE_ACTIONS, msg.action) ? { type: "topeight:action", action: msg.action } : null;
 
-    case "openspace:resize": {
+    case "topeight:resize": {
       const h = msg.height;
       if (typeof h !== "number" || !Number.isFinite(h) || h < 0 || h > MAX_REPORTED_HEIGHT) return null;
-      return { type: "openspace:resize", height: h };
+      return { type: "topeight:resize", height: h };
     }
 
-    case "openspace:navigate": {
+    case "topeight:navigate": {
       if (typeof msg.username !== "string") return null;
       const checked = validateUsername(msg.username);
       if (!checked.ok) return null;
-      if (msg.page === undefined) return { type: "openspace:navigate", username: checked.username };
+      if (msg.page === undefined) return { type: "topeight:navigate", username: checked.username };
       if (!isOneOf(BRIDGE_PAGES, msg.page)) return null;
-      return { type: "openspace:navigate", username: checked.username, page: msg.page };
+      return { type: "topeight:navigate", username: checked.username, page: msg.page };
     }
 
-    case "openspace:reportTrack": {
+    case "topeight:reportTrack": {
       const id = msg.trackId;
       if (typeof id !== "string" || id.length === 0 || id.length > MAX_TRACK_ID_LENGTH) return null;
-      return { type: "openspace:reportTrack", trackId: id };
+      return { type: "topeight:reportTrack", trackId: id };
     }
 
     default:
@@ -73,6 +73,6 @@ export function clampFrameHeight(height: number): number {
 }
 
 /** Main-origin path for a navigate message: `/<username>` or `/<username>/<page>`. */
-export function navigatePath(msg: Extract<BridgeMessage, { type: "openspace:navigate" }>): string {
+export function navigatePath(msg: Extract<BridgeMessage, { type: "topeight:navigate" }>): string {
   return msg.page ? `/${msg.username}/${msg.page}` : `/${msg.username}`;
 }

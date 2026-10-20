@@ -8,9 +8,9 @@ test("logged-out homepage shows login, sign up and the cool boxes", async ({ pag
   await expect(page.getByText("Remember Me")).toBeVisible();
   await expect(page.getByText("Cool New People")).toBeVisible();
   await expect(page.getByText("Cool New Music")).toBeVisible();
-  await expect(page.getByText("OpenSpace Announcements")).toBeVisible();
+  await expect(page.getByText("TopEight Announcements")).toBeVisible();
   await expect(page.getByText("Upcoming Shows")).toBeVisible();
-  await expect(page.getByText("Welcome to OpenSpace.")).toBeVisible();
+  await expect(page.getByText("Welcome to TopEight.")).toBeVisible();
   // Empty database shows an empty state, a seeded one shows profile links.
   const people = page.locator("section", { has: page.getByRole("heading", { name: "Cool New People" }) });
   await expect(

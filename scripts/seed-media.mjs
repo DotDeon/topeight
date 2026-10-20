@@ -16,7 +16,7 @@ import { deflateSync } from "node:zlib";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const audioDir = join(here, "seed-audio");
-const avatarDir = join(tmpdir(), "openspace-seed-avatars");
+const avatarDir = join(tmpdir(), "topeight-seed-avatars");
 
 // One roster for this script and convex/seed.ts.
 const USERNAMES = JSON.parse(readFileSync(join(here, "seed-roster.json"), "utf8"));

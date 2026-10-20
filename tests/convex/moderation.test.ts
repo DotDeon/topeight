@@ -441,12 +441,12 @@ describe("moderation.ban", () => {
 });
 
 describe("seedAdminLoginFixture", () => {
-  test("needs OPENSPACE_TEST_FIXTURES=1 and never touches a real member", async () => {
+  test("needs TOPEIGHT_TEST_FIXTURES=1 and never touches a real member", async () => {
     const t = setup();
     await expect(t.mutation(internal.testing.seedAdminLoginFixture, { password: "pw-123456789" })).rejects.toThrow(
-      /OPENSPACE_TEST_FIXTURES/,
+      /TOPEIGHT_TEST_FIXTURES/,
     );
-    vi.stubEnv("OPENSPACE_TEST_FIXTURES", "1");
+    vi.stubEnv("TOPEIGHT_TEST_FIXTURES", "1");
     const real = await addProfile(t, "e2eadmin");
     await expect(t.mutation(internal.testing.seedAdminLoginFixture, { password: "pw-123456789" })).rejects.toThrow(
       /not a fixture/,
@@ -455,7 +455,7 @@ describe("seedAdminLoginFixture", () => {
   });
 
   test("creates a verified e2e-admin@fixture.invalid user", async () => {
-    vi.stubEnv("OPENSPACE_TEST_FIXTURES", "1");
+    vi.stubEnv("TOPEIGHT_TEST_FIXTURES", "1");
     const t = setup();
     await t.mutation(internal.testing.seedAdminLoginFixture, { password: "pw-123456789" });
     const user = await t.run((ctx) =>

@@ -6,7 +6,7 @@ export default function globalTeardown() {
   assertLocalBackend(targetConvexUrl());
   const envFile = process.env.E2E_CONVEX_ENV_FILE ? ["--env-file", process.env.E2E_CONVEX_ENV_FILE] : [];
   const convex = (...args: string[]) => execFileSync("npx", ["convex", ...args], { stdio: "inherit" });
-  convex("env", "remove", ...envFile, "OPENSPACE_TEST_FIXTURES");
+  convex("env", "remove", ...envFile, "TOPEIGHT_TEST_FIXTURES");
   if (process.env.E2E_SET_MEDIA_URL === "1") convex("env", "remove", ...envFile, "NEXT_PUBLIC_R2_PUBLIC_URL");
   for (const name of (process.env.E2E_SET_AUDIO_ENV ?? "").split(",").filter(Boolean)) {
     convex("env", "remove", ...envFile, name);
