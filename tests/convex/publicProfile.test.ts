@@ -189,6 +189,7 @@ describe("getPublicProfile", () => {
       displayName: "CCC",
       photoUrl: "https://cdn.example.com/ccc.jpg",
       kind: "artist",
+      online: false,
     });
     expect(p.friendCount).toBe(3);
   });

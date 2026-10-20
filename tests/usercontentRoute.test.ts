@@ -22,6 +22,7 @@ const profile: PublicProfile = {
   displayName: "Jess",
   kind: "fan",
   headline: "",
+  online: false,
   location: "",
   aboutMe: "",
   whoIdLikeToMeet: "",

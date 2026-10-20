@@ -2,6 +2,7 @@ import { BRIDGE_ACTIONS, BRIDGE_PAGES, MAX_TRACK_ID_LENGTH, type BridgePage } fr
 import { tokenizeComment } from "@/lib/validation";
 import { moodLabel, moodSvg } from "@/lib/moodSvg";
 import { MOOD_ICONS } from "@/lib/moods";
+import { onlineNowHtml } from "@/lib/onlineBadge";
 import { PROFILE_CSS } from "./profile-css";
 import type { PublicProfile } from "./types";
 
@@ -228,7 +229,7 @@ function renderLeft(p: PublicProfile, opts: RenderOptions): string {
       ])}</table></div>`;
 
   return `<div class="profile-left">
-<h1 class="name">${name}</h1>
+<h1 class="name">${name}</h1>${p.online ? onlineNowHtml() : ""}
 <div class="basic">${photo(p.photoUrl, "photo-main")}<div class="basic-info">${facts.join("<br><br>")}</div></div>
 <div class="view-my">View My: <span class="soon" title="Coming soon">Pics</span> | <span class="soon" title="Coming soon">Videos</span></div>
 ${renderPlayer(p, name, opts)}
@@ -282,7 +283,7 @@ function renderRight(p: PublicProfile): string {
     .slice(0, 8)
     .map(
       (f) =>
-        `<div class="top8-friend">${navLink(f.username, `${photo(f.photoUrl, "photo")}${escapeHtml(f.displayName)}`)}</div>`,
+        `<div class="top8-friend">${navLink(f.username, `${photo(f.photoUrl, "photo")}${escapeHtml(f.displayName)}`)}${f.online ? onlineNowHtml() : ""}</div>`,
     )
     .join("");
   parts.push(

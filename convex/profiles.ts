@@ -6,9 +6,10 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { profileForUser, requireProfile, requireVerifiedUser } from "./lib/access";
 import { BULLETIN_WINDOW_MS } from "./lib/bulletins";
-import { toPublicCard, type PublicCard } from "./lib/cards";
+import { toPublicCard, toPublicCardOnline, type PublicCard } from "./lib/cards";
 import { friendIds, friendshipPair } from "./lib/friendships";
 import { MAX_SCAN, rateLimiter } from "./lib/limits";
+import { isOnline } from "./lib/presence";
 import { moodIcon } from "./lib/moods";
 import { MAX_TRACKS, photoUrl, syncMediaFlags } from "./lib/media";
 
@@ -375,10 +376,11 @@ export const getPublicProfile = query({
     if (p === null) return null;
     if (p.banned) return { unavailable: true };
 
+    const now = Date.now();
     const top8: PublicCard[] = [];
     for (const id of p.top8.slice(0, 8)) {
       const friend = await ctx.db.get(id);
-      if (friend !== null && !friend.banned) top8.push(toPublicCard(friend));
+      if (friend !== null && !friend.banned) top8.push(await toPublicCardOnline(ctx, friend, now));
     }
 
     const counted = await ctx.db
@@ -431,6 +433,7 @@ export const getPublicProfile = query({
       kind: p.kind,
       headline: p.headline,
       mood: p.mood ?? null,
+      online: await isOnline(ctx, p, now),
       location: p.location,
       gender: p.gender,
       ...(isArtist || !isCalendarDate(p.birthDate) ? {} : { age: ageOn(p.birthDate, new Date()) }),

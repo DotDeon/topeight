@@ -11,6 +11,8 @@ a:hover { text-decoration: underline; }
 button.linkish { background: none; border: 0; padding: 0; font: inherit; color: #003399; cursor: pointer; }
 button.linkish:hover { text-decoration: underline; }
 .soon { color: #666; cursor: default; }
+.online-now { display: inline-flex; align-items: center; gap: 3px; margin: 2px 0; padding: 1px 5px; border: 1px solid #cc5200; border-radius: 4px; background: #ff6600; color: #fff; font-size: 9px; font-weight: bold; line-height: 12px; white-space: nowrap; }
+.online-now svg { display: block; }
 
 .profile { display: flex; gap: 10px; padding: 10px; width: 800px; box-sizing: border-box; }
 .profile-left { width: 300px; flex: none; }

@@ -54,6 +54,8 @@ export default defineSchema({
     mailFrom: v.optional(v.union(v.literal("friends"), v.literal("anyone"))),
     /** The profile mood line: an icon and up to 40 characters of text. */
     mood: v.optional(v.object({ icon: moodIcon, text: v.string() })),
+    /** Show the Online Now! badge. Undefined means yes; false means never show and never store presence. */
+    showOnline: v.optional(v.boolean()),
     /**
      * Test fixtures only: a creation time to use for the group-creation age check,
      * since _creationTime can't be patched. Written only by internal fixture mutations
@@ -99,6 +101,12 @@ export default defineSchema({
     .index("by_to_status", ["to", "status"])
     .index("by_pair", ["from", "to"])
     .index("by_pair_status", ["from", "to", "status"]),
+
+  /** One row per member who shares Online Now!, written only by presence.heartbeat. */
+  presence: defineTable({
+    profileId: v.id("profiles"),
+    lastSeenAt: v.number(),
+  }).index("by_profile", ["profileId"]),
 
   friendships: defineTable({
     a: v.id("profiles"),

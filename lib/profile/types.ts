@@ -9,6 +9,7 @@ export type PublicCard = {
   displayName: string;
   photoUrl: string | null;
   kind: "fan" | "artist";
+  online?: boolean;
 };
 
 export type PublicProfile = {
@@ -18,6 +19,8 @@ export type PublicProfile = {
   headline: string;
   /** The mood line. `icon` is one of lib/moods.ts MOOD_ICONS. */
   mood?: { icon: string; text: string } | null;
+  /** Whether the member is online now (shares presence and was seen in the last 5 minutes). */
+  online: boolean;
   location: string;
   gender?: string;
   /** Fans only, worked out on the server. The birth date itself is never sent. */

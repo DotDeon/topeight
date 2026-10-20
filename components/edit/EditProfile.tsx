@@ -12,6 +12,7 @@ import styles from "./Edit.module.css";
 import { FriendsAndBlocking } from "./FriendsAndBlocking";
 import { MailSetting } from "./MailSetting";
 import { MoodForm } from "./MoodForm";
+import { OnlineSetting } from "./OnlineSetting";
 import { PhotoForm } from "./PhotoForm";
 import { ShowsForm } from "./ShowsForm";
 import { StatusLine, useSaver } from "./shared";
@@ -67,6 +68,7 @@ export function EditProfile() {
       <Top8Picker top8={me.top8} />
       <FriendsAndBlocking />
       <MailSetting key={me._id} mailFrom={me.mailFrom} />
+      <OnlineSetting showOnline={me.showOnline} />
       {artist ? (
         <>
           <TracksForm />

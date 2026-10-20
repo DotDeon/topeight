@@ -3,7 +3,7 @@ import type { Id } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import { profileForUser } from "./lib/access";
 import { friendBulletins } from "./lib/bulletins";
-import { toPublicCard, type PublicCard } from "./lib/cards";
+import { toPublicCard, toPublicCardOnline, type PublicCard } from "./lib/cards";
 
 const CARD_COUNT = 5;
 const DASHBOARD_BULLETINS = 5;
@@ -15,6 +15,7 @@ export const coolNewPeople = query({
   args: {},
   handler: async (ctx): Promise<PublicCard[]> => {
     const cards: PublicCard[] = [];
+    const now = Date.now();
     const fans = ctx.db
       .query("profiles")
       .withIndex("by_kind_photo", (q) => q.eq("kind", "fan").eq("hasPhoto", true))
@@ -23,7 +24,7 @@ export const coolNewPeople = query({
     for await (const p of fans) {
       if (++scanned > SCAN_LIMIT) break;
       if (p.banned || p.isHouse) continue;
-      cards.push(toPublicCard(p));
+      cards.push(await toPublicCardOnline(ctx, p, now));
       if (cards.length === CARD_COUNT) break;
     }
     return cards;

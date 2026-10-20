@@ -30,6 +30,8 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   rsvp: { kind: "fixed window", rate: 60, period: MINUTE },
   eventEdit: { kind: "fixed window", rate: 30, period: HOUR },
   groupCreate: { kind: "fixed window", rate: 3, period: DAY },
+  // Keyed by the profile id. Extra beats are ignored, not rejected.
+  heartbeat: { kind: "fixed window", rate: 2, period: MINUTE },
   mood: { kind: "fixed window", rate: 30, period: HOUR },
   groupTopic: { kind: "fixed window", rate: 10, period: HOUR },
   groupReply: { kind: "fixed window", rate: 60, period: HOUR },

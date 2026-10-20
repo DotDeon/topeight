@@ -26,6 +26,7 @@ const base = (kind: "fan" | "artist"): PublicProfile => ({
   displayName: "Jess",
   kind,
   headline: "hi",
+  online: false,
   location: "Cape Town",
   photoUrl: "https://cdn.example/p.jpg",
   aboutMe: "",
@@ -389,6 +390,18 @@ describe("URL schemes and escaping", () => {
     expect(html.indexOf('"hi"')).toBeLessThan(html.indexOf("Mood:"));
     expect(renderProfileDocument(fan({ mood: null }), opts)).not.toContain("Mood:");
     expect(renderProfileDocument(fan({ mood: { icon: "in-love", text: "" } }), opts)).toContain("In love");
+  });
+
+  test("Online Now! badge shows only when online, on the profile and on online top 8 friends", () => {
+    const offline = renderProfileDocument(fan({ online: false, top8: [card("amy")] }), opts);
+    expect(offline).not.toContain("Online Now!");
+    expect(renderProfileDocument(fan(), opts)).not.toContain("Online Now!");
+    const own = renderProfileDocument(fan({ online: true }), opts);
+    expect(own).toContain('class="online-now"');
+    expect(own).toContain("Online Now!");
+    const friend = renderProfileDocument(fan({ top8: [{ ...card("amy"), online: true }, card("bob")] }), opts);
+    expect(friend.match(/Online Now!/g)).toHaveLength(1);
+    expect(friend.indexOf("Online Now!")).toBeGreaterThan(friend.indexOf("Amy"));
   });
 
   test("markup in names, headline, venue and track title is escaped", () => {

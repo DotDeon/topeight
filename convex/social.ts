@@ -4,7 +4,7 @@ import { validateUsername } from "../lib/validation";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import { areFriends, isBlockedEitherWay, profileForUser, requireProfile } from "./lib/access";
-import { toPublicCard, type PublicCard } from "./lib/cards";
+import { toPublicCard, toPublicCardOnline, type PublicCard } from "./lib/cards";
 import { friendIds, friendshipPair } from "./lib/friendships";
 import { MAX_FRIENDS, rateLimiter } from "./lib/limits";
 
@@ -210,9 +210,10 @@ export const listFriends = query({
     if (p === null || p.banned) return null;
     const ids = (await friendIds(ctx, p._id)).slice(0, MAX_FRIENDS);
     const friends: PublicCard[] = [];
+    const now = Date.now();
     for (const id of ids) {
       const f = await ctx.db.get(id);
-      if (f !== null && !f.banned) friends.push(toPublicCard(f));
+      if (f !== null && !f.banned) friends.push(await toPublicCardOnline(ctx, f, now));
     }
     friends.sort((x, y) => x.displayName.localeCompare(y.displayName));
     return { friends, total: friends.length };

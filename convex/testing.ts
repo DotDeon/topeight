@@ -616,3 +616,33 @@ export const resetMoodFixture = internalMutation({
     return null;
   },
 });
+
+/**
+ * Fixture for e2e/online.spec.ts: turns Online Now! back on for e2eeditor,
+ * drops any presence row and resets the heartbeat limit.
+ */
+export const resetOnlineFixture = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    if (process.env.TOPEIGHT_TEST_FIXTURES !== "1") {
+      throw new ConvexError("Set TOPEIGHT_TEST_FIXTURES=1 on this deployment to seed test fixtures");
+    }
+    const profile = await ctx.db
+      .query("profiles")
+      .withIndex("by_username", (q) => q.eq("username", "e2eeditor"))
+      .unique();
+    const user = profile === null ? null : await ctx.db.get(profile.userId);
+    if (profile === null || user?.email !== "e2e-editor@fixture.invalid") {
+      throw new ConvexError('Fixture "e2eeditor" is not seeded');
+    }
+    await ctx.db.patch(profile._id, { showOnline: undefined });
+    const row = await ctx.db
+      .query("presence")
+      .withIndex("by_profile", (q) => q.eq("profileId", profile._id))
+      .unique();
+    if (row !== null) await ctx.db.delete(row._id);
+    await rateLimiter.reset(ctx, "heartbeat", { key: profile._id });
+    return null;
+  },
+});
