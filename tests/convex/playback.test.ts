@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { rateLimiter } from "../../convex/lib/limits";
 import { addProfile, as, NOW, setup, type T } from "./helpers";
 
 beforeEach(() => {
@@ -68,6 +69,20 @@ describe("media.playbackUrls", () => {
     const other = await addProfile(t, "other", { kind: "artist" });
     await addTracks(t, other, 1);
     expect(await t.action(api.media.playbackUrls, { username: "other" })).toHaveLength(1);
+  });
+
+  test("invalid or overlong usernames return [] without touching the limiter", async () => {
+    const t = setup();
+    const band = await addProfile(t, "band", { kind: "artist" });
+    await addTracks(t, band, 1);
+    const spy = vi.spyOn(rateLimiter, "limit");
+    for (const username of ["ab", "x".repeat(500), "Not a username!", "admin"]) {
+      expect(await t.action(api.media.playbackUrls, { username })).toEqual([]);
+    }
+    expect(spy).not.toHaveBeenCalled();
+    expect(await t.action(api.media.playbackUrls, { username: "band" })).toHaveLength(1);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 
   test("signs at most 10", async () => {

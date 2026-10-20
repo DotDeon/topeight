@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { ConvexError } from "convex/values";
 import styles from "./AuthBox.module.css";
 
 export { styles as authStyles };
@@ -14,12 +13,6 @@ export function AuthBox({ title, children }: { title: string; children: ReactNod
       </div>
     </main>
   );
-}
-
-/** User-facing text for an error thrown by a Convex function. */
-export function errorText(error: unknown, fallback: string): string {
-  if (error instanceof ConvexError && typeof error.data === "string") return error.data;
-  return fallback;
 }
 
 /**

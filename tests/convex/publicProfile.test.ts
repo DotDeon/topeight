@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { ANON_VIEWS_PER_MINUTE, MAX_SCAN, rateLimiter, VIEWS_PER_MINUTE } from "../../convex/lib/limits";
+import { MAX_TRACKS } from "../../convex/lib/media";
 import schema from "../../convex/schema";
 
 const modules = import.meta.glob("../../convex/**/*.*s");
@@ -425,5 +426,30 @@ describe("profileHeader", () => {
     expect(Object.keys(h!).sort()).toEqual(["banned", "displayName", "kind"]);
     expect((await t.query(api.profiles.profileHeader, { username: "gone" }))?.banned).toBe(true);
     expect(await t.query(api.profiles.profileHeader, { username: "nobody" })).toBeNull();
+  });
+});
+
+describe("profileTrackTitles", () => {
+  const addTrack = (t: T, profileId: Id<"profiles">, i: number) =>
+    t.run((ctx) =>
+      ctx.db.insert("tracks", { profileId, title: `Song ${i}`, key: `k/${profileId}/${i}`, size: 1, order: i, autoplay: i === 0 }),
+    );
+
+  test("returns [] for a banned or missing profile", async () => {
+    const t = setup();
+    const gone = await addProfile(t, "gone", { kind: "artist", banned: true });
+    await addTrack(t, gone, 0);
+    expect(await t.query(api.profiles.profileTrackTitles, { username: "gone" })).toEqual([]);
+    expect(await t.query(api.profiles.profileTrackTitles, { username: "nobody" })).toEqual([]);
+  });
+
+  test("returns ids and titles in order, capped at MAX_TRACKS", async () => {
+    const t = setup();
+    const band = await addProfile(t, "band", { kind: "artist" });
+    for (let i = 0; i < MAX_TRACKS + 2; i++) await addTrack(t, band, i);
+    const rows = await t.query(api.profiles.profileTrackTitles, { username: "band" });
+    expect(rows).toHaveLength(MAX_TRACKS);
+    expect(rows[0]).toEqual({ id: expect.any(String), title: "Song 0" });
+    expect(Object.keys(rows[0]).sort()).toEqual(["id", "title"]);
   });
 });

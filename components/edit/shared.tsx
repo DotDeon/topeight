@@ -4,7 +4,7 @@ import { ConvexError } from "convex/values";
 import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./Edit.module.css";
 
-export function errorText(e: unknown): string {
+export function errorOrMessage(e: unknown): string {
   if (e instanceof ConvexError && typeof e.data === "string") return e.data;
   if (e instanceof Error && e.message && !e.message.includes("Server Error")) return e.message;
   return "Something went wrong.";
@@ -23,7 +23,7 @@ export function useSaver() {
       await action();
       setStatus({ kind: "saved", text: savedText });
     } catch (e) {
-      setStatus({ kind: "error", text: errorText(e) });
+      setStatus({ kind: "error", text: errorOrMessage(e) });
     } finally {
       setBusy(false);
     }

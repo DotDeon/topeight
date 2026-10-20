@@ -5,7 +5,7 @@ import { useState, type FormEvent } from "react";
 import { api } from "@/convex/_generated/api";
 import { Box } from "../Box";
 import styles from "./Edit.module.css";
-import { errorText, StatusLine, useSaver } from "./shared";
+import { errorOrMessage, StatusLine, useSaver } from "./shared";
 
 export function ShowsForm() {
   const shows = useQuery(api.shows.mine, {});
@@ -39,7 +39,7 @@ export function ShowsForm() {
               </span>
               <button
                 type="button"
-                onClick={() => remove({ showId: s.id }).then(() => setRemoveError(""), (e) => setRemoveError(errorText(e)))}
+                onClick={() => remove({ showId: s.id }).then(() => setRemoveError(""), (e) => setRemoveError(errorOrMessage(e)))}
               >
                 Remove
               </button>

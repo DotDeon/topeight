@@ -5,7 +5,8 @@ import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
-import { AuthBox, authStyles as s, normalizeEmail, errorText } from "@/components/AuthBox";
+import { errorText } from "@/lib/errorText";
+import { AuthBox, authStyles as s, normalizeEmail } from "@/components/AuthBox";
 import { api } from "@/convex/_generated/api";
 
 type Step = "account" | "verify";

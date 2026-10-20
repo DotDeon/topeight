@@ -8,7 +8,7 @@ import { TRACK_MAX_BYTES, TRACK_TITLE_MAX } from "@/convex/lib/media";
 import { useMediaUpload } from "../useMediaUpload";
 import { Box } from "../Box";
 import styles from "./Edit.module.css";
-import { errorText, StatusLine, useSaver, useUploadWatch } from "./shared";
+import { errorOrMessage, StatusLine, useSaver, useUploadWatch } from "./shared";
 
 type Track = { id: Id<"tracks">; title: string; autoplay: boolean };
 
@@ -29,7 +29,7 @@ function TrackRow({
   const setAutoplay = useMutation(api.media.setAutoplay);
   const remove = useMutation(api.media.deleteTrack);
   const [title, setTitle] = useState(track.title);
-  const guard = (p: Promise<unknown>) => p.then(() => onError(""), (e) => onError(errorText(e)));
+  const guard = (p: Promise<unknown>) => p.then(() => onError(""), (e) => onError(errorOrMessage(e)));
   return (
     <li data-track="">
       <button type="button" aria-label={`Move ${track.title} up`} disabled={index === 0} onClick={() => move(index, index - 1)}>
@@ -102,7 +102,7 @@ export function TracksForm() {
     if (!tracks) return;
     const ids = tracks.map((t) => t.id);
     [ids[from], ids[to]] = [ids[to], ids[from]];
-    reorder({ ids }).then(() => setRowError(""), (e) => setRowError(errorText(e)));
+    reorder({ ids }).then(() => setRowError(""), (e) => setRowError(errorOrMessage(e)));
   }
 
   return (

@@ -5,7 +5,7 @@ import { PHOTO_MAX_BYTES } from "@/convex/lib/media";
 import { useMediaUpload } from "../useMediaUpload";
 import { Box } from "../Box";
 import styles from "./Edit.module.css";
-import { errorText, useUploadWatch } from "./shared";
+import { errorOrMessage, useUploadWatch } from "./shared";
 
 export function PhotoForm({ photoUrl, photoKey }: { photoUrl: string | null; photoKey: string | undefined }) {
   const upload = useMediaUpload();
@@ -28,7 +28,7 @@ export function PhotoForm({ photoUrl, photoKey }: { photoUrl: string | null; pho
       watch.uploaded();
     } catch (err) {
       watch.cancel();
-      setError(errorText(err));
+      setError(errorOrMessage(err));
     } finally {
       setBusy(false);
     }

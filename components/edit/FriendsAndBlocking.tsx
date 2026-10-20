@@ -6,7 +6,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Box } from "../Box";
 import styles from "./Edit.module.css";
-import { errorText } from "./shared";
+import { errorOrMessage } from "./shared";
 
 type Person = { id: Id<"profiles">; card: { displayName: string; username: string; photoUrl: string | null } };
 
@@ -34,7 +34,7 @@ function PersonList({
     try {
       await onAction(p);
     } catch (e) {
-      setError(errorText(e));
+      setError(errorOrMessage(e));
     } finally {
       setBusy(null);
     }

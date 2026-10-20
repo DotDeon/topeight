@@ -25,7 +25,7 @@ import {
 } from "./lib/media";
 import { audioBucket, audioConfigured, r2, storage, UPLOAD_URL_TTL_S } from "./lib/r2";
 import { profileByUsername } from "./profiles";
-import { normalizeUsername } from "../lib/validation";
+import { validateUsername } from "../lib/validation";
 
 /*
  * Upload flow:
@@ -338,7 +338,10 @@ export const takePlaybackToken = internalMutation({
   args: { username: v.string() },
   returns: v.boolean(),
   handler: async (ctx, { username }) => {
-    const { ok } = await rateLimiter.limit(ctx, "playback", { key: normalizeUsername(username) });
+    // Junk usernames must not create limiter rows.
+    const checked = validateUsername(username);
+    if (!checked.ok) return false;
+    const { ok } = await rateLimiter.limit(ctx, "playback", { key: checked.username });
     return ok;
   },
 });
