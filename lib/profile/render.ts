@@ -14,6 +14,8 @@ export type RenderOptions = {
   cspMeta?: string;
   /** The usercontent origin. When set, the player refreshes its signed URLs from `<origin>/<username>?format=tracks`. */
   usercontentOrigin?: string;
+  /** Leave the "Add to my profile" links off. Set when the viewer is looking at their own page. */
+  hidePick?: boolean;
 };
 
 /** How often the player fetches fresh playback URLs. They live 15 minutes. */
@@ -168,13 +170,18 @@ function playerRows(p: PublicProfile): PlayerRow[] {
   return rows;
 }
 
-function playerRow(t: PlayerRow, i: number, current: boolean): string {
+function playerRow(t: PlayerRow, i: number, current: boolean, hidePick: boolean): string {
+  const report = `<a href="#" class="player-report" data-topeight-report-track="${escapeHtml(t.id)}">Report</a>`;
   const button = `<button type="button" class="player-track${current ? " current" : ""}" data-index="${i}" data-track-id="${escapeHtml(t.id)}" data-src="${escapeHtml(t.url)}"><span><span class="mark">&#9654; </span>${escapeHtml(t.title)}</span><span class="dur"></span></button>`;
   // Links sit outside the button, so clicking them never toggles playback.
   if (t.by) {
-    return `<li class="player-song">${button}<span class="player-by"> by ${navLink(t.by.username, escapeHtml(t.by.displayName))}</span></li>`;
+    // Reports the artist's track. No pick link: the visitor already sees it as this profile's song.
+    return `<li class="player-song">${button}<span class="player-by"> by ${navLink(t.by.username, escapeHtml(t.by.displayName))}</span>${report}</li>`;
   }
-  return `<li>${button}<a href="#" class="player-report" data-topeight-report-track="${escapeHtml(t.id)}">Report</a></li>`;
+  const pick = hidePick
+    ? ""
+    : ` <a href="#" class="player-pick" data-topeight-pick-track="${escapeHtml(t.id)}">Add to my profile</a>`;
+  return `<li>${button}${report}${pick}</li>`;
 }
 
 function renderPlayer(p: PublicProfile, name: string, opts: RenderOptions): string {
@@ -182,7 +189,7 @@ function renderPlayer(p: PublicProfile, name: string, opts: RenderOptions): stri
   if (tracks.length === 0) return "";
   const autoplay = tracks.findIndex((t) => t.autoplay);
   const first = autoplay >= 0 ? autoplay : 0;
-  const items = tracks.map((t, i) => playerRow(t, i, i === first)).join("");
+  const items = tracks.map((t, i) => playerRow(t, i, i === first, opts.hidePick === true)).join("");
   const refresh = opts.usercontentOrigin
     ? ` data-tracks-url="${escapeHtml(`${opts.usercontentOrigin.replace(/\/+$/, "")}/${encodeURIComponent(p.username)}?format=tracks`)}"`
     : "";
@@ -355,17 +362,23 @@ export function bridgeScript(mainOrigin: string): string {
     if (typeof trackId !== "string" || !trackId || trackId.length > MAX_TRACK_ID) return;
     post({ type: "topeight:reportTrack", trackId: trackId });
   }
-  window.topeight = { request: request, navigate: navigate, reportTrack: reportTrack };
+  function pickSong(trackId) {
+    if (typeof trackId !== "string" || !trackId || trackId.length > MAX_TRACK_ID) return;
+    post({ type: "topeight:pickSong", trackId: trackId });
+  }
+  window.topeight = { request: request, navigate: navigate, reportTrack: reportTrack, pickSong: pickSong };
   document.addEventListener("click", function (e) {
     var t = e.target;
     if (!(t instanceof Element)) return;
-    var el = t.closest("[data-topeight-action],[data-topeight-navigate],[data-topeight-report-track]");
+    var el = t.closest("[data-topeight-action],[data-topeight-navigate],[data-topeight-report-track],[data-topeight-pick-track]");
     if (!el) return;
     e.preventDefault();
     var action = el.getAttribute("data-topeight-action");
     var track = el.getAttribute("data-topeight-report-track");
+    var pick = el.getAttribute("data-topeight-pick-track");
     if (action !== null) request(action);
     else if (track !== null) reportTrack(track);
+    else if (pick !== null) pickSong(pick);
     else navigate(el.getAttribute("data-topeight-navigate"), el.getAttribute("data-topeight-page"));
   });
 

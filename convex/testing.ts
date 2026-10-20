@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { rateLimiter } from "./lib/limits";
+import { clearPick } from "./lib/profileSongs";
 import { countField } from "./lib/rsvps";
 import { friendshipPair } from "./lib/friendships";
 import { syncMediaFlags } from "./lib/media";
@@ -643,6 +644,43 @@ export const resetOnlineFixture = internalMutation({
       .unique();
     if (row !== null) await ctx.db.delete(row._id);
     await rateLimiter.reset(ctx, "heartbeat", { key: profile._id });
+    return null;
+  },
+});
+
+/**
+ * Fixture for e2e/profile-song.spec.ts: clears the commenter fan's profile song
+ * and pick row, turns sharing back on for the sandboxtest and e2eeditor artists,
+ * and resets the pick and sharing limits. `shareSongs` (default true) is set on
+ * sandboxtest so a spec can switch it off without an artist login.
+ */
+export const resetProfileSongFixture = internalMutation({
+  args: { sandboxShares: v.optional(v.boolean()) },
+  returns: v.null(),
+  handler: async (ctx, { sandboxShares }) => {
+    if (process.env.TOPEIGHT_TEST_FIXTURES !== "1") {
+      throw new ConvexError("Set TOPEIGHT_TEST_FIXTURES=1 on this deployment to seed test fixtures");
+    }
+    const fixture = async (username: string, email: string | null) => {
+      const profile = await ctx.db
+        .query("profiles")
+        .withIndex("by_username", (q) => q.eq("username", username))
+        .unique();
+      const user = profile === null ? null : await ctx.db.get(profile.userId);
+      if (profile === null || (email === null ? user?.email : user?.email !== email)) {
+        throw new ConvexError(`Fixture "${username}" is not seeded`);
+      }
+      return profile;
+    };
+    const fan = await fixture("e2ecommenter", COMMENTER_EMAIL);
+    const editor = await fixture("e2eeditor", EDITOR_EMAIL);
+    const sandbox = await fixture("sandboxtest", null);
+    await clearPick(ctx, fan);
+    await ctx.db.patch(fan._id, { profileSong: undefined });
+    await ctx.db.patch(editor._id, { shareSongs: undefined });
+    await ctx.db.patch(sandbox._id, { shareSongs: sandboxShares === false ? false : undefined });
+    await rateLimiter.reset(ctx, "songPick", { key: fan._id });
+    await rateLimiter.reset(ctx, "shareSongs", { key: editor._id });
     return null;
   },
 });

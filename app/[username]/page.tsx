@@ -11,9 +11,10 @@ export default async function ProfilePage({ params }: PageProps<"/[username]">) 
   if (!checked.ok) notFound();
   if (checked.username !== raw) redirect(`/${checked.username}`);
 
-  const [profile, tracks] = await Promise.all([
+  const [profile, tracks, profileSong] = await Promise.all([
     fetchQuery(api.profiles.profileHeader, { username: checked.username }),
     fetchQuery(api.profiles.profileTrackTitles, { username: checked.username }),
+    fetchQuery(api.profiles.profileSongForReport, { username: checked.username }),
   ]);
   if (profile === null) notFound();
   if (profile.banned) {
@@ -23,5 +24,5 @@ export default async function ProfilePage({ params }: PageProps<"/[username]">) 
       </Box>
     );
   }
-  return <ProfileView username={checked.username} displayName={profile.displayName} tracks={tracks} />;
+  return <ProfileView username={checked.username} displayName={profile.displayName} tracks={tracks} profileSong={profileSong} />;
 }

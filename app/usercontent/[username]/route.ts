@@ -54,7 +54,10 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/usercontent/
   const checked = validateUsername(username);
   if (!checked.ok || checked.username !== username) return plain(404, "Not found", csp);
 
-  const tracksOnly = new URL(request.url).searchParams.get("format") === "tracks";
+  const params = new URL(request.url).searchParams;
+  const tracksOnly = params.get("format") === "tracks";
+  // The parent sets own=1 when the visitor is on their own page. It only hides links.
+  const hidePick = params.get("own") === "1";
   let profile;
   let signed: Array<{ id: string; url: string; profileSong?: true }> | null;
   try {
@@ -99,7 +102,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/usercontent/
   // The profile song's URL comes only from the flagged entry, and only when it signs the same track.
   const song = profile.profileSong;
   const profileSong = song && { ...song, url: signedSong?.id === song.id ? signedSong.url : null };
-  return new Response(renderProfileDocument({ ...profile, tracks, profileSong }, { mainOrigin, usercontentOrigin }), {
+  return new Response(renderProfileDocument({ ...profile, tracks, profileSong }, { mainOrigin, usercontentOrigin, hidePick }), {
     status: 200,
     headers: { ...baseHeaders(csp), "Content-Type": "text/html; charset=utf-8" },
   });

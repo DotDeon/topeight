@@ -365,6 +365,24 @@ export const profileTrackTitles = query({
 });
 
 /**
+ * The profile song of an unbanned profile, when it is available, with its
+ * artist's username, for the Report dialog. Reports of it name the artist.
+ */
+export const profileSongForReport = query({
+  args: { username: v.string() },
+  handler: async (
+    ctx,
+    { username },
+  ): Promise<{ id: Id<"tracks">; title: string; artistUsername: string } | null> => {
+    const p = await profileByUsername(ctx, username);
+    if (p === null || p.banned) return null;
+    const song = await profileSongFor(ctx, p);
+    if (song === null) return null;
+    return { id: song.track._id, title: song.track.title, artistUsername: song.artist.username };
+  },
+});
+
+/**
  * Everything the public profile page shows. Null when the username does not
  * exist, { unavailable: true } when the profile is banned. Every read is
  * bounded. Nothing private (email, birth date, user or profile ids) is

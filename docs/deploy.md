@@ -128,7 +128,8 @@ Follow these steps in order on an existing deployment.
 5. Deploy.
 6. Run `npx convex run migrations:moveTracksToAudioBucket`.
 7. Run `npx convex run migrations:backfillMediaFlags`.
-8. Smoke test: upload a song, play it, delete it.
+8. Run `npx convex run migrations:backfillSongPicks`.
+9. Smoke test: upload a song, play it, delete it.
 
 Deletes fail until `R2_AUDIO_BUCKET` is set, so do not deploy before step 4.
 
@@ -136,4 +137,6 @@ Step 6 copies songs uploaded before the audio bucket existed out of the public p
 
 Step 7 sets the photo and track flags that Cool New People and Cool New Music read, on profiles made before those flags existed. It works through 100 profiles at a time and schedules itself until done. Running it again is safe.
 
-You can rerun both backfill migrations, steps 6 and 7, at any time. Each skips work that is already done, so a rerun after a failed or partial run is safe.
+Step 8 builds the song pick records that the "Your songs are on N profiles" count reads, from profile songs set before they existed. It works through 20 profiles at a time and schedules itself until done. Running it again is safe.
+
+You can rerun the backfill migrations, steps 6, 7 and 8, at any time. Each skips work that is already done, so a rerun after a failed or partial run is safe.

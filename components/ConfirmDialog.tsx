@@ -9,7 +9,7 @@ import styles from "./ConfirmDialog.module.css";
 export const ARM_DELAY_MS = 500;
 
 /** `track` comes from the parent's own track list, for reportTrack. */
-export type ConfirmRequest = { id: number; action: DialogAction; track?: { id: string; title: string } };
+export type ConfirmRequest = { id: number; action: DialogAction; track?: { id: string; title: string; owner?: string } };
 
 /**
  * The parent page's own confirmation step. It is a modal <dialog> in the top

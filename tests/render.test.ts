@@ -176,6 +176,51 @@ describe("player report links", () => {
   });
 });
 
+describe("player pick links", () => {
+  const song = {
+    id: "s1",
+    title: "Their Song",
+    url: "https://media.example/s1.mp3",
+    artist: card("theband", "artist"),
+  };
+  const withSong = (kind: "fan" | "artist" = "fan") =>
+    (kind === "fan" ? fan : artist)({
+      profileSong: song,
+      tracks: [{ ...t("Mine"), id: "k1" }],
+    });
+
+  test("each of an artist's own tracks gets Add to my profile after Report", () => {
+    const html = renderProfileDocument(artist({ tracks: [{ ...t("Red Dust", true), id: "k1" }] }), opts);
+    const row = html.match(/<li>.*?<\/li>/g)?.[0] ?? "";
+    expect(row).toMatch(
+      /data-topeight-report-track="k1">Report<\/a> <a href="#" class="player-pick" data-topeight-pick-track="k1">Add to my profile<\/a>/,
+    );
+  });
+
+  test("hidePick leaves the pick link off but keeps Report", () => {
+    const html = renderProfileDocument(
+      artist({ tracks: [{ ...t("Red Dust", true), id: "k1" }] }),
+      { ...opts, hidePick: true },
+    );
+    expect(html).not.toContain("data-topeight-pick-track=\"");
+    expect(html).toContain('data-topeight-report-track="k1"');
+  });
+
+  test("the profile song row has a Report link for the artist's track and no pick link", () => {
+    const html = renderProfileDocument(withSong(), opts);
+    const row = html.match(/<li class="player-song">.*?<\/li>/)?.[0] ?? "";
+    expect(row).toContain('data-topeight-report-track="s1">Report</a>');
+    expect(row).not.toContain("data-topeight-pick-track");
+    expect(html).not.toContain('data-topeight-pick-track="s1"');
+  });
+
+  test("the bridge script posts pickSong for a pick link", () => {
+    const html = renderProfileDocument(withSong("artist"), opts);
+    expect(html).toContain("topeight:pickSong");
+    expect(html).toContain("data-topeight-pick-track");
+  });
+});
+
 describe("renderProfileDocument (hardening)", () => {
   test("window.TOPEIGHT JSON escapes </script> and U+2028/U+2029", () => {
     const p = artist({ aboutMe: "</script><script>alert(1)</script>\u2028\u2029&" });
@@ -772,7 +817,7 @@ describe("profile song in the player", () => {
     expect(html).toContain('id="topeight-player"');
     const r = rows(html);
     expect(r).toHaveLength(1);
-    expect(text(r[0])).toBe("Red Dust by Nightjar");
+    expect(text(r[0])).toBe("Red Dust by NightjarReport");
     expect(r[0]).toContain('data-track-id="ps1"');
     expect(r[0]).toContain('data-src="https://media.example/ps1.mp3"');
     expect(r[0]).toContain('<a href="#" data-topeight-navigate="nightjar">Nightjar</a>');
@@ -804,7 +849,7 @@ describe("profile song in the player", () => {
       opts,
     );
     const r = rows(html);
-    expect(r.map(text)).toEqual(["Red Dust by Nightjar", "Own AReport", "Own BReport"]);
+    expect(r.map(text)).toEqual(["Red Dust by NightjarReport", "Own AReport Add to my profile", "Own BReport Add to my profile"]);
     expect(r[0]).toContain('data-index="0"');
     expect(r[1]).toContain('data-index="1"');
     expect(html).toContain('data-autoplay="0"');
@@ -828,7 +873,7 @@ describe("profile song in the player", () => {
       opts,
     );
     const r = rows(html);
-    expect(r.map(text)).toEqual(["Red Dust by Lowveld", "Own BReport"]);
+    expect(r.map(text)).toEqual(["Red Dust by LowveldReport", "Own BReport Add to my profile"]);
   });
 
   test("song title, artist name, username and id are escaped", () => {

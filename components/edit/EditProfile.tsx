@@ -14,6 +14,7 @@ import { MailSetting } from "./MailSetting";
 import { MoodForm } from "./MoodForm";
 import { OnlineSetting } from "./OnlineSetting";
 import { PhotoForm } from "./PhotoForm";
+import { ProfileSongForm } from "./ProfileSongForm";
 import { ShowsForm } from "./ShowsForm";
 import { StatusLine, useSaver } from "./shared";
 import { Top8Picker } from "./Top8Picker";
@@ -65,6 +66,13 @@ export function EditProfile() {
         <MoodForm key={me._id} mood={me.mood} label="Profile mood" />
       </Box>
       <PhotoForm photoUrl={photoUrl} photoKey={me.photoKey} />
+      <ProfileSongForm
+        song={pub && !("unavailable" in pub) && pub.profileSong ? pub.profileSong : null}
+        hasPick={me.profileSong !== undefined}
+        loading={pub === undefined}
+        artist={artist}
+        shareSongs={me.shareSongs !== false}
+      />
       <Top8Picker top8={me.top8} />
       <FriendsAndBlocking />
       <MailSetting key={me._id} mailFrom={me.mailFrom} />

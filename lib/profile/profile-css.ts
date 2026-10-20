@@ -42,6 +42,8 @@ img.photo-main, .top8 img, .comment-who img { object-fit: cover; border: 1px sol
 .player-track.current .mark { visibility: visible; }
 .player-report { color: #999; font-size: 9px; text-decoration: none; }
 .player-report:hover { color: #ccc; text-decoration: underline; }
+.player-pick { color: #ff9900; font-size: 9px; text-decoration: none; }
+.player-pick:hover { text-decoration: underline; }
 .player-by { color: #aaa; white-space: nowrap; }
 .player-by a { color: #ff9900; }
 

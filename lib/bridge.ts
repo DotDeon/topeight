@@ -62,6 +62,12 @@ export function parseBridgeMessage(
       return { type: "topeight:reportTrack", trackId: id };
     }
 
+    case "topeight:pickSong": {
+      const id = msg.trackId;
+      if (typeof id !== "string" || id.length === 0 || id.length > MAX_TRACK_ID_LENGTH) return null;
+      return { type: "topeight:pickSong", trackId: id };
+    }
+
     default:
       return null;
   }

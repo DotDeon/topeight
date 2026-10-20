@@ -48,3 +48,11 @@ describe("stripButtons", () => {
     expect(L("unblock")).toBe("Unblock");
   });
 });
+
+describe("pickSong dialog", () => {
+  test("asks with the server's title and the artist's name", () => {
+    const target = { username: "theband", displayName: "The Band", track: { id: "k1", title: "Red Dust" } };
+    expect(PROFILE_ACTIONS.pickSong.question("The Band", target)).toBe('Make "Red Dust" by The Band your profile song?');
+    expect(PROFILE_ACTIONS.pickSong.run).toBeDefined();
+  });
+});
