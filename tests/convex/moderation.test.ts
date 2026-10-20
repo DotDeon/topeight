@@ -275,7 +275,7 @@ describe("admin functions", () => {
     const wall = await t.query(api.comments.list, { username: "target", cursor: null });
     expect(wall.page.map((c) => c.body)).toEqual(["fine"]);
     const profile = await t.query(api.profiles.getPublicProfile, { username: "target" });
-    expect(profile && !("unavailable" in profile) && profile.comments.map((c) => c.body)).toEqual(["fine"]);
+    expect(profile && !("unavailable" in profile) && !("restricted" in profile) && profile.comments.map((c) => c.body)).toEqual(["fine"]);
     expect(Object.fromEntries((await reports(t)).map((x) => [x.reason, x.status]))).toEqual({
       a: "actioned",
       b: "actioned",
@@ -478,7 +478,7 @@ describe("moderation.ban", () => {
     expect((await t.query(api.home.coolNewPeople, {})).map((c) => c.username)).not.toContain("target");
     expect((await t.query(api.search.people, { q: "target", cursor: null })).page).toEqual([]);
     const friendPage = await t.query(api.profiles.getPublicProfile, { username: "reporter" });
-    expect(friendPage && !("unavailable" in friendPage) && friendPage.top8).toEqual([]);
+    expect(friendPage && !("unavailable" in friendPage) && !("restricted" in friendPage) && friendPage.top8).toEqual([]);
     expect((await (await as(t, reporter)).query(api.bulletins.feed, {})).bulletins).toEqual([]);
     expect(await t.run((ctx) => ctx.db.query("authSessions").collect())).toEqual([]);
     expect(await t.run((ctx) => ctx.db.query("authRefreshTokens").collect())).toEqual([]);

@@ -57,6 +57,12 @@ export default defineSchema({
     /** Show the Online Now! badge. Undefined means yes; false means never show and never store presence. */
     showOnline: v.optional(v.boolean()),
     /**
+     * Fans only: only friends (and admins) see the full page. Strangers get the
+     * restricted card from lib/access.ts canSeeFull. Undefined means public.
+     * becomeArtist clears it.
+     */
+    private: v.optional(v.boolean()),
+    /**
      * The member's profile song: another artist's track, or their own. Read through
      * lib/profileSongs.ts profileSongFor, which hides it when the track is gone, the
      * artist is banned or the artist turned sharing off. Never cleared when the track

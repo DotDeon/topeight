@@ -165,7 +165,7 @@ describe("getPublicProfile tracks", () => {
     const band = await addProfile(t, "band", { kind: "artist" });
     const [id] = await addTracks(t, band, 1);
     const p = await t.query(api.profiles.getPublicProfile, { username: "band" });
-    if (!p || "unavailable" in p) throw new Error("expected a profile");
+    if (!p || "unavailable" in p || "restricted" in p) throw new Error("expected a profile");
     expect(p.tracks).toEqual([{ id, title: "Song 0", url: null, autoplay: true }]);
   });
 });

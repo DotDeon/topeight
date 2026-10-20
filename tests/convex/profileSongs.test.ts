@@ -31,7 +31,7 @@ async function addTrack(
 
 async function songOf(t: T, username: string) {
   const p = await t.query(api.profiles.getPublicProfile, { username });
-  if (!p || "unavailable" in p) throw new Error("expected a profile");
+  if (!p || "unavailable" in p || "restricted" in p) throw new Error("expected a profile");
   return p.profileSong;
 }
 

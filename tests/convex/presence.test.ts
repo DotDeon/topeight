@@ -131,7 +131,7 @@ describe("online flag", () => {
     await (await as(t, on)).mutation(api.presence.heartbeat, {});
 
     const p = await t.query(api.profiles.getPublicProfile, { username: "mia" });
-    if (p === null || "unavailable" in p) throw new Error("expected profile");
+    if (p === null || "unavailable" in p || "restricted" in p) throw new Error("expected profile");
     expect(p.top8.map((c) => [c.username, c.online])).toEqual([
       ["on", true],
       ["off", false],

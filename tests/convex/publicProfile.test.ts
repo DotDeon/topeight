@@ -113,7 +113,7 @@ describe("getPublicProfile", () => {
     });
     await t.run((ctx) => ctx.db.insert("profileStats", { profileId: id, views: 41 }));
     const p = await get(t, "band");
-    if (!p || "unavailable" in p) throw new Error("expected a profile");
+    if (!p || "unavailable" in p || "restricted" in p) throw new Error("expected a profile");
     expect(p).toMatchObject({
       username: "band",
       displayName: "BAND",
@@ -147,7 +147,7 @@ describe("getPublicProfile", () => {
     await addProfile(t, "today", { birthDate: "2000-10-19" });
     const a = await get(t, "older");
     const b = await get(t, "today");
-    if (!a || "unavailable" in a || !b || "unavailable" in b) throw new Error("expected profiles");
+    if (!a || "unavailable" in a || !b || "unavailable" in b || "restricted" in b) throw new Error("expected profiles");
     expect(a.age).toBe(25);
     expect(b.age).toBe(26);
     expect(a).not.toHaveProperty("birthDate");
@@ -158,7 +158,7 @@ describe("getPublicProfile", () => {
     const t = setup();
     await addProfile(t, "band", { kind: "artist", birthDate: "1990-01-01" });
     const p = await get(t, "band");
-    if (!p || "unavailable" in p) throw new Error("expected a profile");
+    if (!p || "unavailable" in p || "restricted" in p) throw new Error("expected a profile");
     expect(p).not.toHaveProperty("age");
   });
 
@@ -166,7 +166,7 @@ describe("getPublicProfile", () => {
     const t = setup();
     await addProfile(t, "fan", { customCss: "a{}", customHtml: "<i>x</i>", customJs: "alert(1)" });
     const p = await get(t, "fan");
-    if (!p || "unavailable" in p) throw new Error("expected a profile");
+    if (!p || "unavailable" in p || "restricted" in p) throw new Error("expected a profile");
     expect(p.custom).toEqual({ css: "a{}", html: "", js: "" });
   });
 
@@ -182,7 +182,7 @@ describe("getPublicProfile", () => {
     await befriend(t, me, b);
     await befriend(t, me, c);
     const p = await get(t, "mine");
-    if (!p || "unavailable" in p) throw new Error("expected a profile");
+    if (!p || "unavailable" in p || "restricted" in p) throw new Error("expected a profile");
     expect(p.top8.map((f) => f.username)).toEqual(["ccc", "aaa"]);
     expect(p.top8[0]).toEqual({
       username: "ccc",
@@ -206,7 +206,7 @@ describe("getPublicProfile", () => {
     await comment(t, me, banned, "from banned");
     await comment(t, me, pest, "from pest");
     const p = await get(t, "mine");
-    if (!p || "unavailable" in p) throw new Error("expected a profile");
+    if (!p || "unavailable" in p || "restricted" in p) throw new Error("expected a profile");
     expect(p.comments.map((c) => c.body)).toEqual(
       ["c11", "c10", "c9", "c8", "c7", "c6", "c5", "c4", "c3", "c2"],
     );
@@ -229,7 +229,7 @@ describe("getPublicProfile", () => {
       }
     });
     const p = await get(t, "mine");
-    if (!p || "unavailable" in p) throw new Error("expected a profile");
+    if (!p || "unavailable" in p || "restricted" in p) throw new Error("expected a profile");
     expect(p.comments).toEqual([]);
   });
 
@@ -243,7 +243,7 @@ describe("getPublicProfile", () => {
       }
     });
     const p = await get(t, "mine");
-    if (!p || "unavailable" in p) throw new Error("expected a profile");
+    if (!p || "unavailable" in p || "restricted" in p) throw new Error("expected a profile");
     expect(p.commentCount).toBe(1001);
   });
 
@@ -260,7 +260,7 @@ describe("getPublicProfile", () => {
     await post("hidden", true);
     vi.setSystemTime(NOW.getTime() + 11 * DAY);
     const p = await get(t, "mine");
-    if (!p || "unavailable" in p) throw new Error("expected a profile");
+    if (!p || "unavailable" in p || "restricted" in p) throw new Error("expected a profile");
     expect(p.latestBulletin?.body).toBe("recent");
   });
 
@@ -270,7 +270,7 @@ describe("getPublicProfile", () => {
     await t.run((ctx) => ctx.db.insert("bulletins", { authorId: me, body: "too old", hidden: false }));
     vi.setSystemTime(NOW.getTime() + 11 * DAY);
     const p = await get(t, "mine");
-    if (!p || "unavailable" in p) throw new Error("expected a profile");
+    if (!p || "unavailable" in p || "restricted" in p) throw new Error("expected a profile");
     expect(p.latestBulletin).toBeNull();
   });
 
@@ -282,7 +282,7 @@ describe("getPublicProfile", () => {
       await ctx.db.insert("tracks", { profileId: me, title: "One", key: "t/1.mp3", size: 1, order: 0, autoplay: false }),
     ]);
     const p = await get(t, "band");
-    if (!p || "unavailable" in p) throw new Error("expected a profile");
+    if (!p || "unavailable" in p || "restricted" in p) throw new Error("expected a profile");
     expect(p.tracks).toEqual([
       { id: one, title: "One", url: null, autoplay: false },
       { id: two, title: "Two", url: null, autoplay: true },
@@ -300,7 +300,7 @@ describe("getPublicProfile", () => {
       }
     });
     const p = await get(t, "band");
-    if (!p || "unavailable" in p) throw new Error("expected a profile");
+    if (!p || "unavailable" in p || "restricted" in p) throw new Error("expected a profile");
     expect(p.shows).toHaveLength(20);
     expect(p.shows[0]).toEqual({ date: "2026-10-19", venue: "Today", city: "X" });
     expect(p.shows[1].venue).toBe("V0");
@@ -310,7 +310,7 @@ describe("getPublicProfile", () => {
 describe("recordView", () => {
   const views = async (t: T, username: string) => {
     const p = await get(t, username);
-    if (!p || "unavailable" in p) throw new Error("expected a profile");
+    if (!p || "unavailable" in p || "restricted" in p) throw new Error("expected a profile");
     return p.profileViews;
   };
 
@@ -419,13 +419,19 @@ describe("seedSandboxFixture", () => {
 });
 
 describe("profileHeader", () => {
-  test("returns displayName, kind and banned, null for missing", async () => {
+  test("returns displayName, kind, banned, private and restricted, null for missing", async () => {
     const t = setup();
     await addProfile(t, "jess", { kind: "artist" });
     await addProfile(t, "gone", { banned: true });
     const h = await t.query(api.profiles.profileHeader, { username: " Jess " });
-    expect(h).toEqual({ displayName: expect.any(String), kind: "artist", banned: false });
-    expect(Object.keys(h!).sort()).toEqual(["banned", "displayName", "kind"]);
+    expect(h).toEqual({
+      displayName: expect.any(String),
+      kind: "artist",
+      banned: false,
+      private: false,
+      restricted: false,
+    });
+    expect(Object.keys(h!).sort()).toEqual(["banned", "displayName", "kind", "private", "restricted"]);
     expect((await t.query(api.profiles.profileHeader, { username: "gone" }))?.banned).toBe(true);
     expect(await t.query(api.profiles.profileHeader, { username: "nobody" })).toBeNull();
   });

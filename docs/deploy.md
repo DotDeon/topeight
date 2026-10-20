@@ -73,6 +73,7 @@ These go on Convex:
 | `R2_BUCKET` | From step 3, the public photo bucket |
 | `R2_AUDIO_BUCKET` | From step 3, the private track bucket |
 | `NEXT_PUBLIC_R2_PUBLIC_URL` | The public photo bucket URL, no trailing slash needed |
+| `FRAME_PASS_SECRET` | A long random string, for example from `openssl rand -base64 32`. Signs the 2-hour frame passes that let friends see a private profile. Without it, private profiles never render in the frame, even for friends. Changing it ends every pass in use |
 
 Then push the functions with `npx convex deploy`.
 

@@ -475,7 +475,7 @@ describe("moderation", () => {
 describe("getPublicProfile latestBlog", () => {
   async function latest(t: T) {
     const p = await t.query(api.profiles.getPublicProfile, { username: "author" });
-    if (!p || "unavailable" in p) throw new Error("expected a profile");
+    if (!p || "unavailable" in p || "restricted" in p) throw new Error("expected a profile");
     return p.latestBlog;
   }
 

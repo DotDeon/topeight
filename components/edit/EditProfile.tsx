@@ -56,7 +56,7 @@ export function EditProfile() {
   if (isLoading || !isAuthenticated || !me) return <p className={styles.note}>Loading...</p>;
 
   const artist = me.kind === "artist";
-  const photoUrl = pub && !("unavailable" in pub) ? pub.photoUrl : null;
+  const photoUrl = pub && !("unavailable" in pub) && !("restricted" in pub) ? pub.photoUrl : null;
   return (
     <div className={styles.page}>
       <h1 className={styles.title}>Edit Profile</h1>
@@ -67,7 +67,7 @@ export function EditProfile() {
       </Box>
       <PhotoForm photoUrl={photoUrl} photoKey={me.photoKey} />
       <ProfileSongForm
-        song={pub && !("unavailable" in pub) && pub.profileSong ? pub.profileSong : null}
+        song={pub && !("unavailable" in pub) && !("restricted" in pub) && pub.profileSong ? pub.profileSong : null}
         hasPick={me.profileSong !== undefined}
         loading={pub === undefined}
         artist={artist}

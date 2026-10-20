@@ -20,7 +20,8 @@ import { existsSync, readFileSync } from "node:fs";
  * teardown can put it back, or remove the variable if there was none.
  * When NEXT_PUBLIC_R2_PUBLIC_URL is unset it sets a dummy one for the run, and
  * teardown removes it. The same goes for each of the audio bucket variables in
- * E2E_AUDIO_ENV, so fixture tracks get signed playback URLs (signing is local).
+ * E2E_AUDIO_ENV, so fixture tracks get signed playback URLs (signing is local),
+ * and for FRAME_PASS_SECRET (E2E_FRAME_ENV), so private profiles render for friends.
  * The names it set go in E2E_SET_AUDIO_ENV for the teardown.
  */
 
@@ -34,6 +35,9 @@ export const E2E_AUDIO_ENV: Record<string, string> = {
   R2_ACCESS_KEY_ID: "e2e-dummy-key",
   R2_SECRET_ACCESS_KEY: "e2e-dummy-secret",
 };
+
+/** Frame pass secret for the run when the deployment has none, so friends see private fixture profiles. Local only. */
+export const E2E_FRAME_ENV: Record<string, string> = { FRAME_PASS_SECRET: "e2e-frame-pass-secret" };
 
 function envFileValue(path: string, key: string): string | undefined {
   if (!existsSync(path)) return undefined;
@@ -106,10 +110,11 @@ export default function globalSetup() {
     process.env.E2E_SET_MEDIA_URL = "1";
   }
 
-  // Playback URLs are signed with the audio bucket settings. Set dummies for any
-  // that are missing (or left over from a crashed run, so teardown removes them).
+  // Playback URLs are signed with the audio bucket settings, and private profiles
+  // need the frame pass secret. Set dummies for any that are missing (or left over
+  // from a crashed run, so teardown removes them).
   const setAudio: string[] = [];
-  for (const [name, dummy] of Object.entries(E2E_AUDIO_ENV)) {
+  for (const [name, dummy] of Object.entries({ ...E2E_AUDIO_ENV, ...E2E_FRAME_ENV })) {
     const value = execFileSync("npx", ["convex", "env", "get", ...envFile, name], {
       stdio: ["ignore", "pipe", "ignore"],
     })

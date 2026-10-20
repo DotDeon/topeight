@@ -35,6 +35,7 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   mood: { kind: "fixed window", rate: 30, period: HOUR },
   songPick: { kind: "fixed window", rate: 20, period: HOUR },
   shareSongs: { kind: "fixed window", rate: 30, period: HOUR },
+  privacy: { kind: "fixed window", rate: 30, period: HOUR },
   groupTopic: { kind: "fixed window", rate: 10, period: HOUR },
   groupReply: { kind: "fixed window", rate: 60, period: HOUR },
   // Keyed by the profile id, counted only for real joins and leaves.

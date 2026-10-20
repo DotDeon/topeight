@@ -30,7 +30,7 @@ export function CodeEditor({ me }: { me: Doc<"profiles"> }) {
   const over = total > MAX_BYTES;
 
   async function preview() {
-    if (!profile || "unavailable" in profile) return;
+    if (!profile || "unavailable" in profile || "restricted" in profile) return;
     const mainOrigin = process.env.NEXT_PUBLIC_MAIN_ORIGIN ?? window.location.origin;
     const usercontentOrigin = process.env.NEXT_PUBLIC_USERCONTENT_ORIGIN ?? "";
     // The same policy the usercontent route sends, minus frame-ancestors, which a meta tag ignores.

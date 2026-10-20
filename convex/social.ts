@@ -3,7 +3,7 @@ import { ConvexError, v } from "convex/values";
 import { validateUsername } from "../lib/validation";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx } from "./_generated/server";
-import { areFriends, isBlockedEitherWay, profileForUser, requireProfile } from "./lib/access";
+import { areFriends, canSeeFull, isBlockedEitherWay, profileForUser, requireProfile, viewerProfile } from "./lib/access";
 import { toPublicCard, toPublicCardOnline, type PublicCard } from "./lib/cards";
 import { friendIds, friendshipPair } from "./lib/friendships";
 import { MAX_FRIENDS, rateLimiter } from "./lib/limits";
@@ -207,7 +207,10 @@ export const unblock = mutation({
   },
 });
 
-/** A profile's friends as cards, at most 1000, banned profiles left out. Null for an unknown username. */
+/**
+ * A profile's friends as cards, at most 1000, banned profiles left out. Null for
+ * an unknown username, and no friends on a private profile the viewer can't see in full.
+ */
 export const listFriends = query({
   args: { username: v.string() },
   handler: async (ctx, { username }): Promise<{ friends: PublicCard[]; total: number } | null> => {
@@ -218,6 +221,7 @@ export const listFriends = query({
       .withIndex("by_username", (q) => q.eq("username", checked.username))
       .unique();
     if (p === null || p.banned) return null;
+    if (!(await canSeeFull(ctx, await viewerProfile(ctx), p))) return { friends: [], total: 0 };
     const ids = (await friendIds(ctx, p._id)).slice(0, MAX_FRIENDS);
     const friends: PublicCard[] = [];
     const now = Date.now();

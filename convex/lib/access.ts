@@ -73,3 +73,32 @@ export async function isBlockedEitherWay(ctx: Ctx, a: Id<"profiles">, b: Id<"pro
   ]);
   return ab !== null || ba !== null;
 }
+
+/** The signed-in, unbanned viewer's profile, or null. */
+export async function viewerProfile(ctx: Ctx): Promise<Doc<"profiles"> | null> {
+  const userId = await getAuthUserId(ctx);
+  if (userId === null) return null;
+  const p = await profileForUser(ctx, userId);
+  return p === null || p.banned ? null : p;
+}
+
+/**
+ * Whether `viewer` may see `target`'s full page: always for a profile that isn't
+ * private, and for a private one only the owner, a friend (a blocked pair, either
+ * way, is not friends) or an admin. Everyone else gets the restricted card.
+ * Admin rights come from the signed-in user, so `viewer` may be null for them.
+ */
+export async function canSeeFull(
+  ctx: Ctx,
+  viewer: Doc<"profiles"> | null,
+  target: Pick<Doc<"profiles">, "_id" | "private">,
+): Promise<boolean> {
+  if (target.private !== true) return true;
+  if (viewer !== null && !viewer.banned) {
+    if (viewer._id === target._id) return true;
+    if ((await areFriends(ctx, viewer._id, target._id)) && !(await isBlockedEitherWay(ctx, viewer._id, target._id))) {
+      return true;
+    }
+  }
+  return await isAdmin(ctx);
+}

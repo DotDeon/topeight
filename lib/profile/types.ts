@@ -12,6 +12,20 @@ export type PublicCard = {
   online?: boolean;
 };
 
+/**
+ * What a visitor who isn't allowed the full page gets for a private profile:
+ * the left-column basics only. `age` is fans only, like PublicProfile.age.
+ */
+export type RestrictedProfile = {
+  restricted: true;
+  displayName: string;
+  photoUrl: string | null;
+  age?: number;
+  location: string;
+  mood: { icon: string; text: string } | null;
+  online: boolean;
+};
+
 export type PublicProfile = {
   username: string;
   displayName: string;

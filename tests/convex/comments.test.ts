@@ -43,7 +43,7 @@ describe("comments.add", () => {
     await expect(g.mutation(api.comments.add, { profileId: owner, body: "after" })).rejects.toThrow("Not allowed");
     expect((await t.query(api.comments.list, { username: "owner", cursor: null })).page).toHaveLength(0);
     const profile = await t.query(api.profiles.getPublicProfile, { username: "owner" });
-    expect(profile && !("unavailable" in profile) && profile.comments).toHaveLength(0);
+    expect(profile && !("unavailable" in profile) && !("restricted" in profile) && profile.comments).toHaveLength(0);
   });
 
   test("a block in the other direction also stops the comment", async () => {

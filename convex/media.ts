@@ -11,7 +11,8 @@ import {
   query,
   type MutationCtx,
 } from "./_generated/server";
-import { profileForUser, requireProfile } from "./lib/access";
+import { canSeeFull, profileForUser, requireProfile, viewerProfile } from "./lib/access";
+import { framePassSecret, verifyFramePass } from "./lib/framePass";
 import { rateLimiter } from "./lib/limits";
 import {
   MAX_TRACKS,
@@ -368,14 +369,20 @@ const playableTrack = v.object({ id: v.id("tracks"), key: v.string(), profileSon
 /**
  * Keys of an unbanned profile's tracks, in play order. First the profile song,
  * if it is available (signed against its artist's track key), flagged
- * profileSong; then the profile's own tracks, at most 10.
+ * profileSong; then the profile's own tracks, at most 10. Nothing for a private
+ * profile unless the signed-in caller may see it in full or `pass` is a valid
+ * frame pass for it at `now`.
  */
 export const playableTracks = internalQuery({
-  args: { username: v.string() },
+  args: { username: v.string(), pass: v.optional(v.string()), now: v.number() },
   returns: v.array(playableTrack),
-  handler: async (ctx, { username }): Promise<PlayableTrack[]> => {
+  handler: async (ctx, { username, pass, now }): Promise<PlayableTrack[]> => {
     const p = await profileByUsername(ctx, username);
     if (p === null || p.banned) return [];
+    const allowed =
+      (await canSeeFull(ctx, await viewerProfile(ctx), p)) ||
+      (await verifyFramePass(pass, p._id, now, framePassSecret()));
+    if (!allowed) return [];
     const song = await profileSongFor(ctx, p);
     const rows = await ctx.db
       .query("tracks")
@@ -405,21 +412,29 @@ export const takePlaybackToken = internalMutation({
  * Short-lived playback URLs (15 minutes) for a profile's tracks, plus its profile
  * song when available (flagged `profileSong: true`, an extra entry on top of the
  * 10-track cap). Anyone may call it: the usercontent route uses it to render the
- * player and for the `?format=tracks` refresh.
- * Signs nothing for banned or missing profiles. Limited to 120 calls a minute
+ * player and for the `?format=tracks` refresh, passing on the frame's `pass`.
+ * Signs nothing for banned or missing profiles, or for a private profile the
+ * caller may not see (see playableTracks). Limited to 120 calls a minute
  * per username, past which it returns [] without an error.
  */
 export const playbackUrls = action({
-  args: { username: v.string() },
+  args: { username: v.string(), pass: v.optional(v.string()) },
   returns: v.array(v.object({ id: v.id("tracks"), url: v.string(), profileSong: v.optional(v.literal(true)) })),
-  handler: async (ctx, { username }): Promise<Array<{ id: Id<"tracks">; url: string; profileSong?: true }>> => {
+  handler: async (
+    ctx,
+    { username, pass },
+  ): Promise<Array<{ id: Id<"tracks">; url: string; profileSong?: true }>> => {
     if (!(await ctx.runMutation(internal.media.takePlaybackToken, { username }))) return [];
     // Without an audio bucket (local dev) there is nothing to sign.
     if (!audioConfigured()) {
       console.warn("R2 audio bucket not configured");
       return [];
     }
-    const tracks: PlayableTrack[] = await ctx.runQuery(internal.media.playableTracks, { username });
+    const tracks: PlayableTrack[] = await ctx.runQuery(internal.media.playableTracks, {
+      username,
+      pass,
+      now: Date.now(),
+    });
     return await Promise.all(
       tracks.map(async (t) => ({
         id: t.id,
