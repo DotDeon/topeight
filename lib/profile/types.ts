@@ -48,6 +48,8 @@ export type PublicProfile = {
   /** Visible comments, counted up to 1001. Over 1000 renders as "1000+". */
   commentCount: number;
   latestBulletin: { body: string; createdAt: number } | null;
+  /** The newest visible blog post. `id` is the Convex blogPosts id. */
+  latestBlog?: { id: string; title: string; createdAt: number } | null;
   /**
    * `id` is the Convex track id, used by the player's Report links. `url` is a
    * short-lived signed playback URL, null until the usercontent route merges one in.

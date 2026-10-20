@@ -1,6 +1,7 @@
 import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { moodIcon } from "./lib/moods";
 
 export default defineSchema({
   ...authTables,
@@ -112,6 +113,23 @@ export default defineSchema({
     hidden: v.boolean(),
   }).index("by_author", ["authorId"]),
 
+  /** Blog posts. Deleting one hard-deletes its comments too. */
+  blogPosts: defineTable({
+    authorId: v.id("profiles"),
+    title: v.string(),
+    body: v.string(),
+    mood: v.optional(v.object({ text: v.string(), icon: moodIcon })),
+    listening: v.optional(v.string()),
+    hidden: v.boolean(),
+  }).index("by_author", ["authorId"]),
+
+  blogComments: defineTable({
+    postId: v.id("blogPosts"),
+    authorId: v.id("profiles"),
+    body: v.string(),
+    hidden: v.boolean(),
+  }).index("by_post", ["postId"]),
+
   tracks: defineTable({
     profileId: v.id("profiles"),
     title: v.string(),
@@ -179,6 +197,8 @@ export default defineSchema({
       v.literal("bulletin"),
       v.literal("track"),
       v.literal("message"),
+      v.literal("blogPost"),
+      v.literal("blogComment"),
     ),
     targetId: v.string(),
     reason: v.string(),

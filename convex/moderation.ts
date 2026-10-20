@@ -24,14 +24,18 @@ const targetType = v.union(
   v.literal("bulletin"),
   v.literal("track"),
   v.literal("message"),
+  v.literal("blogPost"),
+  v.literal("blogComment"),
 );
-type TargetType = "profile" | "comment" | "bulletin" | "track" | "message";
+type TargetType = "profile" | "comment" | "bulletin" | "track" | "message" | "blogPost" | "blogComment";
 const TABLE = {
   profile: "profiles",
   comment: "comments",
   bulletin: "bulletins",
   track: "tracks",
   message: "messages",
+  blogPost: "blogPosts",
+  blogComment: "blogComments",
 } as const;
 
 type Ctx = QueryCtx | MutationCtx;
@@ -112,7 +116,13 @@ export type ReportPreview =
       // No URLs: tracks are private. The admin page asks trackPlaybackUrl to play one.
       tracks: { id: Id<"tracks">; title: string }[];
     }
-  | { kind: "comment" | "bulletin"; body: string; authorId: Id<"profiles">; author: PublicCard | null }
+  | {
+      kind: "comment" | "bulletin" | "blogComment";
+      body: string;
+      authorId: Id<"profiles">;
+      author: PublicCard | null;
+    }
+  | { kind: "blogPost"; title: string; body: string; authorId: Id<"profiles">; author: PublicCard | null }
   | {
       kind: "track";
       trackId: Id<"tracks">;
@@ -153,6 +163,24 @@ async function preview(ctx: Ctx, report: Doc<"reports">): Promise<ReportPreview>
       sender: senderId === null ? null : await cardFor(ctx, senderId),
     };
   }
+  if (type === "blogPost") {
+    const id = ctx.db.normalizeId("blogPosts", targetId);
+    const row = id && (await ctx.db.get(id));
+    if (!row) return { kind: "gone" };
+    return {
+      kind: "blogPost",
+      title: row.title,
+      body: row.body,
+      authorId: row.authorId,
+      author: await cardFor(ctx, row.authorId),
+    };
+  }
+  if (type === "blogComment") {
+    const id = ctx.db.normalizeId("blogComments", targetId);
+    const row = id && (await ctx.db.get(id));
+    if (!row) return { kind: "gone" };
+    return { kind: "blogComment", body: row.body, authorId: row.authorId, author: await cardFor(ctx, row.authorId) };
+  }
   if (type === "comment" || type === "bulletin") {
     const id = type === "comment" ? ctx.db.normalizeId("comments", targetId) : ctx.db.normalizeId("bulletins", targetId);
     const row = id && (await ctx.db.get(id));
@@ -184,7 +212,7 @@ async function trackIsOn(ctx: Ctx, track: Doc<"tracks">, username: string | unde
 }
 
 /**
- * Report a profile, comment, bulletin, track or message. A repeat open report
+ * Report a profile, comment, bulletin, track, message, blog post or blog comment. A repeat open report
  * by the same member adds nothing. A track report must name the profile it was
  * seen on in `profileUsername`, and the track must belong to it. Only the
  * recipient can report a message, and the report keeps a copy of it.
@@ -261,7 +289,7 @@ async function openReport(ctx: MutationCtx, reportId: Id<"reports">) {
 }
 
 /**
- * Admin: acts on the reported content. Comments and bulletins are hidden,
+ * Admin: acts on the reported content. Comments, bulletins, blog posts and blog comments are hidden,
  * tracks deleted, profiles banned, messages deleted for both sides. Closes
  * every open report on that target.
  */
@@ -277,6 +305,12 @@ export const hide = mutation({
       if (id && (await ctx.db.get(id))) await ctx.db.patch(id, { hidden: true });
     } else if (type === "bulletin") {
       const id = ctx.db.normalizeId("bulletins", r.targetId);
+      if (id && (await ctx.db.get(id))) await ctx.db.patch(id, { hidden: true });
+    } else if (type === "blogPost") {
+      const id = ctx.db.normalizeId("blogPosts", r.targetId);
+      if (id && (await ctx.db.get(id))) await ctx.db.patch(id, { hidden: true });
+    } else if (type === "blogComment") {
+      const id = ctx.db.normalizeId("blogComments", r.targetId);
       if (id && (await ctx.db.get(id))) await ctx.db.patch(id, { hidden: true });
     } else if (type === "message") {
       const id = ctx.db.normalizeId("messages", r.targetId);

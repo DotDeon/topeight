@@ -9,6 +9,7 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as blog from "../blog.js";
 import type * as bulletins from "../bulletins.js";
 import type * as comments from "../comments.js";
 import type * as favorites from "../favorites.js";
@@ -20,6 +21,7 @@ import type * as lib_cards from "../lib/cards.js";
 import type * as lib_friendships from "../lib/friendships.js";
 import type * as lib_limits from "../lib/limits.js";
 import type * as lib_media from "../lib/media.js";
+import type * as lib_moods from "../lib/moods.js";
 import type * as lib_otp from "../lib/otp.js";
 import type * as lib_password from "../lib/password.js";
 import type * as lib_posting from "../lib/posting.js";
@@ -43,6 +45,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  blog: typeof blog;
   bulletins: typeof bulletins;
   comments: typeof comments;
   favorites: typeof favorites;
@@ -54,6 +57,7 @@ declare const fullApi: ApiFromModules<{
   "lib/friendships": typeof lib_friendships;
   "lib/limits": typeof lib_limits;
   "lib/media": typeof lib_media;
+  "lib/moods": typeof lib_moods;
   "lib/otp": typeof lib_otp;
   "lib/password": typeof lib_password;
   "lib/posting": typeof lib_posting;

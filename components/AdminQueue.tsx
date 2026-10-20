@@ -48,10 +48,21 @@ function Preview({ p }: { p: ReportPreview }) {
       return <p className={styles.muted}>This content no longer exists.</p>;
     case "comment":
     case "bulletin":
+    case "blogComment":
       return (
         <>
           <p>
-            {p.kind === "comment" ? "Comment" : "Bulletin"} by{" "}
+            {p.kind === "comment" ? "Comment" : p.kind === "bulletin" ? "Bulletin" : "Blog comment"} by{" "}
+            {p.author ? <Link href={`/${p.author.username}`}>{p.author.displayName}</Link> : "unknown"}
+          </p>
+          <blockquote style={{ whiteSpace: "pre-wrap", margin: "4px 0 4px 12px" }}>{p.body}</blockquote>
+        </>
+      );
+    case "blogPost":
+      return (
+        <>
+          <p>
+            Blog post &quot;{p.title}&quot; by{" "}
             {p.author ? <Link href={`/${p.author.username}`}>{p.author.displayName}</Link> : "unknown"}
           </p>
           <blockquote style={{ whiteSpace: "pre-wrap", margin: "4px 0 4px 12px" }}>{p.body}</blockquote>
@@ -107,7 +118,7 @@ function ReportRow({ r }: { r: Row }) {
   // Who the separate "Ban user" button bans: whoever wrote or uploaded the content.
   // On a profile report the hide action already bans, so it is the ban button.
   const bannedId: Id<"profiles"> | null =
-    p.kind === "comment" || p.kind === "bulletin"
+    p.kind === "comment" || p.kind === "bulletin" || p.kind === "blogComment" || p.kind === "blogPost"
       ? p.authorId
       : p.kind === "track"
         ? p.ownerId

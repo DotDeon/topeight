@@ -6,10 +6,12 @@ export const MAX_COMMENT = 2000;
 export const MAX_BULLETIN = 5000;
 export const MAX_SUBJECT = 100;
 export const MAX_MESSAGE = 5000;
+export const MAX_BLOG_TITLE = 100;
+export const MAX_BLOG_BODY = 20000;
 const NEW_ACCOUNT_MS = 24 * 60 * 60 * 1000;
 
 /** The trimmed body, or throws "<Label> can't be empty" / "<Label> is too long". */
-export function checkBody(raw: string, label: "Comment" | "Bulletin" | "Subject" | "Message", max: number): string {
+export function checkBody(raw: string, label: "Comment" | "Bulletin" | "Subject" | "Message" | "Title" | "Post", max: number): string {
   const body = raw.trim();
   if (body === "") throw new ConvexError(`${label} can't be empty`);
   if (body.length > max) throw new ConvexError(`${label} is too long`);

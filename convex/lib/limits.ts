@@ -23,6 +23,7 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   friendRequest: { kind: "fixed window", rate: 50, period: HOUR },
   comment: { kind: "fixed window", rate: 30, period: HOUR },
   bulletin: { kind: "fixed window", rate: 10, period: HOUR },
+  blogPost: { kind: "fixed window", rate: 10, period: DAY },
   upload: { kind: "fixed window", rate: 30, period: HOUR },
   report: { kind: "fixed window", rate: 20, period: HOUR },
   mail: { kind: "fixed window", rate: 30, period: HOUR },

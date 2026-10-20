@@ -284,6 +284,32 @@ describe("renderProfileDocument (hardening)", () => {
     expect(html).toContain("Displaying 1 of 57 comments");
   });
 
+  test("latest blog entry box: escaped title, date navigates to the blog page, after the bulletin", () => {
+    const createdAt = Date.UTC(2026, 9, 19, 21, 14);
+    const html = renderProfileDocument(
+      fan({
+        latestBulletin: { body: "bulletin text", createdAt },
+        latestBlog: { id: "post1", title: "<script>x</script> & stuff", createdAt },
+      }),
+      opts,
+    );
+    expect(html).toContain("Jess's Latest Blog Entry");
+    expect(html).toContain("&lt;script&gt;x&lt;/script&gt; &amp; stuff");
+    expect(html).not.toContain("<script>x</script>");
+    expect(html).toContain(`data-topeight-navigate="jess" data-topeight-page="blog">${formatDate(createdAt)}</a>`);
+    const bulletin = html.indexOf("Latest Bulletin</div>");
+    const blog = html.indexOf("Latest Blog Entry</div>");
+    const blurbs = html.indexOf("Blurbs</div>");
+    expect(bulletin).toBeGreaterThan(-1);
+    expect(blog).toBeGreaterThan(bulletin);
+    expect(blurbs).toBeGreaterThan(blog);
+  });
+
+  test("no latest blog entry box without a post", () => {
+    expect(renderProfileDocument(fan({ latestBlog: null }), opts)).not.toContain("Latest Blog Entry");
+    expect(renderProfileDocument(fan(), opts)).not.toContain("Latest Blog Entry");
+  });
+
   test("shows at most 10 comments", () => {
     const comments = Array.from({ length: 12 }, (_, i) => c(`comment-${i}-x`));
     const html = renderProfileDocument(fan({ comments, commentCount: 12 }), opts);
@@ -478,6 +504,7 @@ describe("bridge script", () => {
     b.click({ "data-topeight-navigate": "tom" });
     b.click({ "data-topeight-navigate": "jess", "data-topeight-page": "comments" });
     b.click({ "data-topeight-navigate": "jess", "data-topeight-page": "../admin" });
+    b.click({ "data-topeight-navigate": "jess", "data-topeight-page": "blog" });
     b.click({ "data-topeight-action": "deleteAccount" });
     expect(b.click({ "data-topeight-report-track": "k57abc" })).toBe(true);
     b.click({ "data-topeight-report-track": "" });
@@ -487,6 +514,7 @@ describe("bridge script", () => {
       { type: "topeight:navigate", username: "tom" },
       { type: "topeight:navigate", username: "jess", page: "comments" },
       { type: "topeight:navigate", username: "jess" },
+      { type: "topeight:navigate", username: "jess", page: "blog" },
       { type: "topeight:reportTrack", trackId: "k57abc" },
     ]);
   });

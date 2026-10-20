@@ -104,7 +104,7 @@ describe("parseBridgeMessage: payload checks", () => {
   });
 
   test("accepts navigate with a known page", () => {
-    for (const page of ["friends", "comments"]) {
+    for (const page of ["friends", "comments", "blog"]) {
       expect(
         parseBridgeMessage(ev({ type: "topeight:navigate", username: "lowveld", page }), frame),
       ).toEqual({ type: "topeight:navigate", username: "lowveld", page });
@@ -174,5 +174,6 @@ describe("navigatePath", () => {
     expect(navigatePath({ type: "topeight:navigate", username: "lowveld", page: "comments" })).toBe(
       "/lowveld/comments",
     );
+    expect(navigatePath({ type: "topeight:navigate", username: "lowveld", page: "blog" })).toBe("/lowveld/blog");
   });
 });

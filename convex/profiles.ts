@@ -366,6 +366,13 @@ export const getPublicProfile = query({
       .take(MAX_SCAN);
     const bulletin = recentBulletins.find((b) => !b.hidden);
 
+    const recentPosts = await ctx.db
+      .query("blogPosts")
+      .withIndex("by_author", (q) => q.eq("authorId", p._id))
+      .order("desc")
+      .take(MAX_SCAN);
+    const blog = recentPosts.find((b) => !b.hidden);
+
     const tracks: PublicProfile["tracks"] = [];
     const trackRows = await ctx.db
       .query("tracks")
@@ -404,6 +411,7 @@ export const getPublicProfile = query({
       comments: await profileComments(ctx, p),
       commentCount: counted.filter((c) => !c.hidden).length,
       latestBulletin: bulletin ? { body: bulletin.body, createdAt: bulletin._creationTime } : null,
+      latestBlog: blog ? { id: blog._id, title: blog.title, createdAt: blog._creationTime } : null,
       tracks,
       shows: shows.map((s) => ({ date: s.date, venue: s.venue, city: s.city })),
       // Fans get CSS only. The renderer drops fan html and js too.
