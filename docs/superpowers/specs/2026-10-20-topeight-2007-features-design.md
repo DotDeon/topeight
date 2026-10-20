@@ -39,7 +39,7 @@ Bring back four things people remember from MySpace around 2007 that TopEight st
 - **What's hidden** from non-friends: the full profile frame (including custom code), comments, Top 8, friends list, blog, latest bulletin and profile song. The pages `/<username>/comments`, `/friends` and `/blog` show the same private notice.
 - **Search and browse** still list private profiles by name and photo, like 2007.
 - **Admins** can always see everything.
-- **The sandbox catch:** the profile frame comes from the second domain, which can't see who is logged in. So the main page asks the server for a short-lived frame pass (5 minutes, signed, tied to that profile) only after confirming the viewer is a friend. The frame's address carries the pass, and the frame server refuses to render a private profile without a valid one. Without this, anyone could open the frame's address directly and read a private page.
+- **The sandbox catch:** the profile frame comes from the second domain, which can't see who is logged in. So the main page asks the server for a short-lived frame pass (2 hours, signed, tied to that profile) only after confirming the viewer is a friend. The frame's address carries the pass, and the frame server refuses to render a private profile without a valid one. Without this, anyone could open the frame's address directly and read a private page.
 - Friends-only content also covers the `?format=tracks` song-link refresh.
 
 ## Shared rules

@@ -20,6 +20,8 @@ export const add = mutation({
     if (owner._id !== me._id && (await isBlockedEitherWay(ctx, me._id, owner._id))) {
       throw new ConvexError("Not allowed");
     }
+    // Only people who may see a private profile in full may write on it.
+    if (!(await canSeeFull(ctx, me, owner))) throw new ConvexError("Not allowed");
     checkLinks(me, text);
     const { ok } = await rateLimiter.limit(ctx, "comment", { key: me._id });
     if (!ok) throw new ConvexError("Slow down");

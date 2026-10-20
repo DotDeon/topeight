@@ -186,6 +186,38 @@ describe("canSeeFull gates on a private profile", () => {
     }
   });
 
+  test("comments.add and blog.addComment: only friend, owner and admin may write", async () => {
+    const w = await world();
+    for (const who of ALL) {
+      const v = await w.viewer(who);
+      const profileComment = v.mutation(api.comments.add, { profileId: w.owner, body: `from ${who}` });
+      const blogComment = v.mutation(api.blog.addComment, { postId: w.postId, body: `from ${who}` });
+      if (FULL.includes(who)) {
+        await profileComment;
+        await blogComment;
+      } else if (who === "anon") {
+        await expect(profileComment, who).rejects.toThrow("Not signed in");
+        await expect(blogComment, who).rejects.toThrow("Not signed in");
+      } else {
+        await expect(profileComment, who).rejects.toThrow("Not allowed");
+        await expect(blogComment, who).rejects.toThrow("Not allowed");
+      }
+    }
+    const bodies = await w.t.run(async (ctx) => ({
+      wall: (await ctx.db.query("comments").collect()).map((c) => c.body).sort(),
+      blog: (await ctx.db.query("blogComments").collect()).map((c) => c.body).sort(),
+    }));
+    expect(bodies.wall).toEqual(["from admin", "from friend", "from owner", "hi priv"]);
+    expect(bodies.blog).toEqual(["from admin", "from friend", "from owner", "nice"]);
+  });
+
+  test("a stranger may comment once the profile is public again", async () => {
+    const w = await world({});
+    const v = await w.viewer("stranger");
+    await v.mutation(api.comments.add, { profileId: w.owner, body: "hello" });
+    await v.mutation(api.blog.addComment, { postId: w.postId, body: "hello" });
+  });
+
   test("search, browse and Cool New People still list the private profile by name and photo", async () => {
     const w = await world();
     const card = { username: "priv", displayName: "PRIV", photoUrl: "https://cdn.example.com/priv.jpg", kind: "fan" };

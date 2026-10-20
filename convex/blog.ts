@@ -364,7 +364,8 @@ export const friendsFeed = query({
 });
 
 /**
- * Comments on a visible post. A blocked pair (either way) cannot comment.
+ * Comments on a visible post. A blocked pair (either way) cannot comment, and
+ * neither can anyone who can't see a private author's full page.
  * Shares the hourly `comment` limit with profile comments, used only once the
  * comment passes every check.
  */
@@ -379,6 +380,8 @@ export const addComment = mutation({
     if (found.author._id !== me._id && (await isBlockedEitherWay(ctx, me._id, found.author._id))) {
       throw new ConvexError("Not allowed");
     }
+    // Only people who may see a private author's full page may comment on their posts.
+    if (!(await canSeeFull(ctx, me, found.author))) throw new ConvexError("Not allowed");
     checkLinks(me, text);
     const { ok } = await rateLimiter.limit(ctx, "comment", { key: me._id });
     if (!ok) throw new ConvexError("Slow down");
