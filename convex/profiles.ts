@@ -9,7 +9,7 @@ import { BULLETIN_WINDOW_MS } from "./lib/bulletins";
 import { toPublicCard, type PublicCard } from "./lib/cards";
 import { friendIds, friendshipPair } from "./lib/friendships";
 import { MAX_SCAN, rateLimiter } from "./lib/limits";
-import { MAX_TRACKS, photoUrl, trackUrl } from "./lib/media";
+import { MAX_TRACKS, photoUrl, syncMediaFlags, trackUrl } from "./lib/media";
 
 const MIN_AGE = 13;
 const MAX_DISPLAY_NAME = 50;
@@ -256,6 +256,7 @@ export const becomeArtist = mutation({
   handler: async (ctx) => {
     const me = await requireProfile(ctx);
     if (me.kind !== "artist") await ctx.db.patch(me._id, { kind: "artist" });
+    await syncMediaFlags(ctx, me._id);
     return null;
   },
 });

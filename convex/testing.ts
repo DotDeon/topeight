@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { friendshipPair } from "./lib/friendships";
+import { syncMediaFlags } from "./lib/media";
 import { hashPassword } from "./lib/password";
 
 /**
@@ -135,7 +136,7 @@ async function ensureFixtureTrack(ctx: MutationCtx, profileId: Id<"profiles">, t
     .withIndex("by_profile_order", (q) => q.eq("profileId", profileId))
     .first();
   if (first !== null) return first._id;
-  return await ctx.db.insert("tracks", {
+  const id = await ctx.db.insert("tracks", {
     profileId,
     title,
     key: `e2e-fixture/${profileId}.mp3`,
@@ -143,6 +144,8 @@ async function ensureFixtureTrack(ctx: MutationCtx, profileId: Id<"profiles">, t
     order: 0,
     autoplay: false,
   });
+  await syncMediaFlags(ctx, profileId);
+  return id;
 }
 
 export const seedSandboxFixture = internalMutation({

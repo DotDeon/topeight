@@ -109,3 +109,7 @@ The seed creates 8 fans, 5 artists, tracks, shows, comments and bulletins so a f
 4. `npx convex env remove OPENSPACE_ALLOW_SEED`
 
 Running the seed again is safe. It updates the demo profiles and refreshes the show dates.
+
+## 10. After upgrading
+
+Run `npx convex run migrations:backfillMediaFlags` once. It sets the photo and track flags that Cool New People and Cool New Music read, on profiles made before those flags existed. It works through 100 profiles at a time and schedules itself until done. Running it again is safe.

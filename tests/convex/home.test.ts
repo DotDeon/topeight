@@ -34,6 +34,7 @@ async function addProfile(
       aboutMe: "",
       whoIdLikeToMeet: "",
       photoKey: `${username}.jpg`,
+      hasPhoto: true,
       lastLoginAt: 0,
       customCss: "",
       customHtml: "",
@@ -74,7 +75,7 @@ describe("coolNewPeople", () => {
     await addProfile(t, "banned", { banned: true });
     await addProfile(t, "house", { isHouse: true });
     await addProfile(t, "band", { kind: "artist" });
-    await addProfile(t, "nophoto", { photoKey: undefined });
+    await addProfile(t, "nophoto", { photoKey: undefined, hasPhoto: false });
     const cards = await t.query(api.home.coolNewPeople, {});
     expect(cards.map((c) => c.username)).toEqual(["fan7", "fan6", "fan5", "fan4", "fan3"]);
     expect(cards[0]).toEqual({
@@ -85,16 +86,24 @@ describe("coolNewPeople", () => {
     });
   });
 
-  test("stops scanning after MAX_SCAN rows", async () => {
+  test("finds a fan with a photo created before 500 photoless fans", async () => {
     const t = setup();
     await addProfile(t, "old");
-    for (let i = 0; i < MAX_SCAN; i++) await addProfile(t, `x${i}`, { photoKey: undefined });
+    for (let i = 0; i < 500; i++) await addProfile(t, `x${i}`, { photoKey: undefined, hasPhoto: false });
+    const cards = await t.query(api.home.coolNewPeople, {});
+    expect(cards.map((c) => c.username)).toEqual(["old"]);
+  });
+
+  test("gives up after 55 rows when the newest are all banned", async () => {
+    const t = setup();
+    await addProfile(t, "old");
+    for (let i = 0; i < 60; i++) await addProfile(t, `b${i}`, { banned: true });
     expect(await t.query(api.home.coolNewPeople, {})).toEqual([]);
   });
 
   test("returns [] when nobody has a photo", async () => {
     const t = setup();
-    await addProfile(t, "nophoto", { photoKey: undefined });
+    await addProfile(t, "nophoto", { photoKey: undefined, hasPhoto: false });
     expect(await t.query(api.home.coolNewPeople, {})).toEqual([]);
   });
 });
@@ -103,34 +112,35 @@ describe("coolNewMusic", () => {
   test("only unbanned artists with a track, newest first, max 5", async () => {
     const t = setup();
     const withTrack = async (name: string, extra = {}) => {
-      const id = await addProfile(t, name, { kind: "artist", ...extra });
+      const id = await addProfile(t, name, { kind: "artist", hasTracks: true, ...extra });
       await t.run((ctx) =>
         ctx.db.insert("tracks", {
           profileId: id, title: "x", key: "k.mp3", size: 1, order: 0, autoplay: false,
         }),
       );
     };
-    await addProfile(t, "silent", { kind: "artist" });
+    await addProfile(t, "silent", { kind: "artist", hasTracks: false });
     for (let i = 1; i <= 6; i++) await withTrack(`band${i}`);
     await withTrack("bannedband", { banned: true });
     const cards = await t.query(api.home.coolNewMusic, {});
     expect(cards.map((c) => c.username)).toEqual(["band6", "band5", "band4", "band3", "band2"]);
   });
 
-  test("stops scanning after MAX_SCAN rows", async () => {
+  test("finds an artist with tracks created before 500 trackless artists", async () => {
     const t = setup();
     const track = (profileId: Id<"profiles">) =>
       t.run((ctx) =>
         ctx.db.insert("tracks", { profileId, title: "x", key: "k.mp3", size: 1, order: 0, autoplay: false }),
       );
-    await track(await addProfile(t, "old", { kind: "artist" }));
-    for (let i = 0; i < MAX_SCAN; i++) await addProfile(t, `x${i}`, { kind: "artist" });
-    expect(await t.query(api.home.coolNewMusic, {})).toEqual([]);
+    await track(await addProfile(t, "old", { kind: "artist", hasTracks: true }));
+    for (let i = 0; i < 500; i++) await addProfile(t, `x${i}`, { kind: "artist" });
+    const cards = await t.query(api.home.coolNewMusic, {});
+    expect(cards.map((c) => c.username)).toEqual(["old"]);
   });
 
   test("allows artists without a photo", async () => {
     const t = setup();
-    const id = await addProfile(t, "plain", { kind: "artist", photoKey: undefined });
+    const id = await addProfile(t, "plain", { kind: "artist", photoKey: undefined, hasPhoto: false, hasTracks: true });
     await t.run((ctx) =>
       ctx.db.insert("tracks", {
         profileId: id, title: "x", key: "k.mp3", size: 1, order: 0, autoplay: false,

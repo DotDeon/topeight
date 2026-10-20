@@ -379,6 +379,66 @@ describe("upload lifecycle", () => {
   });
 });
 
+describe("media flags", () => {
+  const flags = async (t: T, id: Id<"profiles">) => {
+    const p = await t.run((ctx) => ctx.db.get(id));
+    return [p!.hasPhoto, p!.hasTracks];
+  };
+
+  test("accepting a photo sets hasPhoto, and replacing it keeps it", async () => {
+    const t = mediaSetup();
+    const fan = await addProfile(t, "fan");
+    expect((await flags(t, fan))[0]).toBeUndefined();
+    await upload(t, fan, "photo", jpeg());
+    expect((await flags(t, fan))[0]).toBe(true);
+    await upload(t, fan, "photo", jpeg());
+    expect((await flags(t, fan))[0]).toBe(true);
+  });
+
+  test("a rejected photo leaves hasPhoto alone", async () => {
+    const t = mediaSetup();
+    const fan = await addProfile(t, "fan");
+    await upload(t, fan, "photo", jpeg(), undefined, { size: 3 * MB, contentType: "image/jpeg" });
+    expect((await flags(t, fan))[0]).toBeUndefined();
+  });
+
+  test("the first track sets hasTracks and deleting the last one clears it", async () => {
+    const t = mediaSetup();
+    const band = await addProfile(t, "band", { kind: "artist" });
+    await upload(t, band, "track", mp3());
+    await upload(t, band, "track", mp3());
+    expect((await flags(t, band))[1]).toBe(true);
+    const me = await as(t, band);
+    const [a, b] = await tracksOf(t, band);
+    await me.mutation(api.media.deleteTrack, { trackId: a._id });
+    expect((await flags(t, band))[1]).toBe(true);
+    await me.mutation(api.media.deleteTrack, { trackId: b._id });
+    expect((await flags(t, band))[1]).toBe(false);
+  });
+
+  test("an admin deleting the last track clears hasTracks", async () => {
+    vi.stubEnv("ADMIN_EMAILS", "boss@example.com");
+    const t = mediaSetup();
+    const boss = await addProfile(t, "boss");
+    const band = await addProfile(t, "band", { kind: "artist" });
+    await upload(t, band, "track", mp3());
+    const [a] = await tracksOf(t, band);
+    await (await as(t, boss)).mutation(api.moderation.deleteTrack, { trackId: a._id });
+    expect((await flags(t, band))[1]).toBe(false);
+    vi.unstubAllEnvs();
+  });
+
+  test("becomeArtist syncs the flags from the truth", async () => {
+    const t = mediaSetup();
+    const fan = await addProfile(t, "fan", { photoKey: "p.jpg" });
+    await t.run((ctx) =>
+      ctx.db.insert("tracks", { profileId: fan, title: "x", key: "k", size: 1, order: 0, autoplay: true }),
+    );
+    await (await as(t, fan)).mutation(api.profiles.becomeArtist, {});
+    expect(await flags(t, fan)).toEqual([true, true]);
+  });
+});
+
 describe("track management", () => {
   async function threeTracks() {
     const t = mediaSetup();

@@ -13,6 +13,7 @@ import {
   TRACK_MAX_BYTES,
   TRACK_TITLE_MAX,
   TRACK_TYPES,
+  syncMediaFlags,
   UPLOAD_TTL_MS,
 } from "./lib/media";
 import { r2, storage, UPLOAD_URL_TTL_S } from "./lib/r2";
@@ -188,6 +189,7 @@ async function acceptTrack(ctx: MutationCtx, row: Doc<"uploads">, size: number, 
     order: last === undefined ? 0 : last.order + 1,
     autoplay: tracks.length === 0,
   });
+  await syncMediaFlags(ctx, row.profileId);
   await ctx.db.delete(row._id);
 }
 
@@ -198,6 +200,7 @@ async function acceptPhoto(ctx: MutationCtx, row: Doc<"uploads">, size: number, 
   if (profile === null) return await reject(ctx, row, "profile gone");
   const old = profile.photoKey;
   await ctx.db.patch(profile._id, { photoKey: row.key });
+  await syncMediaFlags(ctx, profile._id);
   if (old !== undefined && old !== row.key) await storage.remove(ctx, old);
   await ctx.db.delete(row._id);
 }
@@ -290,6 +293,7 @@ export async function removeTrack(ctx: MutationCtx, track: Doc<"tracks">): Promi
     const next = rest.find((t) => t.order > track.order) ?? rest[0];
     if (next !== undefined) await ctx.db.patch(next._id, { autoplay: true });
   }
+  await syncMediaFlags(ctx, track.profileId);
 }
 
 /** The caller's tracks in play order. Empty when signed out or without a profile. */

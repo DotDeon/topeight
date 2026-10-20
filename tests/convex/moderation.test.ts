@@ -331,7 +331,7 @@ describe("admin functions", () => {
 describe("moderation.ban", () => {
   test("bans everywhere, signs the user out, and actions reports on them", async () => {
     const { t, boss, reporter, target } = await world();
-    await t.run((ctx) => ctx.db.patch(target, { photoKey: "target.jpg" }));
+    await t.run((ctx) => ctx.db.patch(target, { photoKey: "target.jpg", hasPhoto: true }));
     await befriend(t, reporter, target);
     await t.run((ctx) => ctx.db.patch(reporter, { top8: [target] }));
     await (await as(t, target)).mutation(api.bulletins.post, { body: "hello friends" });

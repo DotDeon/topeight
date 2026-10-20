@@ -37,6 +37,9 @@ export default defineSchema({
       }),
     ),
     photoKey: v.optional(v.string()),
+    /** Kept in step with photoKey and the tracks table by syncMediaFlags. Rows from before the flags exist get them from migrations:backfillMediaFlags. */
+    hasPhoto: v.optional(v.boolean()),
+    hasTracks: v.optional(v.boolean()),
     /** Legacy. Views live in profileStats so a view never rewrites this doc. */
     profileViews: v.optional(v.number()),
     lastLoginAt: v.number(),
@@ -50,6 +53,8 @@ export default defineSchema({
     .index("by_username", ["username"])
     .index("by_user", ["userId"])
     .index("by_kind_creation", ["kind"])
+    .index("by_kind_photo", ["kind", "hasPhoto"])
+    .index("by_kind_tracks", ["kind", "hasTracks"])
     .searchIndex("search_name", {
       searchField: "displayName",
       filterFields: ["kind", "banned"],

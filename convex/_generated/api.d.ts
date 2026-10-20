@@ -24,6 +24,7 @@ import type * as lib_password from "../lib/password.js";
 import type * as lib_posting from "../lib/posting.js";
 import type * as lib_r2 from "../lib/r2.js";
 import type * as media from "../media.js";
+import type * as migrations from "../migrations.js";
 import type * as moderation from "../moderation.js";
 import type * as profiles from "../profiles.js";
 import type * as search from "../search.js";
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   "lib/posting": typeof lib_posting;
   "lib/r2": typeof lib_r2;
   media: typeof media;
+  migrations: typeof migrations;
   moderation: typeof moderation;
   profiles: typeof profiles;
   search: typeof search;

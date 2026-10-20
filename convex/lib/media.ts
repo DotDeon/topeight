@@ -1,3 +1,6 @@
+import type { Id } from "../_generated/dataModel";
+import type { MutationCtx } from "../_generated/server";
+
 /** Public R2 URL for an object key, or null when there is no key or no base URL. */
 function publicUrl(key?: string): string | null {
   const base = process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
@@ -26,3 +29,21 @@ export const PHOTO_TYPES: readonly string[] = ["image/jpeg", "image/png", "image
 /** Pending uploads older than this are ignored and cannot get an upload URL. */
 export const UPLOAD_TTL_MS = 60 * 60 * 1000;
 export const TRACK_TITLE_MAX = 80;
+
+/**
+ * Recomputes hasPhoto and hasTracks from the truth. Patches only when a value changes.
+ * The homepage boxes read these flags through indexes.
+ */
+export async function syncMediaFlags(ctx: MutationCtx, profileId: Id<"profiles">): Promise<void> {
+  const profile = await ctx.db.get(profileId);
+  if (profile === null) return;
+  const track = await ctx.db
+    .query("tracks")
+    .withIndex("by_profile_order", (q) => q.eq("profileId", profileId))
+    .first();
+  const hasPhoto = !!profile.photoKey;
+  const hasTracks = track !== null;
+  if (profile.hasPhoto !== hasPhoto || profile.hasTracks !== hasTracks) {
+    await ctx.db.patch(profileId, { hasPhoto, hasTracks });
+  }
+}

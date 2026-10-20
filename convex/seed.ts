@@ -3,6 +3,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import rosterUsernames from "../scripts/seed-roster.json";
 import { friendshipPair } from "./lib/friendships";
+import { syncMediaFlags } from "./lib/media";
 
 /**
  * Demo content so a fresh copy looks alive. Run with `npx convex run seed:run`
@@ -338,6 +339,7 @@ export const run = internalMutation({
         interests: p.interests,
         band: p.band,
         photoKey: `seed/avatar-${p.username}.png`,
+        hasPhoto: true,
       };
       const existing = await findByUsername(ctx, p.username);
       if (existing !== null) {
@@ -404,6 +406,8 @@ export const run = internalMutation({
         await ctx.db.insert("shows", { profileId, date, venue: s.venue, city: s.city });
       }
     }
+
+    for (const profileId of ids.values()) await syncMediaFlags(ctx, profileId);
 
     // Friendships: every artist with every other artist, every fan with every
     // artist, and every fan with every other fan.

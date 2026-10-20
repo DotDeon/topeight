@@ -39,6 +39,7 @@ describe("seed.run", () => {
         usersWithEmail: (await ctx.db.query("users").collect()).filter((u) => u.email).length,
         top8Filled: all.every((p) => p.top8.length > 0 && p.top8.length <= 8),
         withPhoto: all.every((p) => p.photoKey === `seed/avatar-${p.username}.png`),
+        flagsRight: all.every((p) => p.hasPhoto === true && p.hasTracks === (p.kind === "artist")),
         trackKeys: [...new Set(tracks.map((t) => t.key))].sort(),
       };
     });
@@ -54,6 +55,7 @@ describe("seed.run", () => {
     expect(snapshot.usersWithEmail).toBe(0);
     expect(snapshot.top8Filled).toBe(true);
     expect(snapshot.withPhoto).toBe(true);
+    expect(snapshot.flagsRight).toBe(true);
     expect(snapshot.trackKeys.every((k) => /^seed\/silence-[123]\.mp3$/.test(k))).toBe(true);
   });
 

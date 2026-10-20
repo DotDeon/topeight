@@ -4,23 +4,25 @@ import { query } from "./_generated/server";
 import { profileForUser } from "./lib/access";
 import { friendBulletins } from "./lib/bulletins";
 import { toPublicCard, type PublicCard } from "./lib/cards";
-import { MAX_SCAN } from "./lib/limits";
 
 const CARD_COUNT = 5;
 const DASHBOARD_BULLETINS = 5;
+/** Rows read per box: the cards plus room to skip banned and house accounts. */
+const SCAN_LIMIT = CARD_COUNT + 50;
 
 /** The 5 newest unbanned fans with a photo. The house account is left out. */
 export const coolNewPeople = query({
   args: {},
   handler: async (ctx): Promise<PublicCard[]> => {
     const cards: PublicCard[] = [];
-    const fans = await ctx.db
+    const fans = ctx.db
       .query("profiles")
-      .withIndex("by_kind_creation", (q) => q.eq("kind", "fan"))
-      .order("desc")
-      .take(MAX_SCAN);
-    for (const p of fans) {
-      if (p.banned || p.isHouse || !p.photoKey) continue;
+      .withIndex("by_kind_photo", (q) => q.eq("kind", "fan").eq("hasPhoto", true))
+      .order("desc");
+    let scanned = 0;
+    for await (const p of fans) {
+      if (++scanned > SCAN_LIMIT) break;
+      if (p.banned || p.isHouse) continue;
       cards.push(toPublicCard(p));
       if (cards.length === CARD_COUNT) break;
     }
@@ -33,18 +35,14 @@ export const coolNewMusic = query({
   args: {},
   handler: async (ctx): Promise<PublicCard[]> => {
     const cards: PublicCard[] = [];
-    const artists = await ctx.db
+    const artists = ctx.db
       .query("profiles")
-      .withIndex("by_kind_creation", (q) => q.eq("kind", "artist"))
-      .order("desc")
-      .take(MAX_SCAN);
-    for (const p of artists) {
+      .withIndex("by_kind_tracks", (q) => q.eq("kind", "artist").eq("hasTracks", true))
+      .order("desc");
+    let scanned = 0;
+    for await (const p of artists) {
+      if (++scanned > SCAN_LIMIT) break;
       if (p.banned || p.isHouse) continue;
-      const track = await ctx.db
-        .query("tracks")
-        .withIndex("by_profile_order", (q) => q.eq("profileId", p._id))
-        .first();
-      if (track === null) continue;
       cards.push(toPublicCard(p));
       if (cards.length === CARD_COUNT) break;
     }
