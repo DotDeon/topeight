@@ -511,3 +511,62 @@ export const resetEventsFixture = internalMutation({
     return null;
   },
 });
+
+/**
+ * Fixture for e2e/groups.spec.ts: clears the e2e accounts' groups (with their
+ * members, topics and posts) and memberships, resets their group rate limits so
+ * reruns stay under 3 groups a day and slugs stay free, and sets createdAtOverride:
+ * 30 days ago for e2eadmin (passes the week-old rule) and now for e2ecommenter
+ * (always too young, whatever age the local database gives it).
+ * Same TOPEIGHT_TEST_FIXTURES guard as the rest.
+ */
+export const resetGroupsFixture = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    if (process.env.TOPEIGHT_TEST_FIXTURES !== "1") {
+      throw new ConvexError("Set TOPEIGHT_TEST_FIXTURES=1 on this deployment to seed test fixtures");
+    }
+    for (const username of ["e2eadmin", "e2ecommenter"]) {
+      const profile = await ctx.db
+        .query("profiles")
+        .withIndex("by_username", (q) => q.eq("username", username))
+        .unique();
+      if (profile === null) continue;
+      const user = await ctx.db.get(profile.userId);
+      if (user?.email !== ADMIN_EMAIL && user?.email !== COMMENTER_EMAIL) continue;
+      const aged = username === "e2eadmin";
+      await ctx.db.patch(profile._id, { createdAtOverride: aged ? Date.now() - 30 * 24 * 60 * 60 * 1000 : Date.now() });
+      const groups = await ctx.db.query("groups").order("desc").take(500);
+      for (const g of groups.filter((x) => x.ownerId === profile._id)) {
+        const topics = await ctx.db
+          .query("groupTopics")
+          .withIndex("by_group_last", (q) => q.eq("groupId", g._id))
+          .take(200);
+        for (const t of topics) {
+          const replies = await ctx.db
+            .query("groupReplies")
+            .withIndex("by_topic", (q) => q.eq("topicId", t._id))
+            .take(500);
+          for (const r of replies) await ctx.db.delete(r._id);
+          await ctx.db.delete(t._id);
+        }
+        const members = await ctx.db
+          .query("groupMembers")
+          .withIndex("by_group", (q) => q.eq("groupId", g._id))
+          .take(500);
+        for (const m of members) await ctx.db.delete(m._id);
+        await ctx.db.delete(g._id);
+      }
+      const own = await ctx.db
+        .query("groupMembers")
+        .withIndex("by_profile", (q) => q.eq("profileId", profile._id))
+        .take(200);
+      for (const m of own) await ctx.db.delete(m._id);
+      for (const name of ["groupCreate", "groupEdit", "groupTopic", "groupReply"] as const) {
+        await rateLimiter.reset(ctx, name, { key: profile._id });
+      }
+    }
+    return null;
+  },
+});

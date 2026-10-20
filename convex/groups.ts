@@ -163,11 +163,15 @@ export function slugify(name: string): string {
     .replace(/-+$/, "");
 }
 
+/** Slugs that would collide with a /groups/<word> page. */
+const RESERVED_SLUGS: ReadonlySet<string> = new Set(["new"]);
+
 /** The first of slug, slug-2 ... slug-50 no group (deleted ones included) has. */
 async function freeSlug(ctx: MutationCtx, base: string): Promise<string> {
   for (let n = 1; n <= MAX_SLUG_SUFFIX; n++) {
     const suffix = n === 1 ? "" : `-${n}`;
     const slug = base.slice(0, MAX_SLUG - suffix.length).replace(/-+$/, "") + suffix;
+    if (RESERVED_SLUGS.has(slug)) continue;
     const taken = await ctx.db
       .query("groups")
       .withIndex("by_slug", (q) => q.eq("slug", slug))
@@ -312,7 +316,7 @@ export const create = mutation({
   returns: v.object({ id: v.id("groups"), slug: v.string() }),
   handler: async (ctx, args) => {
     const me = await requireProfile(ctx);
-    if (Date.now() - me._creationTime < CREATE_AGE_MS) {
+    if (Date.now() - (me.createdAtOverride ?? me._creationTime) < CREATE_AGE_MS) {
       throw new ConvexError("Your account must be a week old to create a group");
     }
     const fields = checkGroup(me, args);

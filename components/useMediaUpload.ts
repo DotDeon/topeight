@@ -3,9 +3,10 @@
 import { useAction, useMutation } from "convex/react";
 import { useCallback } from "react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { PHOTO_MAX_BYTES, PHOTO_TYPES, TRACK_MAX_BYTES, TRACK_TYPES } from "@/convex/lib/media";
 
-export type MediaPurpose = "photo" | "track";
+export type MediaPurpose = "photo" | "track" | "groupPhoto";
 
 /**
  * Upload a photo or track: beginUpload, then a signed PUT to R2, then confirm it.
@@ -14,6 +15,7 @@ export type MediaPurpose = "photo" | "track";
  * throws if the server rejected it. Pass tracks through lib/transcode first: only the
  * 128 kbps copy is uploaded. Photos go through the component's syncMetadata, and the
  * server records them a moment later, so watch the profile query for the result.
+ * Group photos (purpose "groupPhoto") take the same path as photos and need `groupId`.
  * Resolves with the object key.
  */
 export function useMediaUpload() {
@@ -23,7 +25,7 @@ export function useMediaUpload() {
   const confirmTrackUpload = useAction(api.media.confirmTrackUpload);
 
   return useCallback(
-    async (file: File, opts: { purpose: MediaPurpose; title?: string }): Promise<string> => {
+    async (file: File, opts: { purpose: MediaPurpose; title?: string; groupId?: Id<"groups"> }): Promise<string> => {
       const track = opts.purpose === "track";
       const maxBytes = track ? TRACK_MAX_BYTES : PHOTO_MAX_BYTES;
       const types = track ? TRACK_TYPES : PHOTO_TYPES;
@@ -35,6 +37,7 @@ export function useMediaUpload() {
       const { uploadId } = await beginUpload({
         purpose: opts.purpose,
         title: opts.title,
+        groupId: opts.groupId,
         size: file.size,
         contentType: file.type,
       });

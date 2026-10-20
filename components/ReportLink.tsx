@@ -9,8 +9,8 @@ import styles from "./Posts.module.css";
 
 const MAX_REASON = 500;
 
-/** A small Report button for one comment, bulletin, message, blog post, blog comment or event. Asks for a reason with window.prompt. */
-type ReportTarget = "comment" | "bulletin" | "message" | "blogPost" | "blogComment" | "event";
+/** A small Report button for one comment, bulletin, message, blog post, blog comment, event, group, group topic or group post. Asks for a reason with window.prompt. */
+type ReportTarget = "comment" | "bulletin" | "message" | "blogPost" | "blogComment" | "event" | "group" | "groupTopic" | "groupReply";
 const TARGET_NAME: Record<ReportTarget, string> = {
   comment: "comment",
   bulletin: "bulletin",
@@ -18,6 +18,9 @@ const TARGET_NAME: Record<ReportTarget, string> = {
   blogPost: "blog post",
   blogComment: "blog comment",
   event: "event",
+  group: "group",
+  groupTopic: "topic",
+  groupReply: "post",
 };
 
 export function ReportLink({ targetType, targetId }: { targetType: ReportTarget; targetId: string }) {

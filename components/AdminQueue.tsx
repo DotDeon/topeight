@@ -69,6 +69,38 @@ function Preview({ p }: { p: ReportPreview }) {
           <blockquote style={{ whiteSpace: "pre-wrap", margin: "4px 0 4px 12px" }}>{p.body}</blockquote>
         </>
       );
+    case "group":
+      return (
+        <>
+          <p>
+            Group <Link href={`/groups/${p.slug}`}>{p.title}</Link>
+            {p.deleted && " [deleted]"}
+            {p.hidden && " [hidden]"} by{" "}
+            {p.author ? <Link href={`/${p.author.username}`}>{p.author.displayName}</Link> : "unknown"}
+          </p>
+          <blockquote style={{ whiteSpace: "pre-wrap", margin: "4px 0 4px 12px" }}>{p.body}</blockquote>
+        </>
+      );
+    case "groupTopic":
+      return (
+        <>
+          <p>
+            Group topic <Link href={`/groups/${p.slug}/t/${p.topicId}`}>{p.title}</Link> by{" "}
+            {p.author ? <Link href={`/${p.author.username}`}>{p.author.displayName}</Link> : "unknown"}
+          </p>
+          <blockquote style={{ whiteSpace: "pre-wrap", margin: "4px 0 4px 12px" }}>{p.body}</blockquote>
+        </>
+      );
+    case "groupReply":
+      return (
+        <>
+          <p>
+            Group post in <Link href={`/groups/${p.slug}/t/${p.topicId}`}>this topic</Link> by{" "}
+            {p.author ? <Link href={`/${p.author.username}`}>{p.author.displayName}</Link> : "unknown"}
+          </p>
+          <blockquote style={{ whiteSpace: "pre-wrap", margin: "4px 0 4px 12px" }}>{p.body}</blockquote>
+        </>
+      );
     case "message":
       return (
         <>
@@ -110,6 +142,9 @@ function ReportRow({ r }: { r: Row }) {
   const dismiss = useMutation(api.moderation.dismiss);
   const ban = useMutation(api.moderation.ban);
   const deleteTrack = useMutation(api.moderation.deleteTrack);
+  const restoreGroup = useMutation(api.moderation.restoreGroup);
+  const setGroupOwner = useMutation(api.moderation.setGroupOwner);
+  const [newOwner, setNewOwner] = useState("");
   const [error, setError] = useState("");
   const run = (p: Promise<null>) => {
     setError("");
@@ -119,7 +154,8 @@ function ReportRow({ r }: { r: Row }) {
   // Who the separate "Ban user" button bans: whoever wrote or uploaded the content.
   // On a profile report the hide action already bans, so it is the ban button.
   const bannedId: Id<"profiles"> | null =
-    p.kind === "comment" || p.kind === "bulletin" || p.kind === "blogComment" || p.kind === "blogPost" || p.kind === "event"
+    p.kind === "comment" || p.kind === "bulletin" || p.kind === "blogComment" || p.kind === "blogPost" || p.kind === "event" ||
+    p.kind === "group" || p.kind === "groupTopic" || p.kind === "groupReply"
       ? p.authorId
       : p.kind === "track"
         ? p.ownerId
@@ -197,6 +233,34 @@ function ReportRow({ r }: { r: Row }) {
           </span>
         )}
       </p>
+      {p.kind === "group" && (
+        <p>
+          {(p.deleted || p.hidden) && (
+            <>
+              <button type="button" onClick={() => run(restoreGroup({ groupId: p.groupId }))}>
+                Restore group
+              </button>{" "}
+            </>
+          )}
+          <label htmlFor={`owner-${r.id}`}>New owner (username):</label>{" "}
+          <input
+            id={`owner-${r.id}`}
+            value={newOwner}
+            maxLength={20}
+            onChange={(e) => setNewOwner(e.target.value)}
+          />{" "}
+          <button
+            type="button"
+            disabled={newOwner.trim() === ""}
+            onClick={() => {
+              run(setGroupOwner({ groupId: p.groupId, username: newOwner.trim() }));
+              setNewOwner("");
+            }}
+          >
+            Set owner
+          </button>
+        </p>
+      )}
     </div>
   );
 }

@@ -52,6 +52,12 @@ export default defineSchema({
     banned: v.boolean(),
     /** Who may send this member mail. Undefined means friends only. */
     mailFrom: v.optional(v.union(v.literal("friends"), v.literal("anyone"))),
+    /**
+     * Test fixtures only: a creation time to use for the group-creation age check,
+     * since _creationTime can't be patched. Written only by internal fixture mutations
+     * in testing.ts, never by a public function.
+     */
+    createdAtOverride: v.optional(v.number()),
   })
     .index("by_username", ["username"])
     .index("by_user", ["userId"])

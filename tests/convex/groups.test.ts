@@ -129,6 +129,20 @@ describe("groups.create", () => {
     await expect(create(t, young)).rejects.toThrow("Your account must be a week old to create a group");
   });
 
+  test("createdAtOverride, which only fixtures set, stands in for the creation time in the age check", async () => {
+    const { t } = await world();
+    const young = await addProfile(t, "young");
+    vi.setSystemTime(new Date(Date.now() + 1 * DAY));
+    await t.run((ctx) => ctx.db.patch(young, { createdAtOverride: Date.now() - 30 * DAY }));
+    await expect(create(t, young)).resolves.toMatchObject({ slug: "rock-fans" });
+  });
+
+  test("a group named New never takes the /groups/new slug", async () => {
+    const { t, owner } = await world();
+    const { slug } = await create(t, owner, { name: "New" });
+    expect(slug).toBe("new-2");
+  });
+
   test("checks the name and description", async () => {
     const { t, owner } = await world();
     await expect(create(t, owner, { name: "ab" })).rejects.toThrow("Name is too short");
