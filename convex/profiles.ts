@@ -366,12 +366,19 @@ export const getPublicProfile = query({
       .take(MAX_SCAN);
     const bulletin = recentBulletins.find((b) => !b.hidden);
 
-    const recentPosts = await ctx.db
+    // Post rows carry no body, and this stops at the first visible one.
+    let blog: Doc<"blogPosts"> | null = null;
+    let scanned = 0;
+    for await (const post of ctx.db
       .query("blogPosts")
       .withIndex("by_author", (q) => q.eq("authorId", p._id))
-      .order("desc")
-      .take(MAX_SCAN);
-    const blog = recentPosts.find((b) => !b.hidden);
+      .order("desc")) {
+      if (!post.hidden) {
+        blog = post;
+        break;
+      }
+      if (++scanned >= MAX_SCAN) break;
+    }
 
     const tracks: PublicProfile["tracks"] = [];
     const trackRows = await ctx.db

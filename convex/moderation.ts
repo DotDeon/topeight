@@ -164,15 +164,15 @@ async function preview(ctx: Ctx, report: Doc<"reports">): Promise<ReportPreview>
     };
   }
   if (type === "blogPost") {
-    const id = ctx.db.normalizeId("blogPosts", targetId);
-    const row = id && (await ctx.db.get(id));
-    if (!row) return { kind: "gone" };
+    // The snapshot is the post as reported, so later edits or a delete can't scrub it.
+    const snap = report.snapshot;
+    if (!snap?.authorId) return { kind: "gone" };
     return {
       kind: "blogPost",
-      title: row.title,
-      body: row.body,
-      authorId: row.authorId,
-      author: await cardFor(ctx, row.authorId),
+      title: snap.title ?? "",
+      body: snap.body,
+      authorId: snap.authorId,
+      author: await cardFor(ctx, snap.authorId),
     };
   }
   if (type === "blogComment") {
@@ -215,7 +215,8 @@ async function trackIsOn(ctx: Ctx, track: Doc<"tracks">, username: string | unde
  * Report a profile, comment, bulletin, track, message, blog post or blog comment. A repeat open report
  * by the same member adds nothing. A track report must name the profile it was
  * seen on in `profileUsername`, and the track must belong to it. Only the
- * recipient can report a message, and the report keeps a copy of it.
+ * recipient can report a message, and the report keeps a copy of it. A
+ * blog post report keeps a copy of the title and body.
  */
 export const report = mutation({
   args: { targetType, targetId: v.string(), reason: v.string(), profileUsername: v.optional(v.string()) },
@@ -236,6 +237,13 @@ export const report = mutation({
       const m = target as Doc<"messages">;
       if (m.recipientId !== me._id || m.recipientDeleted) throw new ConvexError("Not found");
       snapshot = { subject: m.subject, body: m.body, senderId: m.senderId };
+    } else if (args.targetType === "blogPost") {
+      const post = target as Doc<"blogPosts">;
+      const body = await ctx.db
+        .query("blogBodies")
+        .withIndex("by_post", (q) => q.eq("postId", post._id))
+        .first();
+      snapshot = { title: post.title, body: body?.body ?? post.excerpt, authorId: post.authorId };
     }
     const targetId = target._id as string;
 

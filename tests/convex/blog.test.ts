@@ -58,6 +58,8 @@ describe("blog.create", () => {
     });
     const page = await t.query(api.blog.listByUser, { username: "author", cursor: null });
     expect(page.page.map((p) => p.id)).toEqual([id]);
+    expect(page.page[0].excerpt).toBe("first post");
+    expect(page.page[0]).not.toHaveProperty("body");
   });
 
   test("title, body, mood and listening limits", async () => {
@@ -136,6 +138,28 @@ describe("blog.update and blog.remove", () => {
     expect(got).not.toHaveProperty("listening");
   });
 
+  test("the body lives in its own row, the post keeps a 200 character excerpt", async () => {
+    const { t, author } = await pair();
+    const long = "a".repeat(150) + "b".repeat(150);
+    const id = await post(t, author, { body: long });
+    const row = await t.run((ctx) => ctx.db.get(id));
+    expect(row).not.toHaveProperty("body");
+    expect(row?.excerpt).toBe(long.slice(0, 200));
+    await (await as(t, author)).mutation(api.blog.update, { id, title: "t", body: "short now" });
+    expect((await t.query(api.blog.get, { id }))?.body).toBe("short now");
+    expect((await t.run((ctx) => ctx.db.get(id)))?.excerpt).toBe("short now");
+    expect(await t.run((ctx) => ctx.db.query("blogBodies").take(10))).toHaveLength(1);
+  });
+
+  test("30 edits an hour, refused edits do not count", async () => {
+    const { t, author } = await pair();
+    const id = await post(t, author);
+    const a = await as(t, author);
+    await expect(a.mutation(api.blog.update, { id, title: "", body: "b" })).rejects.toThrow();
+    for (let i = 0; i < 30; i++) await a.mutation(api.blog.update, { id, title: `t${i}`, body: "b" });
+    await expect(a.mutation(api.blog.update, { id, title: "t", body: "b" })).rejects.toThrow("Slow down");
+  });
+
   test("update checks limits and the link rule", async () => {
     const t = setup();
     const fresh = await addProfile(t, "fresh");
@@ -156,6 +180,7 @@ describe("blog.update and blog.remove", () => {
     expect(await t.query(api.blog.get, { id })).toBeNull();
     const left = await t.run((ctx) => ctx.db.query("blogComments").take(10));
     expect(left).toHaveLength(0);
+    expect(await t.run((ctx) => ctx.db.query("blogBodies").take(10))).toHaveLength(0);
   });
 
   test("deleting a post with many comments finishes in a scheduled cleanup", async () => {
@@ -180,7 +205,7 @@ describe("reading posts", () => {
     const ids: Id<"blogPosts">[] = [];
     await t.run(async (ctx) => {
       for (let i = 0; i < 12; i++) {
-        ids.push(await ctx.db.insert("blogPosts", { authorId: author, title: `t${i}`, body: "b", hidden: false }));
+        ids.push(await ctx.db.insert("blogPosts", { authorId: author, title: `t${i}`, excerpt: "b", hidden: false }));
       }
     });
     const first = await t.query(api.blog.listByUser, { username: "author", cursor: null });
@@ -237,6 +262,7 @@ describe("blog.friendsFeed", () => {
     expect(feed.map((p) => p.id)).toEqual([newer, older]);
     expect(feed[1]).toMatchObject({ title: "older", author: { username: "author" }, mood: { text: "meh", icon: "bored" } });
     expect(feed[0]).not.toHaveProperty("body");
+    expect(Object.keys(feed[1]).sort()).toEqual(["author", "createdAt", "id", "mood", "title"]);
   });
 
   test("signed out gets an empty feed", async () => {
@@ -255,7 +281,7 @@ describe("blog.friendsFeed", () => {
     await t.run(async (ctx) => {
       for (const f of friends) {
         for (let j = 0; j < 5; j++) {
-          await ctx.db.insert("blogPosts", { authorId: f, title: `p${j}`, body: "b", hidden: false });
+          await ctx.db.insert("blogPosts", { authorId: f, title: `p${j}`, excerpt: "b", hidden: false });
         }
       }
     });
@@ -284,6 +310,23 @@ describe("blog comments", () => {
     expect(res.page.map((c) => c.body)).toEqual(["first", "x".repeat(2000)]);
     expect(res.page[0]).toMatchObject({ author: { username: "reader" }, canDelete: true });
     expect((await t.query(api.blog.get, { id }))?.commentCount).toBe(2);
+  });
+
+  test("commentCount is 101 past 100, and get leaves out banned commenters", async () => {
+    const { t, author, reader } = await pair();
+    const banned = await addProfile(t, "banned");
+    const id = await post(t, author);
+    const busy = await post(t, author, { title: "busy" });
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 150; i++) {
+        await ctx.db.insert("blogComments", { postId: busy, authorId: reader, body: "c", hidden: i % 2 === 0 });
+      }
+      await ctx.db.insert("blogComments", { postId: id, authorId: reader, body: "ok", hidden: false });
+      await ctx.db.insert("blogComments", { postId: id, authorId: banned, body: "x", hidden: false });
+      await ctx.db.patch(banned, { banned: true });
+    });
+    expect((await t.query(api.blog.get, { id: busy }))?.commentCount).toBe(101);
+    expect((await t.query(api.blog.get, { id }))?.commentCount).toBe(1);
   });
 
   test("a blocked pair cannot comment, either direction", async () => {
@@ -395,6 +438,10 @@ describe("moderation", () => {
       expect.objectContaining({ kind: "blogPost", title: "Bad", body: "bad body", authorId: author }),
       expect.objectContaining({ kind: "blogComment", body: "bad comment", authorId: reader }),
     ]);
+    // An edit after the report does not change what the admin sees.
+    await (await as(t, author)).mutation(api.blog.update, { id, title: "Clean", body: "nothing here" });
+    const after = await b.query(api.moderation.listOpen, {});
+    expect(after[0].preview).toMatchObject({ kind: "blogPost", title: "Bad", body: "bad body" });
     for (const o of open) await b.mutation(api.moderation.hide, { reportId: o.id });
     const rows = await t.run(async (ctx) => [await ctx.db.get(id), await ctx.db.get(comment.id)]);
     expect(rows.map((row) => row?.hidden)).toEqual([true, true]);
@@ -420,5 +467,19 @@ describe("getPublicProfile latestBlog", () => {
     const got = await latest(t);
     expect(got).toMatchObject({ id: first, title: "first" });
     expect(typeof got?.createdAt).toBe("number");
+    expect(Object.keys(got ?? {}).sort()).toEqual(["createdAt", "id", "title"]);
+  });
+
+  test("skips hidden posts and gives up after 200 rows", async () => {
+    const { t, author } = await pair();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("blogPosts", { authorId: author, title: "old visible", excerpt: "", hidden: false });
+      for (let i = 0; i < 200; i++) {
+        await ctx.db.insert("blogPosts", { authorId: author, title: `h${i}`, excerpt: "", hidden: true });
+      }
+    });
+    expect(await latest(t)).toBeNull();
+    await t.run((ctx) => ctx.db.insert("blogPosts", { authorId: author, title: "new", excerpt: "", hidden: false }));
+    expect(await latest(t)).toMatchObject({ title: "new" });
   });
 });

@@ -284,7 +284,7 @@ describe("renderProfileDocument (hardening)", () => {
     expect(html).toContain("Displaying 1 of 57 comments");
   });
 
-  test("latest blog entry box: escaped title, date navigates to the blog page, after the bulletin", () => {
+  test("latest blog entry box: escaped title navigates to the blog page, after the bulletin", () => {
     const createdAt = Date.UTC(2026, 9, 19, 21, 14);
     const html = renderProfileDocument(
       fan({
@@ -294,9 +294,11 @@ describe("renderProfileDocument (hardening)", () => {
       opts,
     );
     expect(html).toContain("Jess's Latest Blog Entry");
-    expect(html).toContain("&lt;script&gt;x&lt;/script&gt; &amp; stuff");
     expect(html).not.toContain("<script>x</script>");
-    expect(html).toContain(`data-topeight-navigate="jess" data-topeight-page="blog">${formatDate(createdAt)}</a>`);
+    expect(html).toContain(
+      'data-topeight-navigate="jess" data-topeight-page="blog">&lt;script&gt;x&lt;/script&gt; &amp; stuff</a>',
+    );
+    expect(html).toContain(`(${formatDate(createdAt)})`);
     const bulletin = html.indexOf("Latest Bulletin</div>");
     const blog = html.indexOf("Latest Blog Entry</div>");
     const blurbs = html.indexOf("Blurbs</div>");

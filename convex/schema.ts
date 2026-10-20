@@ -113,15 +113,25 @@ export default defineSchema({
     hidden: v.boolean(),
   }).index("by_author", ["authorId"]),
 
-  /** Blog posts. Deleting one hard-deletes its comments too. */
+  /**
+   * Blog posts. The body lives in blogBodies so lists, the feed and the
+   * profile box never load it. Deleting a post hard-deletes its body and comments.
+   */
   blogPosts: defineTable({
     authorId: v.id("profiles"),
     title: v.string(),
-    body: v.string(),
+    /** The first 200 characters of the body, for list previews. */
+    excerpt: v.string(),
     mood: v.optional(v.object({ text: v.string(), icon: moodIcon })),
     listening: v.optional(v.string()),
     hidden: v.boolean(),
   }).index("by_author", ["authorId"]),
+
+  /** One row per blog post, holding its full body. */
+  blogBodies: defineTable({
+    postId: v.id("blogPosts"),
+    body: v.string(),
+  }).index("by_post", ["postId"]),
 
   blogComments: defineTable({
     postId: v.id("blogPosts"),
@@ -202,10 +212,16 @@ export default defineSchema({
     ),
     targetId: v.string(),
     reason: v.string(),
-    /** A copy of reported mail, so the report outlives both sides deleting it. */
+    /**
+     * A copy of reported mail or a reported blog post, so the report outlives
+     * deletion and later edits.
+     */
     snapshot: v.optional(
       v.object({
         subject: v.optional(v.string()),
+        /** Blog posts only. */
+        title: v.optional(v.string()),
+        authorId: v.optional(v.id("profiles")),
         body: v.string(),
         senderId: v.optional(v.id("profiles")),
       }),

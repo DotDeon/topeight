@@ -19,6 +19,8 @@ const MAX_LISTENING = 100;
 export const MAX_COMMENT_COUNT = 100;
 /** Comments a delete removes per call. The rest go in a scheduled cleanup. */
 const DELETE_BATCH = 500;
+/** Characters of the body kept on the post row for list previews. */
+const EXCERPT_LENGTH = 200;
 /** Friendships the feed reads, newest first. */
 const FEED_FRIENDS = 300;
 /** Posts the feed reads per friend. */
@@ -36,17 +38,19 @@ const cardValidator = v.object({
   photoUrl: v.union(v.string(), v.null()),
   kind: v.union(v.literal("fan"), v.literal("artist")),
 });
-const postView = v.object({
+const summaryFields = {
   id: v.id("blogPosts"),
   author: cardValidator,
   title: v.string(),
-  body: v.string(),
+  excerpt: v.string(),
   mood: v.optional(moodArg),
   listening: v.optional(v.string()),
   createdAt: v.number(),
   commentCount: v.number(),
   canEdit: v.boolean(),
-});
+};
+const summaryView = v.object(summaryFields);
+const postView = v.object({ ...summaryFields, body: v.string() });
 const feedItem = v.object({
   id: v.id("blogPosts"),
   author: cardValidator,
@@ -61,21 +65,27 @@ const commentView = v.object({
   createdAt: v.number(),
   canDelete: v.boolean(),
 });
-const pageOf = <T extends typeof postView | typeof commentView>(item: T) =>
+const pageOf = <T extends typeof summaryView | typeof commentView>(item: T) =>
   v.object({ page: v.array(item), isDone: v.boolean(), continueCursor: v.string() });
 
-export type BlogPostView = {
+/** A post without its body, for lists. */
+export type BlogPostSummary = {
   id: Id<"blogPosts">;
   author: PublicCard;
   title: string;
-  /** Plain text. The client renders it. */
-  body: string;
+  /** The first 200 characters of the body. */
+  excerpt: string;
   mood?: Mood;
   listening?: string;
   createdAt: number;
-  /** Visible comments, counted up to MAX_COMMENT_COUNT + 1. */
+  /** Visible comments. 101 means "over 100", shown as "100+". */
   commentCount: number;
   canEdit: boolean;
+};
+
+export type BlogPostView = BlogPostSummary & {
+  /** Plain text. The client renders it. */
+  body: string;
 };
 
 export type FeedItem = {
@@ -114,11 +124,10 @@ async function visiblePost(
   return { post, author };
 }
 
+type PostFields = { title: string; body: string; mood?: Mood; listening?: string };
+
 /** Checked, trimmed post fields. Blank listening is dropped. Throws on any limit or the link rule. */
-function checkPost(
-  me: Doc<"profiles">,
-  args: { title: string; body: string; mood?: Mood; listening?: string },
-): { title: string; body: string; mood?: Mood; listening?: string } {
+function checkPost(me: Doc<"profiles">, args: PostFields): PostFields {
   const title = checkBody(args.title, "Title", MAX_BLOG_TITLE);
   const body = checkBody(args.body, "Post", MAX_BLOG_BODY);
   let mood: Mood | undefined;
@@ -133,31 +142,66 @@ function checkPost(
   return { title, body, mood, listening };
 }
 
-async function commentCount(ctx: Ctx, postId: Id<"blogPosts">): Promise<number> {
+/** The blogPosts columns for checked fields: everything but the body, plus its excerpt. */
+function postColumns({ body, ...rest }: PostFields) {
+  return { ...rest, excerpt: body.slice(0, EXCERPT_LENGTH) };
+}
+
+/**
+ * Visible comments on a post. Reads at most MAX_COMMENT_COUNT + 1 rows and
+ * returns MAX_COMMENT_COUNT + 1 whenever more than MAX_COMMENT_COUNT exist.
+ * With `authors`, banned commenters are left out too, using it as a cache.
+ */
+async function commentCount(
+  ctx: Ctx,
+  postId: Id<"blogPosts">,
+  authors?: Map<Id<"profiles">, boolean>,
+): Promise<number> {
   const rows = await ctx.db
     .query("blogComments")
     .withIndex("by_post", (q) => q.eq("postId", postId))
     .take(MAX_COMMENT_COUNT + 1);
-  return rows.filter((c) => !c.hidden).length;
+  if (rows.length > MAX_COMMENT_COUNT) return MAX_COMMENT_COUNT + 1;
+  let n = 0;
+  for (const c of rows) {
+    if (c.hidden) continue;
+    if (authors) {
+      if (!authors.has(c.authorId)) {
+        const a = await ctx.db.get(c.authorId);
+        authors.set(c.authorId, a !== null && !a.banned);
+      }
+      if (!authors.get(c.authorId)) continue;
+    }
+    n++;
+  }
+  return n;
 }
 
-async function toView(
+async function toSummary(
   ctx: Ctx,
   post: Doc<"blogPosts">,
   author: Doc<"profiles">,
   viewer: Doc<"profiles"> | null,
-): Promise<BlogPostView> {
+  authors?: Map<Id<"profiles">, boolean>,
+): Promise<BlogPostSummary> {
   return {
     id: post._id,
     author: toPublicCard(author),
     title: post.title,
-    body: post.body,
+    excerpt: post.excerpt,
     ...(post.mood ? { mood: post.mood } : {}),
     ...(post.listening ? { listening: post.listening } : {}),
     createdAt: post._creationTime,
-    commentCount: await commentCount(ctx, post._id),
+    commentCount: await commentCount(ctx, post._id, authors),
     canEdit: viewer !== null && viewer._id === post.authorId,
   };
+}
+
+async function bodyRow(ctx: Ctx, postId: Id<"blogPosts">) {
+  return await ctx.db
+    .query("blogBodies")
+    .withIndex("by_post", (q) => q.eq("postId", postId))
+    .first();
 }
 
 /** The visible post if `me` wrote it. Hidden posts are "Not found" to their author too. */
@@ -196,11 +240,13 @@ export const create = mutation({
     const fields = checkPost(me, args);
     const { ok } = await rateLimiter.limit(ctx, "blogPost", { key: me._id });
     if (!ok) throw new ConvexError("Slow down");
-    return await ctx.db.insert("blogPosts", { authorId: me._id, ...fields, hidden: false });
+    const postId = await ctx.db.insert("blogPosts", { authorId: me._id, ...postColumns(fields), hidden: false });
+    await ctx.db.insert("blogBodies", { postId, body: fields.body });
+    return postId;
   },
 });
 
-/** Replaces a post's fields. A mood or listening left out is removed. Author only. */
+/** Replaces a post's fields. A mood or listening left out is removed. Author only, 30 an hour. */
 export const update = mutation({
   args: { id: v.id("blogPosts"), ...postArgs },
   returns: v.null(),
@@ -208,12 +254,17 @@ export const update = mutation({
     const me = await requireProfile(ctx);
     await ownPost(ctx, me, id);
     const fields = checkPost(me, args);
-    await ctx.db.patch(id, { mood: undefined, listening: undefined, ...fields });
+    const { ok } = await rateLimiter.limit(ctx, "blogEdit", { key: me._id });
+    if (!ok) throw new ConvexError("Slow down");
+    await ctx.db.patch(id, { mood: undefined, listening: undefined, ...postColumns(fields) });
+    const row = await bodyRow(ctx, id);
+    if (row === null) await ctx.db.insert("blogBodies", { postId: id, body: fields.body });
+    else await ctx.db.patch(row._id, { body: fields.body });
     return null;
   },
 });
 
-/** Hard-deletes a post and its comments. Author only. */
+/** Hard-deletes a post, its body and its comments. Author only. */
 export const remove = mutation({
   args: { id: v.id("blogPosts") },
   returns: v.null(),
@@ -221,27 +272,31 @@ export const remove = mutation({
     const me = await requireProfile(ctx);
     await ownPost(ctx, me, id);
     await ctx.db.delete(id);
+    const row = await bodyRow(ctx, id);
+    if (row !== null) await ctx.db.delete(row._id);
     await deleteComments(ctx, id);
     return null;
   },
 });
 
-/** Finishes deleting the comments of a deleted post, one batch per run. */
+/** Finishes deleting the comments of a deleted post, one batch per run, and any body row left. */
 export const cleanupComments = internalMutation({
   args: { postId: v.id("blogPosts") },
   returns: v.null(),
   handler: async (ctx, { postId }) => {
+    const row = await bodyRow(ctx, postId);
+    if (row !== null) await ctx.db.delete(row._id);
     await deleteComments(ctx, postId);
     return null;
   },
 });
 
-/** One page (10) of a member's posts, newest first. Hidden posts are dropped after paging. */
+/** One page (10) of a member's posts, newest first, without bodies. Hidden posts are dropped after paging. */
 export const listByUser = query({
   args: { username: v.string(), cursor: v.union(v.string(), v.null()) },
-  returns: pageOf(postView),
+  returns: pageOf(summaryView),
   handler: async (ctx, { username, cursor }) => {
-    const empty = { page: [] as BlogPostView[], isDone: true, continueCursor: "" };
+    const empty = { page: [] as BlogPostSummary[], isDone: true, continueCursor: "" };
     const checked = validateUsername(username);
     if (!checked.ok) return empty;
     const author = await ctx.db
@@ -255,15 +310,18 @@ export const listByUser = query({
       .withIndex("by_author", (q) => q.eq("authorId", author._id))
       .order("desc")
       .paginate({ numItems: POSTS_PER_PAGE, cursor });
-    const page: BlogPostView[] = [];
+    const page: BlogPostSummary[] = [];
     for (const post of result.page) {
-      if (!post.hidden) page.push(await toView(ctx, post, author, viewer));
+      if (!post.hidden) page.push(await toSummary(ctx, post, author, viewer));
     }
     return { page, isDone: result.isDone, continueCursor: result.continueCursor };
   },
 });
 
-/** One post, or null when the id is malformed, the post is gone or hidden, or its author is banned. */
+/**
+ * One post with its body, or null when the id is malformed, the post is gone
+ * or hidden, or its author is banned. The comment count leaves out banned commenters.
+ */
 export const get = query({
   args: { id: v.string() },
   returns: v.union(postView, v.null()),
@@ -272,7 +330,8 @@ export const get = query({
     if (postId === null) return null;
     const found = await visiblePost(ctx, postId);
     if (found === null) return null;
-    return await toView(ctx, found.post, found.author, await viewerProfile(ctx));
+    const summary = await toSummary(ctx, found.post, found.author, await viewerProfile(ctx), new Map());
+    return { ...summary, body: (await bodyRow(ctx, postId))?.body ?? "" };
   },
 });
 

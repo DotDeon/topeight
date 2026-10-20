@@ -257,7 +257,7 @@ function renderRight(p: PublicProfile): string {
 
   if (p.latestBlog) {
     parts.push(
-      `<div class="section-title">${name}'s Latest Blog Entry</div><div class="blurb blog"><b>${escapeHtml(p.latestBlog.title)}</b> (${navLink(p.username, formatDate(p.latestBlog.createdAt), "blog")})</div>`,
+      `<div class="section-title">${name}'s Latest Blog Entry</div><div class="blurb blog"><b>${navLink(p.username, escapeHtml(p.latestBlog.title), "blog")}</b> (${formatDate(p.latestBlog.createdAt)})</div>`,
     );
   }
 
