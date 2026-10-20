@@ -10,8 +10,12 @@ import type { BridgeAction } from "@/lib/bridge-protocol";
  */
 export type ActionTarget = { username: string; displayName: string; track?: { id: string; title: string } };
 
-/** Everything the confirm dialog can do: the bridge actions plus reporting one song. */
-export type DialogAction = BridgeAction | "reportTrack";
+/**
+ * Everything the confirm dialog can do: the bridge actions plus the ones only
+ * the trusted strip or the parent page can start (reporting a song, removing a
+ * friend, unblocking). Artist code can never request those.
+ */
+export type DialogAction = BridgeAction | "reportTrack" | "removeFriend" | "unblock";
 
 /** What an action did: `ok` is true only when it went through, `text` is what the dialog shows. */
 export type ActionResult = { ok: boolean; text: string };
@@ -69,6 +73,18 @@ const block = (target: ActionTarget, client: ConvexReactClient) =>
     return `${target.displayName} is blocked`;
   });
 
+const removeFriend = (target: ActionTarget, client: ConvexReactClient) =>
+  runSocial(target, client, "Log in to manage friends", async (id) => {
+    await client.mutation(api.social.removeFriend, { other: id });
+    return "Removed from your friends";
+  });
+
+const unblock = (target: ActionTarget, client: ConvexReactClient) =>
+  runSocial(target, client, "Log in to unblock people", async (id) => {
+    await client.mutation(api.social.unblock, { other: id });
+    return "Unblocked";
+  });
+
 const addComment = (target: ActionTarget, client: ConvexReactClient, text: string) =>
   runSocial(target, client, "Log in to comment", async (id) => {
     await client.mutation(api.comments.add, { profileId: id, body: text });
@@ -110,6 +126,10 @@ export const PROFILE_ACTIONS: Record<DialogAction, ProfileAction> = {
     input: { label: "Reason", maxLength: 500 },
   },
   block: { label: "Block", question: (n) => `Block ${n}?`, run: block },
+  removeFriend: {
+    label: "Remove from Friends", question: (n) => `Remove ${n} from your friends?`, run: removeFriend,
+  },
+  unblock: { label: "Unblock", question: (n) => `Unblock ${n}?`, run: unblock },
   forward: { label: "Forward to Friend", question: () => "Forward to Friend is coming soon." },
   message: { label: "Send Message", question: () => "Send Message is coming soon." },
   reportTrack: {
@@ -118,6 +138,3 @@ export const PROFILE_ACTIONS: Record<DialogAction, ProfileAction> = {
     input: { label: "What's wrong?", maxLength: 500 },
   },
 };
-
-/** Actions the trusted strip shows, in order. */
-export const STRIP_ACTIONS: readonly BridgeAction[] = ["addFriend", "addComment", "report", "block"];

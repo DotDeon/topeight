@@ -127,3 +127,15 @@
 .over {
   color: #cc0000;
 }
+
+.person {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border: 1px solid #6698cb;
+  background: #fff;
+}
+
+.personName {
+  flex: 1;
+}

@@ -8,6 +8,7 @@ import { Box } from "../Box";
 import { BandForm, DetailsForm } from "./DetailsForm";
 import { CodeEditor } from "./CodeEditor";
 import styles from "./Edit.module.css";
+import { FriendsAndBlocking } from "./FriendsAndBlocking";
 import { PhotoForm } from "./PhotoForm";
 import { ShowsForm } from "./ShowsForm";
 import { StatusLine, useSaver } from "./shared";
@@ -57,6 +58,7 @@ export function EditProfile() {
       <DetailsForm key={me._id} me={me} />
       <PhotoForm photoUrl={photoUrl} photoKey={me.photoKey} />
       <Top8Picker top8={me.top8} />
+      <FriendsAndBlocking />
       {artist ? (
         <>
           <TracksForm />

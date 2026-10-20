@@ -99,4 +99,6 @@ export default function globalSetup() {
   convex("run", ...envFile, "testing:seedCommenterFixture", JSON.stringify({ password }));
   convex("run", ...envFile, "testing:seedArtistLoginFixture", JSON.stringify({ password: editorPassword }));
   convex("run", ...envFile, "testing:seedAdminLoginFixture", JSON.stringify({ password: adminPassword }));
+  convex("run", ...envFile, "testing:seedCommenterFriendship");
+  convex("run", ...envFile, "testing:seedEditorBlock");
 }

@@ -1,14 +1,14 @@
 "use client";
 
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
-import type { BridgeAction } from "@/lib/bridge-protocol";
 import { BRIDGE_RESET_MS, BridgeGate } from "@/lib/bridgeGate";
 import { findReportableTrack, type ProfileTrack } from "@/lib/reportableTrack";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
 import { PROFILE_ACTIONS, type DialogAction } from "./profileActions";
 import { ProfileFrame } from "./ProfileFrame";
+import { stripButtons } from "./stripActions";
 import { TrustedStrip } from "./TrustedStrip";
 
 /** Trusted strip, sandboxed profile frame and the confirm dialog they share. */
@@ -38,13 +38,17 @@ export function ProfileView({
     void recordView({ username }).catch(() => {});
   }, [username, recordView]);
 
+  const rel = useQuery(api.social.relationship, { username });
+  const isHouse = useQuery(api.social.isHouseProfile, { username }) ?? false;
+  const buttons = stripButtons(rel, isHouse);
+
   const show = useCallback((action: DialogAction, fromBridge: boolean, track?: ProfileTrack) => {
     open.current = { action, fromBridge };
     setRequest({ id: nextId.current++, action, ...(track ? { track } : {}) });
   }, []);
 
   const onStripAction = useCallback(
-    (action: BridgeAction) => {
+    (action: DialogAction) => {
       gate.current.reset();
       clearTimeout(noteTimer.current);
       setThrottled(false);
@@ -102,7 +106,7 @@ export function ProfileView({
   const target = { username, displayName };
   return (
     <>
-      <TrustedStrip displayName={displayName} onAction={onStripAction} throttled={throttled} />
+      <TrustedStrip displayName={displayName} buttons={buttons} onAction={onStripAction} throttled={throttled} />
       <ProfileFrame
         username={username}
         displayName={displayName}

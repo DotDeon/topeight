@@ -193,7 +193,7 @@ describe("myFriendsForTop8", () => {
     await addProfile(t, "stranger");
     await befriend(t, me, a);
     const rows = await (await as(t, me)).query(api.social.myFriendsForTop8, {});
-    expect(rows).toEqual([{ id: a, card: expect.objectContaining({ username: "amy" }) }]);
+    expect(rows).toEqual([{ id: a, isHouse: false, card: expect.objectContaining({ username: "amy" }) }]);
     expect(await setup().query(api.social.myFriendsForTop8, {})).toEqual([]);
   });
 });

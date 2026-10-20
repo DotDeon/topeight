@@ -356,3 +356,83 @@ describe("resolve", () => {
     expect(await t.query(api.social.profileIdByUsername, { username: "nobody" })).toBeNull();
   });
 });
+
+describe("relationship", () => {
+  test("reports friends, self, pending and blocked for the viewer", async () => {
+    const t = setup();
+    const a = await addProfile(t, "alice");
+    const b = await addProfile(t, "bob");
+    const c = await addProfile(t, "carol");
+    const d = await addProfile(t, "dave");
+    await befriend(t, a, b);
+    const asA = await as(t, a);
+    await asA.mutation(api.social.sendFriendRequest, { to: c });
+    await asA.mutation(api.social.block, { other: d });
+    const none = { signedIn: true, self: false, friends: false, pendingOut: false, blocked: false };
+    expect(await asA.query(api.social.relationship, { username: "bob" })).toEqual({ ...none, friends: true });
+    expect(await asA.query(api.social.relationship, { username: "alice" })).toEqual({ ...none, self: true });
+    expect(await asA.query(api.social.relationship, { username: "carol" })).toEqual({ ...none, pendingOut: true });
+    expect(await asA.query(api.social.relationship, { username: "dave" })).toEqual({ ...none, blocked: true });
+    // The other side does not see a block or a pending request as theirs.
+    expect(await (await as(t, d)).query(api.social.relationship, { username: "alice" })).toEqual(none);
+    expect(await (await as(t, c)).query(api.social.relationship, { username: "alice" })).toEqual(none);
+  });
+
+  test("signed out, no profile, missing and banned", async () => {
+    const t = setup();
+    await addProfile(t, "alice");
+    await addProfile(t, "gone", { banned: true });
+    const off = { signedIn: false, self: false, friends: false, pendingOut: false, blocked: false };
+    expect(await t.query(api.social.relationship, { username: "alice" })).toEqual(off);
+    const userId = await t.run((ctx) =>
+      ctx.db.insert("users", { email: "x@example.com", emailVerificationTime: Date.now() }),
+    );
+    const noProfile = t.withIdentity({ subject: `${userId}|s1` });
+    expect(await noProfile.query(api.social.relationship, { username: "alice" })).toEqual({ ...off, signedIn: true });
+    expect(await t.query(api.social.relationship, { username: "nobody" })).toBeNull();
+    expect(await t.query(api.social.relationship, { username: "gone" })).toBeNull();
+    expect(await t.query(api.social.relationship, { username: "!!" })).toBeNull();
+  });
+});
+
+describe("myBlocked and myFriendsForTop8", () => {
+  test("myBlocked lists only the caller's blocks", async () => {
+    const t = setup();
+    const a = await addProfile(t, "alice");
+    const b = await addProfile(t, "bob");
+    const c = await addProfile(t, "carol");
+    await (await as(t, a)).mutation(api.social.block, { other: b });
+    await (await as(t, b)).mutation(api.social.block, { other: c });
+    const mine = await (await as(t, a)).query(api.social.myBlocked, {});
+    expect(mine.map((r) => r.card.username)).toEqual(["bob"]);
+    expect(mine[0].id).toBe(b);
+    expect(await t.query(api.social.myBlocked, {})).toEqual([]);
+    await (await as(t, a)).mutation(api.social.unblock, { other: b });
+    expect(await (await as(t, a)).query(api.social.myBlocked, {})).toEqual([]);
+  });
+
+  test("myFriendsForTop8 flags the house profile", async () => {
+    const t = setup();
+    const a = await addProfile(t, "alice");
+    const h = await addProfile(t, "house", { isHouse: true });
+    const b = await addProfile(t, "bob");
+    await befriend(t, a, h);
+    await befriend(t, a, b);
+    const rows = await (await as(t, a)).query(api.social.myFriendsForTop8, {});
+    expect(rows.map((r) => [r.card.username, r.isHouse])).toEqual([
+      ["bob", false],
+      ["house", true],
+    ]);
+  });
+});
+
+describe("isHouseProfile", () => {
+  test("true only for the house profile", async () => {
+    const t = setup();
+    await addProfile(t, "house", { isHouse: true });
+    await addProfile(t, "bob");
+    expect(await t.query(api.social.isHouseProfile, { username: "house" })).toBe(true);
+    expect(await t.query(api.social.isHouseProfile, { username: "bob" })).toBe(false);
+    expect(await t.query(api.social.isHouseProfile, { username: "nobody" })).toBe(false);
+  });
+});

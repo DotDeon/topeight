@@ -1,7 +1,7 @@
 "use client";
 
-import type { BridgeAction } from "@/lib/bridge-protocol";
-import { PROFILE_ACTIONS, STRIP_ACTIONS } from "./profileActions";
+import type { DialogAction } from "./profileActions";
+import type { StripButton } from "./stripActions";
 import styles from "./TrustedStrip.module.css";
 
 /**
@@ -10,11 +10,13 @@ import styles from "./TrustedStrip.module.css";
  */
 export function TrustedStrip({
   displayName,
+  buttons,
   onAction,
   throttled,
 }: {
   displayName: string;
-  onAction: (action: BridgeAction) => void;
+  buttons: readonly StripButton[];
+  onAction: (action: DialogAction) => void;
   /** The frame hit the bridge throttle; its requests are being ignored. */
   throttled: boolean;
 }) {
@@ -27,9 +29,15 @@ export function TrustedStrip({
         </span>
       )}
       <span className={styles.actions}>
-        {STRIP_ACTIONS.map((action) => (
-          <button key={action} type="button" className={styles.btn} onClick={() => onAction(action)}>
-            {PROFILE_ACTIONS[action].label}
+        {buttons.map((b) => (
+          <button
+            key={b.label}
+            type="button"
+            className={styles.btn}
+            disabled={b.disabled}
+            onClick={() => onAction(b.action)}
+          >
+            {b.label}
           </button>
         ))}
       </span>

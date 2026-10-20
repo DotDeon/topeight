@@ -339,3 +339,67 @@ export const seedAdminLoginFixture = internalMutation({
       password,
     }),
 });
+
+/** A fixture profile: findFixture's guard, plus a missing profile is an error. */
+async function requireFixture(ctx: MutationCtx, username: string) {
+  if (process.env.OPENSPACE_TEST_FIXTURES !== "1") {
+    throw new ConvexError("Set OPENSPACE_TEST_FIXTURES=1 on this deployment to seed test fixtures");
+  }
+  const profile = await findFixture(ctx, username);
+  if (profile === null) throw new ConvexError(`Fixture "${username}" is not seeded`);
+  return profile;
+}
+
+/**
+ * Fixture for e2e/friends.spec.ts: makes e2ecommenter and sandboxtest friends.
+ * Safe to call again; the spec calls it to put the friendship back after removing it.
+ * Run the login fixtures first. Both profiles must be fixtures.
+ */
+export const seedCommenterFriendship = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const sandbox = await requireFixture(ctx, "sandboxtest");
+    // The commenter has an email, so findFixture would refuse it. Check the fixture address instead.
+    const commenter = await ctx.db
+      .query("profiles")
+      .withIndex("by_username", (q) => q.eq("username", "e2ecommenter"))
+      .unique();
+    const user = commenter === null ? null : await ctx.db.get(commenter.userId);
+    if (commenter === null || user?.email !== COMMENTER_EMAIL) {
+      throw new ConvexError("Fixture \"e2ecommenter\" is not seeded");
+    }
+    const pair = friendshipPair(commenter._id, sandbox._id);
+    const row = await ctx.db
+      .query("friendships")
+      .withIndex("by_pair", (q) => q.eq("a", pair.a).eq("b", pair.b))
+      .first();
+    if (row === null) await ctx.db.insert("friendships", pair);
+    return null;
+  },
+});
+
+/**
+ * Fixture for e2e/friends.spec.ts: e2eeditor has blocked sandboxfan. Safe to call again.
+ */
+export const seedEditorBlock = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const fan = await requireFixture(ctx, "sandboxfan");
+    const editor = await ctx.db
+      .query("profiles")
+      .withIndex("by_username", (q) => q.eq("username", "e2eeditor"))
+      .unique();
+    const user = editor === null ? null : await ctx.db.get(editor.userId);
+    if (editor === null || user?.email !== EDITOR_EMAIL) {
+      throw new ConvexError("Fixture \"e2eeditor\" is not seeded");
+    }
+    const row = await ctx.db
+      .query("blocks")
+      .withIndex("by_pair", (q) => q.eq("blocker", editor._id).eq("blocked", fan._id))
+      .first();
+    if (row === null) await ctx.db.insert("blocks", { blocker: editor._id, blocked: fan._id });
+    return null;
+  },
+});

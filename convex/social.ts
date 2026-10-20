@@ -222,17 +222,101 @@ export const listFriends = query({
 /** The caller's friends with their profile ids, for the Top 8 picker. At most 1000, banned left out. */
 export const myFriendsForTop8 = query({
   args: {},
+  handler: async (ctx): Promise<Array<{ id: Id<"profiles">; card: PublicCard; isHouse: boolean }>> => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) return [];
+    const me = await profileForUser(ctx, userId);
+    if (me === null) return [];
+    const rows: Array<{ id: Id<"profiles">; card: PublicCard; isHouse: boolean }> = [];
+    for (const id of (await friendIds(ctx, me._id)).slice(0, MAX_FRIENDS)) {
+      const f = await ctx.db.get(id);
+      if (f !== null && !f.banned) rows.push({ id, card: toPublicCard(f), isHouse: f.isHouse });
+    }
+    rows.sort((x, y) => x.card.displayName.localeCompare(y.card.displayName));
+    return rows;
+  },
+});
+
+/** The caller's blocks as cards with profile ids, at most 1000, banned profiles left out. */
+export const myBlocked = query({
+  args: {},
   handler: async (ctx): Promise<Array<{ id: Id<"profiles">; card: PublicCard }>> => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) return [];
     const me = await profileForUser(ctx, userId);
     if (me === null) return [];
+    const blocks = await ctx.db
+      .query("blocks")
+      .withIndex("by_blocker", (q) => q.eq("blocker", me._id))
+      .take(MAX_FRIENDS);
     const rows: Array<{ id: Id<"profiles">; card: PublicCard }> = [];
-    for (const id of (await friendIds(ctx, me._id)).slice(0, MAX_FRIENDS)) {
-      const f = await ctx.db.get(id);
-      if (f !== null && !f.banned) rows.push({ id, card: toPublicCard(f) });
+    for (const b of blocks) {
+      const p = await ctx.db.get(b.blocked);
+      if (p !== null && !p.banned) rows.push({ id: p._id, card: toPublicCard(p) });
     }
     rows.sort((x, y) => x.card.displayName.localeCompare(y.card.displayName));
     return rows;
+  },
+});
+
+export type Relationship = {
+  signedIn: boolean;
+  self: boolean;
+  friends: boolean;
+  pendingOut: boolean;
+  blocked: boolean;
+};
+
+/**
+ * How the viewer stands with a profile, for the trusted strip. Never throws.
+ * Null for an unknown or banned profile. A signed-in viewer without a usable
+ * profile gets signedIn with everything else false.
+ */
+export const relationship = query({
+  args: { username: v.string() },
+  handler: async (ctx, { username }): Promise<Relationship | null> => {
+    const checked = validateUsername(username);
+    if (!checked.ok) return null;
+    const target = await ctx.db
+      .query("profiles")
+      .withIndex("by_username", (q) => q.eq("username", checked.username))
+      .unique();
+    if (target === null || target.banned) return null;
+
+    const off = { self: false, friends: false, pendingOut: false, blocked: false };
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) return { signedIn: false, ...off };
+    const user = await ctx.db.get(userId);
+    const me = user === null ? null : await profileForUser(ctx, userId);
+    if (user === null || user.emailVerificationTime === undefined || me === null || me.banned) {
+      return { signedIn: true, ...off };
+    }
+    if (me._id === target._id) return { signedIn: true, ...off, self: true };
+    const [friends, pending, blocked] = await Promise.all([
+      areFriends(ctx, me._id, target._id),
+      ctx.db
+        .query("friendRequests")
+        .withIndex("by_pair_status", (q) => q.eq("from", me._id).eq("to", target._id).eq("status", "pending"))
+        .first(),
+      ctx.db
+        .query("blocks")
+        .withIndex("by_pair", (q) => q.eq("blocker", me._id).eq("blocked", target._id))
+        .first(),
+    ]);
+    return { signedIn: true, self: false, friends, pendingOut: pending !== null, blocked: blocked !== null };
+  },
+});
+
+/** True for the house profile, which cannot be removed as a friend. False for anything else, including unknown names. */
+export const isHouseProfile = query({
+  args: { username: v.string() },
+  handler: async (ctx, { username }): Promise<boolean> => {
+    const checked = validateUsername(username);
+    if (!checked.ok) return false;
+    const p = await ctx.db
+      .query("profiles")
+      .withIndex("by_username", (q) => q.eq("username", checked.username))
+      .unique();
+    return p !== null && !p.banned && p.isHouse;
   },
 });
