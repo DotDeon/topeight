@@ -13,7 +13,7 @@ describe("validation", () => {
     expect(validateUsername("has space").ok).toBe(false);
     for (const r of ["admin", "edit", "login", "signup", "browse", "search", "bulletins", "api", "about", "usercontent", "coming-soon", "brand"])
       expect(validateUsername(r).ok).toBe(false);
-    for (const r of ["_next", "favicon", "robots", "sitemap"])
+    for (const r of ["_next", "favicon", "robots", "sitemap", "mail", "favorites"])
       expect(validateUsername(r)).toEqual({ ok: false, reason: "That username is reserved." });
   });
   test("age", () => {

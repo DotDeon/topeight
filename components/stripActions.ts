@@ -24,5 +24,6 @@ export function stripButtons(rel: Relationship | null | undefined, isHouse: bool
   else if (rel?.pendingOut) friend = [{ action: "addFriend", label: "Request sent", disabled: true }];
   else friend = [button("addFriend")];
 
-  return [...friend, comment, report, button(rel?.blocked ? "unblock" : "block")];
+  const message = isHouse ? [] : [button("message")];
+  return [...friend, ...message, comment, report, button(rel?.blocked ? "unblock" : "block")];
 }

@@ -8,7 +8,7 @@ export const NAV_LINKS: { label: string; href: string }[] = [
   { label: "Browse", href: "/browse" },
   { label: "Search", href: "/search" },
   { label: "Invite", href: soon("Invite") },
-  { label: "Mail", href: soon("Mail") },
+  { label: "Mail", href: "/mail" },
   { label: "Blog", href: soon("Blog") },
   { label: "Favorites", href: soon("Favorites") },
   { label: "Forum", href: soon("Forum") },

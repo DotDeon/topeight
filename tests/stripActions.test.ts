@@ -9,7 +9,7 @@ const L = (a: keyof typeof PROFILE_ACTIONS) => PROFILE_ACTIONS[a].label;
 
 describe("stripButtons", () => {
   test("signed out and unknown show the default strip", () => {
-    const def = [["addFriend", "Add to Friends"], ["addComment", "Add Comment"], ["report", "Report"], ["block", "Block"]];
+    const def = [["addFriend", "Add to Friends"], ["message", "Send Message"], ["addComment", "Add Comment"], ["report", "Report"], ["block", "Block"]];
     expect(pairs({ ...base, signedIn: false })).toEqual(def);
     expect(pairs(null)).toEqual(def);
   });
@@ -23,10 +23,15 @@ describe("stripButtons", () => {
     expect(pairs({ ...base, self: true })).toEqual([["addComment", "Add Comment"], ["report", "Report"]]);
   });
   test("friends get removeFriend, except the house", () => {
-    const [first, , , last] = stripButtons({ ...base, friends: true }, false);
+    const [first, , , , last] = stripButtons({ ...base, friends: true }, false);
     expect(first).toMatchObject({ action: "removeFriend", label: "Remove from Friends" });
     expect(last).toMatchObject({ action: "block", label: "Block" });
     expect(pairs({ ...base, friends: true }, true).map(([a]) => a)).toEqual(["addComment", "report", "block"]);
+    expect(pairs({ ...base, friends: true }).map(([a]) => a)).toContain("message");
+  });
+  test("Send Message sits after the friend slot, except on the house", () => {
+    expect(pairs({ ...base, friends: true }).slice(0, 2)).toEqual([["removeFriend", "Remove from Friends"], ["message", "Send Message"]]);
+    expect(pairs({ ...base }, true).map(([a]) => a)).not.toContain("message");
   });
   test("a pending request shows a disabled Request sent", () => {
     expect(stripButtons({ ...base, pendingOut: true }, false)[0]).toMatchObject({
@@ -36,7 +41,7 @@ describe("stripButtons", () => {
   test("blocked swaps block for unblock", () => {
     const b = stripButtons({ ...base, blocked: true }, false);
     expect(b[0]).toMatchObject({ action: "addFriend", label: "Add to Friends" });
-    expect(b[3]).toMatchObject({ action: "unblock", label: "Unblock" });
+    expect(b[4]).toMatchObject({ action: "unblock", label: "Unblock" });
   });
   test("labels come from PROFILE_ACTIONS", () => {
     expect(L("removeFriend")).toBe("Remove from Friends");

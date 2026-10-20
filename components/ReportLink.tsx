@@ -9,8 +9,8 @@ import styles from "./Posts.module.css";
 
 const MAX_REASON = 500;
 
-/** A small Report button for one comment or bulletin. Asks for a reason with window.prompt. */
-export function ReportLink({ targetType, targetId }: { targetType: "comment" | "bulletin"; targetId: string }) {
+/** A small Report button for one comment, bulletin or message. Asks for a reason with window.prompt. */
+export function ReportLink({ targetType, targetId }: { targetType: "comment" | "bulletin" | "message"; targetId: string }) {
   const { isAuthenticated } = useConvexAuth();
   const report = useMutation(api.moderation.report);
   const [note, setNote] = useState("");

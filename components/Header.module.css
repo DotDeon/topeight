@@ -52,3 +52,22 @@
   font: inherit;
 }
 .authLinks { font-size: 10px; margin-bottom: 4px; }
+
+.newMail,
+.newMail:hover {
+  color: #ff9933;
+  font-weight: bold;
+  animation: blink 1s steps(1, end) infinite;
+}
+
+@keyframes blink {
+  50% {
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .newMail {
+    animation: none;
+  }
+}

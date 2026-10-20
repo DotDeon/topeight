@@ -131,7 +131,8 @@ export const PROFILE_ACTIONS: Record<DialogAction, ProfileAction> = {
   },
   unblock: { label: "Unblock", question: (n) => `Unblock ${n}?`, run: unblock },
   forward: { label: "Forward to Friend", question: () => "Forward to Friend is coming soon." },
-  message: { label: "Send Message", question: () => "Send Message is coming soon." },
+  // Never opens a dialog: ProfileView sends the visitor to the compose page instead.
+  message: { label: "Send Message", question: () => "" },
   reportTrack: {
     label: "Report", question: (_n, t) => `Report the song "${t.track?.title ?? ""}"?`,
     run: reportTrack,

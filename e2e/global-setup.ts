@@ -129,4 +129,5 @@ export default function globalSetup() {
   convex("run", ...envFile, "testing:seedBannedLoginFixture", JSON.stringify({ password: bannedPassword }));
   convex("run", ...envFile, "testing:seedCommenterFriendship");
   convex("run", ...envFile, "testing:seedEditorBlock");
+  convex("run", ...envFile, "testing:seedMailFixture");
 }

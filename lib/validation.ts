@@ -21,6 +21,8 @@ export const RESERVED_USERNAMES: ReadonlySet<string> = new Set([
   "convex",
   "home",
   "friends",
+  "mail",
+  "favorites",
   "comments",
   "settings",
   "support",

@@ -1,0 +1,140 @@
+.layout {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 10px;
+}
+
+.side {
+  width: 120px;
+  flex: none;
+  border: 1px solid #6698cb;
+}
+
+.side h4 {
+  margin: 0;
+  padding: 3px 5px;
+  background: #6698cb;
+  color: #fff;
+  font-size: 11px;
+}
+
+.side ul {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+}
+
+.side li {
+  margin-bottom: 4px;
+}
+
+.current {
+  font-weight: bold;
+  color: #000;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th {
+  text-align: left;
+  background: #b1d0f0;
+  padding: 3px 5px;
+}
+
+.table td {
+  padding: 3px 5px;
+  border-bottom: 1px solid #fff;
+  background: #d5e8fb;
+  overflow-wrap: anywhere;
+}
+
+.unread td {
+  font-weight: bold;
+  background: #ffffcc;
+}
+
+.pager {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.muted {
+  color: #666;
+}
+
+.error {
+  color: #c00;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  gap: 3px;
+  align-items: start;
+}
+
+.fields > label,
+.fields > .key {
+  padding: 3px 5px;
+  background: #b1d0f0;
+  font-weight: bold;
+}
+
+.fields input[type="text"],
+.fields textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+}
+
+.refusal {
+  margin: 0 0 6px;
+  padding: 4px 6px;
+  background: #ffcccc;
+  color: #900;
+}
+
+.actions {
+  margin-top: 6px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.body {
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #b1d0f0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  margin: 6px 0;
+}
+
+.head {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  gap: 3px;
+}
+
+.head > .key {
+  padding: 3px 5px;
+  background: #b1d0f0;
+  font-weight: bold;
+}
+
+.head > .val {
+  padding: 3px 5px;
+  background: #d5e8fb;
+  overflow-wrap: anywhere;
+}

@@ -426,3 +426,44 @@ export const seedEditorBlock = internalMutation({
     return null;
   },
 });
+
+/**
+ * Fixture for e2e/mail.spec.ts: makes e2ecommenter and e2eadmin friends and
+ * clears any mail between them, so the spec starts from an empty mailbox.
+ * Safe to call again. Run the login fixtures first.
+ */
+export const seedMailFixture = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    if (process.env.TOPEIGHT_TEST_FIXTURES !== "1") {
+      throw new ConvexError("Set TOPEIGHT_TEST_FIXTURES=1 on this deployment to seed test fixtures");
+    }
+    const byEmail = async (username: string, email: string) => {
+      const profile = await ctx.db
+        .query("profiles")
+        .withIndex("by_username", (q) => q.eq("username", username))
+        .unique();
+      const user = profile === null ? null : await ctx.db.get(profile.userId);
+      if (profile === null || user?.email !== email) throw new ConvexError(`Fixture "${username}" is not seeded`);
+      return profile;
+    };
+    const a = await byEmail("e2ecommenter", COMMENTER_EMAIL);
+    const b = await byEmail("e2eadmin", ADMIN_EMAIL);
+    const pair = friendshipPair(a._id, b._id);
+    const row = await ctx.db
+      .query("friendships")
+      .withIndex("by_pair", (q) => q.eq("a", pair.a).eq("b", pair.b))
+      .first();
+    if (row === null) await ctx.db.insert("friendships", pair);
+    for (const [from, to] of [[a._id, b._id], [b._id, a._id]] as const) {
+      const rows = await ctx.db
+        .query("messages")
+        .withIndex("by_recipient", (q) => q.eq("recipientId", to))
+        .filter((q) => q.eq(q.field("senderId"), from))
+        .take(100);
+      for (const m of rows) await ctx.db.delete(m._id);
+    }
+    return null;
+  },
+});

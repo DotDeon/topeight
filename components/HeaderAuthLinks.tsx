@@ -11,6 +11,7 @@ export function HeaderAuthLinks() {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const { signOut } = useAuthActions();
   const me = useQuery(api.profiles.me, isAuthenticated ? {} : "skip");
+  const unread = useQuery(api.mail.unreadCount, isAuthenticated ? {} : "skip");
 
   if (isLoading) return <div className={styles.authLinks}>&nbsp;</div>;
 
@@ -25,6 +26,11 @@ export function HeaderAuthLinks() {
   }
   return (
     <div className={styles.authLinks}>
+      {unread !== undefined && unread > 0 && (
+        <>
+          <Link href="/mail" className={styles.newMail} data-new-messages="">New Messages!</Link> |{" "}
+        </>
+      )}
       <Link href={me ? `/${me.username}` : "/edit"} style={light}>My Profile</Link> |{" "}
       <Link href="/edit" style={light}>Edit</Link> |{" "}
       <a href="#logout" style={light} onClick={(e) => { e.preventDefault(); void signOut(); }}>

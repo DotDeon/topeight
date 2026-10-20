@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import { BRIDGE_RESET_MS, BridgeGate } from "@/lib/bridgeGate";
@@ -22,6 +23,7 @@ export function ProfileView({
   /** This profile's tracks from getPublicProfile, at most 10. */
   tracks: readonly ProfileTrack[];
 }) {
+  const router = useRouter();
   const [request, setRequest] = useState<ConfirmRequest | null>(null);
   const [throttled, setThrottled] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -47,14 +49,21 @@ export function ProfileView({
     setRequest({ id: nextId.current++, action, ...(track ? { track } : {}) });
   }, []);
 
+  // Mail is its own page, so Send Message leaves the profile instead of opening a dialog.
+  const openCompose = useCallback(() => {
+    router.push(`/mail/compose?to=${encodeURIComponent(username)}`);
+  }, [router, username]);
+
   const onStripAction = useCallback(
     (action: DialogAction) => {
       gate.current.reset();
       clearTimeout(noteTimer.current);
       setThrottled(false);
-      if (!open.current) show(action, false);
+      if (open.current) return;
+      if (action === "message") openCompose();
+      else show(action, false);
     },
-    [show],
+    [show, openCompose],
   );
 
   // A request from the frame never replaces an open dialog, so artist code
@@ -62,6 +71,10 @@ export function ProfileView({
   const onBridgeAction = useCallback(
     (action: DialogAction, track?: ProfileTrack) => {
       if (open.current) return;
+      if (action === "message") {
+        openCompose();
+        return;
+      }
       const verdict = gate.current.check(Date.now());
       if (verdict === "cooldown") return;
       if (verdict === "throttled") {
@@ -74,7 +87,7 @@ export function ProfileView({
       setThrottled(false);
       show(action, true, track);
     },
-    [show],
+    [show, openCompose],
   );
 
   // Only ids in the server's list for this profile open a dialog, with the
