@@ -23,7 +23,7 @@ import {
   syncMediaFlags,
   UPLOAD_TTL_MS,
 } from "./lib/media";
-import { audioBucket, audioConfigured, r2, storage, UPLOAD_URL_TTL_S } from "./lib/r2";
+import { audioBucket, audioConfigured, r2, storage, UPLOAD_URL_TTL_S, type MediaPurpose } from "./lib/r2";
 import { profileByUsername } from "./profiles";
 import { validateUsername } from "../lib/validation";
 
@@ -45,7 +45,22 @@ import { validateUsername } from "../lib/validation";
  *    the caller owns the pending photo row, then schedules the component's metadata
  *    sync. After that the component calls onSyncMetadata, which applies the same
  *    size and type check and records the photo, or deletes the object.
+ *
+ * Group photos (purpose "groupPhoto", with a groupId) follow the photo path with the
+ * photo rules and bucket. Only the group's owner may begin one, and the photo is
+ * recorded on the group only if the uploader still owns it.
  */
+
+type UploadPurpose = Doc<"uploads">["purpose"];
+
+/** The bucket an upload's object lives in. Group photos share the public photo bucket. */
+function bucketPurpose(purpose: UploadPurpose): MediaPurpose {
+  return purpose === "track" ? "track" : "photo";
+}
+
+function isPhoto(purpose: UploadPurpose): boolean {
+  return purpose === "photo" || purpose === "groupPhoto";
+}
 
 /** When a pending upload is swept: after the last URL it could get has expired, plus 60 s. */
 export const EXPIRE_AFTER_MS = UPLOAD_TTL_MS + (UPLOAD_URL_TTL_S + 60) * 1000;
@@ -93,15 +108,23 @@ async function ownTrack(ctx: MutationCtx, trackId: Id<"tracks">) {
 
 export const beginUpload = mutation({
   args: {
-    purpose: v.union(v.literal("photo"), v.literal("track")),
+    purpose: v.union(v.literal("photo"), v.literal("track"), v.literal("groupPhoto")),
     title: v.optional(v.string()),
+    /** Required for groupPhoto: the group the caller owns. */
+    groupId: v.optional(v.id("groups")),
     size: v.number(),
     contentType: v.string(),
   },
   returns: v.object({ uploadId: v.id("uploads") }),
-  handler: async (ctx, { purpose, title, size, contentType }) => {
+  handler: async (ctx, { purpose, title, groupId, size, contentType }) => {
     const profile = await requireProfile(ctx);
     const track = purpose === "track";
+
+    if (purpose === "groupPhoto") {
+      const group = groupId === undefined ? null : await ctx.db.get(groupId);
+      if (group === null || group.deleted || group.hidden) throw new ConvexError("Not found");
+      if (group.ownerId !== profile._id) throw new ConvexError("Not allowed");
+    }
 
     let cleanTitle: string | undefined;
     if (track) {
@@ -122,10 +145,14 @@ export const beginUpload = mutation({
     const { ok } = await rateLimiter.limit(ctx, "upload", { key: profile._id });
     if (!ok) throw new ConvexError("Slow down");
 
-    const key = `${track ? "tracks" : "photos"}/${profile._id}/${crypto.randomUUID()}`;
+    const key =
+      purpose === "groupPhoto"
+        ? `groups/${groupId}/${crypto.randomUUID()}`
+        : `${track ? "tracks" : "photos"}/${profile._id}/${crypto.randomUUID()}`;
     const uploadId = await ctx.db.insert("uploads", {
       profileId: profile._id,
       purpose,
+      ...(purpose === "groupPhoto" ? { groupId } : {}),
       title: cleanTitle,
       key,
       size,
@@ -152,7 +179,7 @@ export const generateUploadUrl = mutation({
       key: row.key,
       size: row.size,
       contentType: row.contentType,
-      purpose: row.purpose,
+      purpose: bucketPurpose(row.purpose),
     });
   },
 });
@@ -164,7 +191,7 @@ export const expireUpload = internalMutation({
   handler: async (ctx, { uploadId }) => {
     const row = await ctx.db.get(uploadId);
     if (row === null) return null;
-    await storage.remove(ctx, row.key, row.purpose);
+    await storage.remove(ctx, row.key, bucketPurpose(row.purpose));
     // An upload in flight when tracks moved buckets may have landed in the public one.
     if (row.purpose === "track") await storage.removeLegacyPublic(ctx, row.key);
     await ctx.db.delete(row._id);
@@ -189,14 +216,14 @@ export const removeObject = internalMutation({
 /** Delete the object and the pending row, and log why. Nothing is recorded. */
 async function reject(ctx: MutationCtx, row: Doc<"uploads">, reason: string) {
   console.warn(`Upload rejected: ${reason} (${row.key})`);
-  await storage.remove(ctx, row.key, row.purpose);
+  await storage.remove(ctx, row.key, bucketPurpose(row.purpose));
   if (row.purpose === "track") await storage.removeLegacyPublic(ctx, row.key);
   await ctx.db.delete(row._id);
   // The object is gone, so If-None-Match no longer blocks a second PUT on the same
   // URL. Sweep the key again once that URL has expired.
   await ctx.scheduler.runAfter((UPLOAD_URL_TTL_S + 60) * 1000, internal.media.removeObject, {
     key: row.key,
-    purpose: row.purpose,
+    purpose: bucketPurpose(row.purpose),
   });
   return false;
 }
@@ -233,6 +260,19 @@ async function acceptPhoto(ctx: MutationCtx, row: Doc<"uploads">, size: number, 
   await ctx.db.delete(row._id);
 }
 
+/** Records a group photo if the uploader still owns the live group, and deletes the old object. */
+async function acceptGroupPhoto(ctx: MutationCtx, row: Doc<"uploads">, size: number, contentType: string) {
+  if (size > PHOTO_MAX_BYTES) return await reject(ctx, row, "photo over 2 MB");
+  if (!PHOTO_TYPES.includes(contentType)) return await reject(ctx, row, `photo type ${contentType}`);
+  const group = row.groupId === undefined ? null : await ctx.db.get(row.groupId);
+  if (group === null || group.deleted || group.hidden) return await reject(ctx, row, "group gone");
+  if (group.ownerId !== row.profileId) return await reject(ctx, row, "uploader no longer owns the group");
+  const old = group.photoKey;
+  await ctx.db.patch(group._id, { photoKey: row.key });
+  if (old !== undefined && old !== row.key) await storage.remove(ctx, old, "photo");
+  await ctx.db.delete(row._id);
+}
+
 const callbacks: R2Callbacks = internal.media;
 
 export const { syncMetadata, onSyncMetadata } = r2.clientApi<DataModel>({
@@ -241,18 +281,18 @@ export const { syncMetadata, onSyncMetadata } = r2.clientApi<DataModel>({
     await requireProfile(ctx);
   },
   // Runs inside syncMetadata, before R2 metadata is fetched: only the owner of a
-  // pending photo upload may sync its key. Tracks use confirmTrackUpload.
+  // pending photo or group photo upload may sync its key. Tracks use confirmTrackUpload.
   onUpload: async (ctx, _bucket, key) => {
     const profile = await requireProfile(ctx);
     const row = await pendingByKey(ctx, key);
-    if (row === null || row.profileId !== profile._id || row.purpose !== "photo") {
+    if (row === null || row.profileId !== profile._id || !isPhoto(row.purpose)) {
       throw new ConvexError("Not allowed");
     }
   },
   // Runs after the component has stored the object's size and type. Photos only.
   onSyncMetadata: async (ctx, { key }) => {
     const row = await pendingByKey(ctx, key);
-    if (row === null || row.purpose !== "photo") return;
+    if (row === null || !isPhoto(row.purpose)) return;
     const meta = await storage.metadata(ctx, key);
     const size = meta?.size;
     const contentType = meta?.contentType ?? "";
@@ -260,6 +300,8 @@ export const { syncMetadata, onSyncMetadata } = r2.clientApi<DataModel>({
       await reject(ctx, row, "no metadata");
     } else if (size !== row.size || contentType !== row.contentType) {
       await reject(ctx, row, `got ${size} bytes of ${contentType}, declared ${row.size} of ${row.contentType}`);
+    } else if (row.purpose === "groupPhoto") {
+      await acceptGroupPhoto(ctx, row, size, contentType);
     } else {
       await acceptPhoto(ctx, row, size, contentType);
     }

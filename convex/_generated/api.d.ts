@@ -14,6 +14,7 @@ import type * as bulletins from "../bulletins.js";
 import type * as comments from "../comments.js";
 import type * as events from "../events.js";
 import type * as favorites from "../favorites.js";
+import type * as groups from "../groups.js";
 import type * as home from "../home.js";
 import type * as http from "../http.js";
 import type * as lib_access from "../lib/access.js";
@@ -52,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   comments: typeof comments;
   events: typeof events;
   favorites: typeof favorites;
+  groups: typeof groups;
   home: typeof home;
   http: typeof http;
   "lib/access": typeof lib_access;

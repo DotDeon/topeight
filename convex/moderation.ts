@@ -9,6 +9,7 @@ import { MAX_SCAN, rateLimiter } from "./lib/limits";
 import { MAX_TRACKS } from "./lib/media";
 import { storage } from "./lib/r2";
 import { adjustRsvpCounts } from "./lib/rsvps";
+import { hideReply, transferOwnership } from "./groups";
 import { removeTrack } from "./media";
 
 const MAX_REASON = 500;
@@ -28,8 +29,11 @@ const targetType = v.union(
   v.literal("blogPost"),
   v.literal("blogComment"),
   v.literal("event"),
+  v.literal("group"),
+  v.literal("groupTopic"),
+  v.literal("groupReply"),
 );
-type TargetType = "profile" | "comment" | "bulletin" | "track" | "message" | "blogPost" | "blogComment" | "event";
+type TargetType = Doc<"reports">["targetType"];
 const TABLE = {
   profile: "profiles",
   comment: "comments",
@@ -39,6 +43,9 @@ const TABLE = {
   blogPost: "blogPosts",
   blogComment: "blogComments",
   event: "events",
+  group: "groups",
+  groupTopic: "groupTopics",
+  groupReply: "groupReplies",
 } as const;
 
 type Ctx = QueryCtx | MutationCtx;
@@ -146,6 +153,38 @@ export type ReportPreview =
     }
   // Built from the report's snapshot only. Admins never read the messages table.
   | { kind: "message"; subject: string; body: string; senderId: Id<"profiles"> | null; sender: PublicCard | null }
+  // Name and description as reported, from the snapshot. authorId is the owner when reported.
+  // Deleted and hidden groups still preview, with their current state.
+  | {
+      kind: "group";
+      groupId: Id<"groups">;
+      slug: string;
+      title: string;
+      body: string;
+      deleted: boolean;
+      hidden: boolean;
+      authorId: Id<"profiles">;
+      author: PublicCard | null;
+    }
+  // A topic shows its title and first post.
+  | {
+      kind: "groupTopic";
+      topicId: Id<"groupTopics">;
+      slug: string;
+      title: string;
+      body: string;
+      authorId: Id<"profiles">;
+      author: PublicCard | null;
+    }
+  | {
+      kind: "groupReply";
+      replyId: Id<"groupReplies">;
+      topicId: Id<"groupTopics">;
+      slug: string;
+      body: string;
+      authorId: Id<"profiles">;
+      author: PublicCard | null;
+    }
   | { kind: "gone" };
 
 async function preview(ctx: Ctx, report: Doc<"reports">): Promise<ReportPreview> {
@@ -189,6 +228,58 @@ async function preview(ctx: Ctx, report: Doc<"reports">): Promise<ReportPreview>
       author: await cardFor(ctx, snap.authorId),
     };
   }
+  if (type === "group") {
+    const snap = report.snapshot;
+    const id = ctx.db.normalizeId("groups", targetId);
+    const g = id && (await ctx.db.get(id));
+    if (!g || !snap?.authorId) return { kind: "gone" };
+    return {
+      kind: "group",
+      groupId: g._id,
+      slug: g.slug,
+      title: snap.title ?? "",
+      body: snap.body,
+      deleted: g.deleted,
+      hidden: g.hidden,
+      authorId: snap.authorId,
+      author: await cardFor(ctx, snap.authorId),
+    };
+  }
+  if (type === "groupTopic") {
+    const id = ctx.db.normalizeId("groupTopics", targetId);
+    const topic = id && (await ctx.db.get(id));
+    const group = topic && (await ctx.db.get(topic.groupId));
+    if (!topic || !group) return { kind: "gone" };
+    const first = await ctx.db
+      .query("groupReplies")
+      .withIndex("by_topic", (q) => q.eq("topicId", topic._id))
+      .first();
+    return {
+      kind: "groupTopic",
+      topicId: topic._id,
+      slug: group.slug,
+      title: topic.title,
+      body: first?.body ?? "",
+      authorId: topic.authorId,
+      author: await cardFor(ctx, topic.authorId),
+    };
+  }
+  if (type === "groupReply") {
+    const id = ctx.db.normalizeId("groupReplies", targetId);
+    const reply = id && (await ctx.db.get(id));
+    const topic = reply && (await ctx.db.get(reply.topicId));
+    const group = topic && (await ctx.db.get(topic.groupId));
+    if (!reply || !topic || !group) return { kind: "gone" };
+    return {
+      kind: "groupReply",
+      replyId: reply._id,
+      topicId: topic._id,
+      slug: group.slug,
+      body: reply.body,
+      authorId: reply.authorId,
+      author: await cardFor(ctx, reply.authorId),
+    };
+  }
   if (type === "blogComment") {
     const id = ctx.db.normalizeId("blogComments", targetId);
     const row = id && (await ctx.db.get(id));
@@ -226,11 +317,13 @@ async function trackIsOn(ctx: Ctx, track: Doc<"tracks">, username: string | unde
 }
 
 /**
- * Report a profile, comment, bulletin, track, message, blog post, blog comment or event. A repeat open report
+ * Report a profile, comment, bulletin, track, message, blog post, blog comment, event, group, group
+ * topic or group post. A repeat open report
  * by the same member adds nothing. A track report must name the profile it was
  * seen on in `profileUsername`, and the track must belong to it. Only the
  * recipient can report a message, and the report keeps a copy of it. A
- * blog post or event report keeps a copy of the title and body (description).
+ * blog post or event report keeps a copy of the title and body (description), a group report a
+ * copy of its name, description and owner.
  */
 export const report = mutation({
   args: { targetType, targetId: v.string(), reason: v.string(), profileUsername: v.optional(v.string()) },
@@ -261,6 +354,9 @@ export const report = mutation({
     } else if (args.targetType === "event") {
       const event = target as Doc<"events">;
       snapshot = { title: event.title, body: event.description, authorId: event.hostId };
+    } else if (args.targetType === "group") {
+      const group = target as Doc<"groups">;
+      snapshot = { title: group.name, body: group.description, authorId: group.ownerId };
     }
     const targetId = target._id as string;
 
@@ -314,7 +410,8 @@ async function openReport(ctx: MutationCtx, reportId: Id<"reports">) {
 }
 
 /**
- * Admin: acts on the reported content. Comments, bulletins, blog posts, blog comments and events are hidden,
+ * Admin: acts on the reported content. Comments, bulletins, blog posts, blog comments, events, groups,
+ * group topics and group posts are hidden (a group post that opens its topic hides the topic),
  * tracks deleted, profiles banned, messages deleted for both sides. Closes
  * every open report on that target.
  */
@@ -340,6 +437,18 @@ export const hide = mutation({
     } else if (type === "event") {
       const id = ctx.db.normalizeId("events", r.targetId);
       if (id && (await ctx.db.get(id))) await ctx.db.patch(id, { hidden: true });
+    } else if (type === "group") {
+      // Hides the whole group: page, board and listings.
+      const id = ctx.db.normalizeId("groups", r.targetId);
+      if (id && (await ctx.db.get(id))) await ctx.db.patch(id, { hidden: true });
+    } else if (type === "groupTopic") {
+      const id = ctx.db.normalizeId("groupTopics", r.targetId);
+      if (id && (await ctx.db.get(id))) await ctx.db.patch(id, { hidden: true });
+    } else if (type === "groupReply") {
+      const id = ctx.db.normalizeId("groupReplies", r.targetId);
+      const reply = id && (await ctx.db.get(id));
+      // Same as the owner removing it: a first post takes its topic with it.
+      if (reply) await hideReply(ctx, reply);
     } else if (type === "message") {
       const id = ctx.db.normalizeId("messages", r.targetId);
       if (id && (await ctx.db.get(id))) await ctx.db.delete(id);
@@ -354,6 +463,32 @@ export const hide = mutation({
     }
     await ctx.db.patch(r._id, { status: "actioned" });
     await actionAllOn(ctx, type, r.targetId);
+    return null;
+  },
+});
+
+/** Admin: un-deletes and un-hides a group. */
+export const restoreGroup = mutation({
+  args: { groupId: v.id("groups") },
+  returns: v.null(),
+  handler: async (ctx, { groupId }) => {
+    await requireAdmin(ctx);
+    const group = await ctx.db.get(groupId);
+    if (group === null) throw new ConvexError("Not found");
+    await ctx.db.patch(groupId, { deleted: false, hidden: false });
+    return null;
+  },
+});
+
+/** Admin: hands a group to one of its current, non-banned members, for when the owner is banned or gone. */
+export const setGroupOwner = mutation({
+  args: { groupId: v.id("groups"), username: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { groupId, username }) => {
+    await requireAdmin(ctx);
+    const group = await ctx.db.get(groupId);
+    if (group === null) throw new ConvexError("Not found");
+    await transferOwnership(ctx, group, username);
     return null;
   },
 });

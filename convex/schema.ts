@@ -152,7 +152,9 @@ export default defineSchema({
   /** Uploads that have been started but not yet accepted or rejected. */
   uploads: defineTable({
     profileId: v.id("profiles"),
-    purpose: v.union(v.literal("photo"), v.literal("track")),
+    purpose: v.union(v.literal("photo"), v.literal("track"), v.literal("groupPhoto")),
+    /** The group a groupPhoto upload is for. */
+    groupId: v.optional(v.id("groups")),
     title: v.optional(v.string()),
     key: v.string(),
     /** Declared by the client and signed into the upload URL. */
@@ -210,6 +212,62 @@ export default defineSchema({
     // Newest first with order("desc"), for a member's RSVP list.
     .index("by_profile", ["profileId"]),
 
+  /**
+   * Public groups. The slug is set from the name at creation and never changes.
+   * memberCount counts non-banned memberships and is kept in step by groups.ts.
+   * Deleted groups are kept so an admin can restore them.
+   */
+  groups: defineTable({
+    slug: v.string(),
+    name: v.string(),
+    description: v.string(),
+    category: v.union(
+      v.literal("music"),
+      v.literal("local"),
+      v.literal("hobbies"),
+      v.literal("fanclubs"),
+      v.literal("other"),
+    ),
+    photoKey: v.optional(v.string()),
+    ownerId: v.id("profiles"),
+    deleted: v.boolean(),
+    hidden: v.boolean(),
+    memberCount: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_category", ["category"])
+    .searchIndex("search_name", {
+      searchField: "name",
+      filterFields: ["deleted", "hidden"],
+    }),
+
+  /** One row per member and group. A group ban keeps the row with banned: true so they can't rejoin. */
+  groupMembers: defineTable({
+    groupId: v.id("groups"),
+    profileId: v.id("profiles"),
+    banned: v.boolean(),
+  })
+    .index("by_group", ["groupId"])
+    .index("by_pair", ["groupId", "profileId"])
+    .index("by_profile", ["profileId"]),
+
+  /** Board topics. The first post is the topic's oldest groupReplies row, so replyCount starts at 1. */
+  groupTopics: defineTable({
+    groupId: v.id("groups"),
+    authorId: v.id("profiles"),
+    title: v.string(),
+    lastReplyAt: v.number(),
+    replyCount: v.number(),
+    hidden: v.boolean(),
+  }).index("by_group_last", ["groupId", "lastReplyAt"]),
+
+  groupReplies: defineTable({
+    topicId: v.id("groupTopics"),
+    authorId: v.id("profiles"),
+    body: v.string(),
+    hidden: v.boolean(),
+  }).index("by_topic", ["topicId"]),
+
   blocks: defineTable({
     blocker: v.id("profiles"),
     blocked: v.id("profiles"),
@@ -248,17 +306,20 @@ export default defineSchema({
       v.literal("blogPost"),
       v.literal("blogComment"),
       v.literal("event"),
+      v.literal("group"),
+      v.literal("groupTopic"),
+      v.literal("groupReply"),
     ),
     targetId: v.string(),
     reason: v.string(),
     /**
-     * A copy of reported mail, a reported blog post or a reported event, so the report outlives
-     * deletion and later edits.
+     * A copy of reported mail, a reported blog post, event or group, so the report outlives
+     * deletion and later edits. A group keeps its name as the title and its owner as the author.
      */
     snapshot: v.optional(
       v.object({
         subject: v.optional(v.string()),
-        /** Blog posts and events. */
+        /** Blog posts, events and groups. */
         title: v.optional(v.string()),
         authorId: v.optional(v.id("profiles")),
         body: v.string(),
