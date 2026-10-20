@@ -24,6 +24,8 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   bulletin: { kind: "fixed window", rate: 10, period: HOUR },
   upload: { kind: "fixed window", rate: 30, period: HOUR },
   report: { kind: "fixed window", rate: 20, period: HOUR },
+  // Keyed by the normalized username being played.
+  playback: { kind: "fixed window", rate: 120, period: MINUTE },
   // Keyed by the viewer's profile id.
   view: { kind: "fixed window", rate: VIEWS_PER_MINUTE, period: MINUTE },
   // One global bucket split across shards so concurrent anonymous views don't

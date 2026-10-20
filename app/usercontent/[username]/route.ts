@@ -59,18 +59,23 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/usercontent/
   let signed: Array<{ id: string; url: string }> | null;
   try {
     const client = new ConvexHttpClient(requireEnv("NEXT_PUBLIC_CONVEX_URL"));
+    // The tracks refresh only needs existence and ban status, so it skips the full profile.
     [profile, signed] = await Promise.all([
-      client.query(api.profiles.getPublicProfile, { username }),
+      tracksOnly
+        ? client.query(api.profiles.profileHeader, { username })
+        : client.query(api.profiles.getPublicProfile, { username }),
       client.action(api.media.playbackUrls, { username }).catch((e: unknown) => {
         console.error("usercontent: playbackUrls failed", e);
         return null;
       }),
     ]);
   } catch (e) {
-    console.error("usercontent: getPublicProfile failed", e);
+    console.error("usercontent: profile lookup failed", e);
     return plain(503, "Profile temporarily unavailable", csp);
   }
-  if (profile === null || "unavailable" in profile) return plain(404, "Not found", csp);
+  if (profile === null || ("banned" in profile && profile.banned) || "unavailable" in profile) {
+    return plain(404, "Not found", csp);
+  }
 
   if (tracksOnly) {
     if (signed === null) return plain(503, "Tracks temporarily unavailable", csp);
@@ -87,6 +92,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/usercontent/
 
   // Without signed URLs the page still renders, just without a player.
   const urls = new Map((signed ?? []).map((t) => [t.id, t.url]));
+  if (!("tracks" in profile)) return plain(404, "Not found", csp);
   const tracks = profile.tracks.map((t) => ({ ...t, url: urls.get(t.id) ?? null }));
   return new Response(renderProfileDocument({ ...profile, tracks }, { mainOrigin, usercontentOrigin }), {
     status: 200,

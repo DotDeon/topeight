@@ -414,3 +414,16 @@ describe("seedSandboxFixture", () => {
     expect((await t.run((ctx) => ctx.db.get(id)))!.customJs).toBe("real code");
   });
 });
+
+describe("profileHeader", () => {
+  test("returns displayName, kind and banned, null for missing", async () => {
+    const t = setup();
+    await addProfile(t, "jess", { kind: "artist" });
+    await addProfile(t, "gone", { banned: true });
+    const h = await t.query(api.profiles.profileHeader, { username: " Jess " });
+    expect(h).toEqual({ displayName: expect.any(String), kind: "artist", banned: false });
+    expect(Object.keys(h!).sort()).toEqual(["banned", "displayName", "kind"]);
+    expect((await t.query(api.profiles.profileHeader, { username: "gone" }))?.banned).toBe(true);
+    expect(await t.query(api.profiles.profileHeader, { username: "nobody" })).toBeNull();
+  });
+});

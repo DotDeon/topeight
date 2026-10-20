@@ -25,6 +25,7 @@ import {
 } from "./lib/media";
 import { audioBucket, audioConfigured, r2, storage, UPLOAD_URL_TTL_S } from "./lib/r2";
 import { profileByUsername } from "./profiles";
+import { normalizeUsername } from "../lib/validation";
 
 /*
  * Upload flow:
@@ -332,15 +333,27 @@ export const playableTracks = internalQuery({
   },
 });
 
+/** Counts one playback request against the username's per-minute limit. */
+export const takePlaybackToken = internalMutation({
+  args: { username: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, { username }) => {
+    const { ok } = await rateLimiter.limit(ctx, "playback", { key: normalizeUsername(username) });
+    return ok;
+  },
+});
+
 /**
  * Short-lived playback URLs (15 minutes) for a profile's tracks. Anyone may call
  * it: the usercontent route uses it to render the player and to refresh its URLs.
- * Signs nothing for banned or missing profiles, and writes nothing.
+ * Signs nothing for banned or missing profiles. Limited to 120 calls a minute
+ * per username, past which it returns [] without an error.
  */
 export const playbackUrls = action({
   args: { username: v.string() },
   returns: v.array(v.object({ id: v.id("tracks"), url: v.string() })),
   handler: async (ctx, { username }): Promise<Array<{ id: Id<"tracks">; url: string }>> => {
+    if (!(await ctx.runMutation(internal.media.takePlaybackToken, { username }))) return [];
     // Without an audio bucket (local dev) there is nothing to sign.
     if (!audioConfigured()) {
       console.warn("R2 audio bucket not configured");

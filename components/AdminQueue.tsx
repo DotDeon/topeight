@@ -2,18 +2,14 @@
 
 import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { ConvexError } from "convex/values";
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { ReportPreview } from "@/convex/moderation";
+import { errorText } from "@/lib/errorText";
 import { Box } from "./Box";
 import styles from "./Posts.module.css";
-
-function errorText(e: unknown): string {
-  return e instanceof ConvexError && typeof e.data === "string" ? e.data : "Something went wrong.";
-}
 
 /**
  * Tracks are private, so the queue asks for a 15 minute playback URL only when

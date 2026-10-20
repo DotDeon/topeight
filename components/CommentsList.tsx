@@ -1,11 +1,11 @@
 "use client";
 
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { ConvexError } from "convex/values";
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { errorText } from "@/lib/errorText";
 import { CommentForm } from "./CommentForm";
 import { Photo } from "./PhotoGrid";
 import { PostBody } from "./PostBody";
@@ -47,7 +47,7 @@ function Page({ username, cursor, onMore }: { username: string; cursor: string |
                   onClick={() => {
                     setError("");
                     remove({ commentId: c.id as Id<"comments"> }).catch((e) =>
-                      setError(e instanceof ConvexError && typeof e.data === "string" ? e.data : "Something went wrong."),
+                      setError(errorText(e)),
                     );
                   }}
                 >

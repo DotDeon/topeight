@@ -11,16 +11,17 @@ export default async function ProfilePage({ params }: PageProps<"/[username]">) 
   if (!checked.ok) notFound();
   if (checked.username !== raw) redirect(`/${checked.username}`);
 
-  const profile = await fetchQuery(api.profiles.getPublicProfile, { username: checked.username });
+  const [profile, tracks] = await Promise.all([
+    fetchQuery(api.profiles.profileHeader, { username: checked.username }),
+    fetchQuery(api.profiles.profileTrackTitles, { username: checked.username }),
+  ]);
   if (profile === null) notFound();
-  if ("unavailable" in profile) {
+  if (profile.banned) {
     return (
       <Box title="Profile">
         <p>This profile is unavailable</p>
       </Box>
     );
   }
-  // Only ids and titles: the report dialog looks up songs here, never in the frame.
-  const tracks = profile.tracks.map((t) => ({ id: t.id, title: t.title }));
-  return <ProfileView username={profile.username} displayName={profile.displayName} tracks={tracks} />;
+  return <ProfileView username={checked.username} displayName={profile.displayName} tracks={tracks} />;
 }

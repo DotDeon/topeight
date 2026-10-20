@@ -20,6 +20,8 @@ export function SuspendedGate({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useConvexAuth();
   const me = useQuery(api.profiles.me, isAuthenticated ? {} : "skip");
   const open = OPEN_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  // Render nothing until the member's status is known, so a suspended member never sees the page flash.
+  if (!open && isAuthenticated && me === undefined) return null;
   if (open || !me?.banned) return <>{children}</>;
   return (
     <Box title="Account Suspended">

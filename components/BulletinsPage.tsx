@@ -1,12 +1,12 @@
 "use client";
 
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { ConvexError } from "convex/values";
 import { useState } from "react";
 import Link from "next/link";
 import { Box } from "@/components/Box";
 import { api } from "@/convex/_generated/api";
 import { BulletinForm } from "./CommentForm";
+import { errorText } from "@/lib/errorText";
 import { Photo } from "./PhotoGrid";
 import { PostBody } from "./PostBody";
 import { ReportLink } from "./ReportLink";
@@ -17,10 +17,6 @@ const STATUS_TEXT = {
   "no-profile": "Finish setting up your profile",
   suspended: "Your account has been suspended",
 } as const;
-
-function errorText(e: unknown): string {
-  return e instanceof ConvexError && typeof e.data === "string" ? e.data : "Something went wrong.";
-}
 
 function Feed() {
   const feed = useQuery(api.bulletins.feed, {});

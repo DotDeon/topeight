@@ -57,6 +57,19 @@ describe("media.playbackUrls", () => {
     expect(await t.action(api.media.playbackUrls, { username: "Not a username!" })).toEqual([]);
   });
 
+  test("returns [] silently after 120 calls a minute for one username", async () => {
+    const t = setup();
+    const band = await addProfile(t, "band", { kind: "artist" });
+    await addTracks(t, band, 1);
+    for (let i = 0; i < 120; i++) {
+      expect(await t.action(api.media.playbackUrls, { username: "band" })).toHaveLength(1);
+    }
+    expect(await t.action(api.media.playbackUrls, { username: " Band " })).toEqual([]);
+    const other = await addProfile(t, "other", { kind: "artist" });
+    await addTracks(t, other, 1);
+    expect(await t.action(api.media.playbackUrls, { username: "other" })).toHaveLength(1);
+  });
+
   test("signs at most 10", async () => {
     const t = setup();
     const band = await addProfile(t, "band", { kind: "artist" });

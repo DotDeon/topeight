@@ -306,6 +306,33 @@ async function profileComments(ctx: QueryCtx, owner: Doc<"profiles">): Promise<P
   return out;
 }
 
+/** Just enough to decide whether a profile page exists: null when missing. */
+export const profileHeader = query({
+  args: { username: v.string() },
+  handler: async (
+    ctx,
+    { username },
+  ): Promise<{ displayName: string; kind: "fan" | "artist"; banned: boolean } | null> => {
+    const p = await profileByUsername(ctx, username);
+    if (p === null) return null;
+    return { displayName: p.displayName, kind: p.kind, banned: p.banned === true };
+  },
+});
+
+/** Id and title of an unbanned profile's tracks, for the Report dialog. */
+export const profileTrackTitles = query({
+  args: { username: v.string() },
+  handler: async (ctx, { username }): Promise<Array<{ id: Id<"tracks">; title: string }>> => {
+    const p = await profileByUsername(ctx, username);
+    if (p === null || p.banned) return [];
+    const rows = await ctx.db
+      .query("tracks")
+      .withIndex("by_profile_order", (q) => q.eq("profileId", p._id))
+      .take(MAX_TRACKS);
+    return rows.map((t) => ({ id: t._id, title: t.title }));
+  },
+});
+
 /**
  * Everything the public profile page shows. Null when the username does not
  * exist, { unavailable: true } when the profile is banned. Every read is
