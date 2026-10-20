@@ -172,6 +172,43 @@ export default defineSchema({
     .index("by_profile_date", ["profileId", "date"])
     .index("by_date", ["date"]),
 
+  /**
+   * Events anyone can post. The host's local date, time and IANA zone are kept
+   * as entered; startsAt is the UTC instant they name. goingCount and
+   * maybeCount are kept in step by events.rsvp and by bans (moderation).
+   */
+  events: defineTable({
+    hostId: v.id("profiles"),
+    title: v.string(),
+    localDate: v.string(),
+    localTime: v.string(),
+    timeZone: v.string(),
+    startsAt: v.number(),
+    venue: v.string(),
+    city: v.string(),
+    /** The city lowercased and trimmed, for the city filter. */
+    cityKey: v.string(),
+    description: v.string(),
+    imageUrl: v.optional(v.string()),
+    cancelled: v.boolean(),
+    hidden: v.boolean(),
+    goingCount: v.number(),
+    maybeCount: v.number(),
+  })
+    .index("by_start", ["startsAt"])
+    .index("by_city_start", ["cityKey", "startsAt"])
+    .index("by_host", ["hostId", "startsAt"]),
+
+  /** One row per member and event they answered. Clearing an answer deletes the row. */
+  rsvps: defineTable({
+    eventId: v.id("events"),
+    profileId: v.id("profiles"),
+    status: v.union(v.literal("going"), v.literal("maybe")),
+  })
+    .index("by_event_status", ["eventId", "status"])
+    // Profile first, so it also lists a member's RSVPs.
+    .index("by_pair", ["profileId", "eventId"]),
+
   blocks: defineTable({
     blocker: v.id("profiles"),
     blocked: v.id("profiles"),
@@ -209,17 +246,18 @@ export default defineSchema({
       v.literal("message"),
       v.literal("blogPost"),
       v.literal("blogComment"),
+      v.literal("event"),
     ),
     targetId: v.string(),
     reason: v.string(),
     /**
-     * A copy of reported mail or a reported blog post, so the report outlives
+     * A copy of reported mail, a reported blog post or a reported event, so the report outlives
      * deletion and later edits.
      */
     snapshot: v.optional(
       v.object({
         subject: v.optional(v.string()),
-        /** Blog posts only. */
+        /** Blog posts and events. */
         title: v.optional(v.string()),
         authorId: v.optional(v.id("profiles")),
         body: v.string(),

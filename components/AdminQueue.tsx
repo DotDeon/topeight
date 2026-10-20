@@ -59,10 +59,11 @@ function Preview({ p }: { p: ReportPreview }) {
         </>
       );
     case "blogPost":
+    case "event":
       return (
         <>
           <p>
-            Blog post &quot;{p.title}&quot; by{" "}
+            {p.kind === "blogPost" ? "Blog post" : "Event"} &quot;{p.title}&quot; by{" "}
             {p.author ? <Link href={`/${p.author.username}`}>{p.author.displayName}</Link> : "unknown"}
           </p>
           <blockquote style={{ whiteSpace: "pre-wrap", margin: "4px 0 4px 12px" }}>{p.body}</blockquote>
@@ -118,7 +119,7 @@ function ReportRow({ r }: { r: Row }) {
   // Who the separate "Ban user" button bans: whoever wrote or uploaded the content.
   // On a profile report the hide action already bans, so it is the ban button.
   const bannedId: Id<"profiles"> | null =
-    p.kind === "comment" || p.kind === "bulletin" || p.kind === "blogComment" || p.kind === "blogPost"
+    p.kind === "comment" || p.kind === "bulletin" || p.kind === "blogComment" || p.kind === "blogPost" || p.kind === "event"
       ? p.authorId
       : p.kind === "track"
         ? p.ownerId

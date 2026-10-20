@@ -12,6 +12,7 @@ import type * as auth from "../auth.js";
 import type * as blog from "../blog.js";
 import type * as bulletins from "../bulletins.js";
 import type * as comments from "../comments.js";
+import type * as events from "../events.js";
 import type * as favorites from "../favorites.js";
 import type * as home from "../home.js";
 import type * as http from "../http.js";
@@ -48,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   blog: typeof blog;
   bulletins: typeof bulletins;
   comments: typeof comments;
+  events: typeof events;
   favorites: typeof favorites;
   home: typeof home;
   http: typeof http;

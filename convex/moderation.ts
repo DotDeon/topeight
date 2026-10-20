@@ -8,6 +8,7 @@ import { toPublicCard, type PublicCard } from "./lib/cards";
 import { MAX_SCAN, rateLimiter } from "./lib/limits";
 import { MAX_TRACKS } from "./lib/media";
 import { storage } from "./lib/r2";
+import { adjustRsvpCounts } from "./events";
 import { removeTrack } from "./media";
 
 const MAX_REASON = 500;
@@ -26,8 +27,9 @@ const targetType = v.union(
   v.literal("message"),
   v.literal("blogPost"),
   v.literal("blogComment"),
+  v.literal("event"),
 );
-type TargetType = "profile" | "comment" | "bulletin" | "track" | "message" | "blogPost" | "blogComment";
+type TargetType = "profile" | "comment" | "bulletin" | "track" | "message" | "blogPost" | "blogComment" | "event";
 const TABLE = {
   profile: "profiles",
   comment: "comments",
@@ -36,6 +38,7 @@ const TABLE = {
   message: "messages",
   blogPost: "blogPosts",
   blogComment: "blogComments",
+  event: "events",
 } as const;
 
 type Ctx = QueryCtx | MutationCtx;
@@ -67,6 +70,8 @@ async function actionAllOn(ctx: MutationCtx, type: TargetType, targetId: string)
 /** Bans a profile, signs its user out everywhere, marks its sent mail read, and closes the open reports on it. */
 async function banProfile(ctx: MutationCtx, profile: Doc<"profiles">) {
   if (profile.isHouse) throw new ConvexError("Not allowed");
+  // Banned members drop out of event counts. A repeat ban must not drop them twice.
+  if (!profile.banned) await adjustRsvpCounts(ctx, profile._id, -1);
   await ctx.db.patch(profile._id, { banned: true });
   const sessions = await ctx.db
     .query("authSessions")
@@ -89,6 +94,13 @@ async function banProfile(ctx: MutationCtx, profile: Doc<"profiles">) {
     .take(MAX_BAN_MAIL);
   for (const m of sent) if (m.unread) await ctx.db.patch(m._id, { unread: false });
   await actionAllOn(ctx, "profile", profile._id);
+}
+
+/** Lifts a ban and puts the member's RSVPs back in event counts. */
+async function unbanProfile(ctx: MutationCtx, profile: Doc<"profiles">) {
+  if (!profile.banned) return;
+  await ctx.db.patch(profile._id, { banned: false });
+  await adjustRsvpCounts(ctx, profile._id, 1);
 }
 
 async function profileTracks(ctx: Ctx, profileId: Id<"profiles">) {
@@ -123,6 +135,8 @@ export type ReportPreview =
       author: PublicCard | null;
     }
   | { kind: "blogPost"; title: string; body: string; authorId: Id<"profiles">; author: PublicCard | null }
+  // Title and description as reported, from the snapshot. authorId is the host.
+  | { kind: "event"; title: string; body: string; authorId: Id<"profiles">; author: PublicCard | null }
   | {
       kind: "track";
       trackId: Id<"tracks">;
@@ -163,12 +177,12 @@ async function preview(ctx: Ctx, report: Doc<"reports">): Promise<ReportPreview>
       sender: senderId === null ? null : await cardFor(ctx, senderId),
     };
   }
-  if (type === "blogPost") {
+  if (type === "blogPost" || type === "event") {
     // The snapshot is the post as reported, so later edits or a delete can't scrub it.
     const snap = report.snapshot;
     if (!snap?.authorId) return { kind: "gone" };
     return {
-      kind: "blogPost",
+      kind: type,
       title: snap.title ?? "",
       body: snap.body,
       authorId: snap.authorId,
@@ -212,11 +226,11 @@ async function trackIsOn(ctx: Ctx, track: Doc<"tracks">, username: string | unde
 }
 
 /**
- * Report a profile, comment, bulletin, track, message, blog post or blog comment. A repeat open report
+ * Report a profile, comment, bulletin, track, message, blog post, blog comment or event. A repeat open report
  * by the same member adds nothing. A track report must name the profile it was
  * seen on in `profileUsername`, and the track must belong to it. Only the
  * recipient can report a message, and the report keeps a copy of it. A
- * blog post report keeps a copy of the title and body.
+ * blog post or event report keeps a copy of the title and body (description).
  */
 export const report = mutation({
   args: { targetType, targetId: v.string(), reason: v.string(), profileUsername: v.optional(v.string()) },
@@ -244,6 +258,9 @@ export const report = mutation({
         .withIndex("by_post", (q) => q.eq("postId", post._id))
         .first();
       snapshot = { title: post.title, body: body?.body ?? post.excerpt, authorId: post.authorId };
+    } else if (args.targetType === "event") {
+      const event = target as Doc<"events">;
+      snapshot = { title: event.title, body: event.description, authorId: event.hostId };
     }
     const targetId = target._id as string;
 
@@ -297,7 +314,7 @@ async function openReport(ctx: MutationCtx, reportId: Id<"reports">) {
 }
 
 /**
- * Admin: acts on the reported content. Comments, bulletins, blog posts and blog comments are hidden,
+ * Admin: acts on the reported content. Comments, bulletins, blog posts, blog comments and events are hidden,
  * tracks deleted, profiles banned, messages deleted for both sides. Closes
  * every open report on that target.
  */
@@ -319,6 +336,9 @@ export const hide = mutation({
       if (id && (await ctx.db.get(id))) await ctx.db.patch(id, { hidden: true });
     } else if (type === "blogComment") {
       const id = ctx.db.normalizeId("blogComments", r.targetId);
+      if (id && (await ctx.db.get(id))) await ctx.db.patch(id, { hidden: true });
+    } else if (type === "event") {
+      const id = ctx.db.normalizeId("events", r.targetId);
       if (id && (await ctx.db.get(id))) await ctx.db.patch(id, { hidden: true });
     } else if (type === "message") {
       const id = ctx.db.normalizeId("messages", r.targetId);
@@ -371,7 +391,7 @@ export const unban = mutation({
     await requireAdmin(ctx);
     const profile = await ctx.db.get(profileId);
     if (profile === null) throw new ConvexError("Profile not found");
-    await ctx.db.patch(profileId, { banned: false });
+    await unbanProfile(ctx, profile);
     return null;
   },
 });
@@ -390,7 +410,7 @@ export const unbanByUsername = mutation({
           .unique()
       : null;
     if (profile === null) throw new ConvexError("Profile not found");
-    await ctx.db.patch(profile._id, { banned: false });
+    await unbanProfile(ctx, profile);
     return null;
   },
 });
