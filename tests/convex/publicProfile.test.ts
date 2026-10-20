@@ -366,7 +366,8 @@ describe("recordView", () => {
     vi.setSystemTime(NOW.getTime() + 61_000);
     await t.mutation(api.profiles.recordView, { username: "jess" });
     expect(await views(t, "jess")).toBe(counted + 1);
-  });
+    // 700 sequential mutations can pass the 5 s default on a loaded machine.
+  }, 30_000);
 
   test("signed-in viewers are limited per profile, apart from the anonymous bucket", async () => {
     const t = setup();
