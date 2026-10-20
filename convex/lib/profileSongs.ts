@@ -1,5 +1,5 @@
-import type { Doc } from "../_generated/dataModel";
-import type { QueryCtx } from "../_generated/server";
+import type { Doc, Id } from "../_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 
 /**
  * A member's profile song, if it is available: the track exists, its artist's
@@ -22,4 +22,31 @@ export async function profileSongFor(
   const artist = await ctx.db.get(track.profileId);
   if (artist === null || artist.banned || artist.shareSongs === false) return null;
   return { track, artist };
+}
+
+/** Sets a member's profile song and upserts their songPicks row. */
+export async function setPick(
+  ctx: Pick<MutationCtx, "db">,
+  pickerId: Id<"profiles">,
+  track: Pick<Doc<"tracks">, "_id" | "profileId">,
+): Promise<void> {
+  await ctx.db.patch(pickerId, { profileSong: track._id });
+  const row = await pickRow(ctx, pickerId);
+  const fields = { pickerId, artistId: track.profileId, trackId: track._id };
+  if (row === null) await ctx.db.insert("songPicks", fields);
+  else if (row.trackId !== track._id || row.artistId !== track.profileId) await ctx.db.patch(row._id, fields);
+}
+
+/** Clears a member's profile song and deletes their songPicks row. */
+export async function clearPick(ctx: Pick<MutationCtx, "db">, picker: Doc<"profiles">): Promise<void> {
+  if (picker.profileSong !== undefined) await ctx.db.patch(picker._id, { profileSong: undefined });
+  const row = await pickRow(ctx, picker._id);
+  if (row !== null) await ctx.db.delete(row._id);
+}
+
+async function pickRow(ctx: Pick<QueryCtx, "db">, pickerId: Id<"profiles">) {
+  return await ctx.db
+    .query("songPicks")
+    .withIndex("by_picker", (q) => q.eq("pickerId", pickerId))
+    .first();
 }

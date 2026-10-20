@@ -179,3 +179,30 @@ describe("moveTracksToAudioBucket", () => {
     expect(lines.some((l) => l.includes("done. moved=2 skipped=1 failed=1"))).toBe(true);
   });
 });
+
+describe("backfillSongPicks", () => {
+  test("writes one row per existing pick across pages, skips deleted tracks, and is idempotent", async () => {
+    const t = setup();
+    const band = await addProfile(t, "band", { kind: "artist" });
+    const track = await t.run((ctx) =>
+      ctx.db.insert("tracks", { profileId: band, title: "x", key: "k", size: 1, order: 0, autoplay: true }),
+    );
+    const gone = await t.run((ctx) =>
+      ctx.db.insert("tracks", { profileId: band, title: "y", key: "k2", size: 1, order: 1, autoplay: false }),
+    );
+    await t.run((ctx) => ctx.db.delete(gone));
+    for (let i = 0; i < 45; i++) await addProfile(t, `fan${i}`, { profileSong: track });
+    await addProfile(t, "stale", { profileSong: gone });
+    await addProfile(t, "none");
+    const run = async () => {
+      await t.mutation(internal.migrations.backfillSongPicks, {});
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+    };
+    await run();
+    await run();
+    const rows = await t.run((ctx) => ctx.db.query("songPicks").collect());
+    expect(rows).toHaveLength(45);
+    expect(rows.every((r) => r.artistId === band && r.trackId === track)).toBe(true);
+    expect(new Set(rows.map((r) => r.pickerId)).size).toBe(45);
+  });
+});

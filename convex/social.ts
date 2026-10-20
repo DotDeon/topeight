@@ -7,6 +7,7 @@ import { areFriends, isBlockedEitherWay, profileForUser, requireProfile } from "
 import { toPublicCard, toPublicCardOnline, type PublicCard } from "./lib/cards";
 import { friendIds, friendshipPair } from "./lib/friendships";
 import { MAX_FRIENDS, rateLimiter } from "./lib/limits";
+import { clearPick } from "./lib/profileSongs";
 
 const TOP8_MAX = 8;
 
@@ -178,6 +179,15 @@ export const block = mutation({
         .withIndex("by_pair", (q) => q.eq("from", from).eq("to", to))
         .take(MAX_REQUEST_ROWS);
       for (const r of rows) await ctx.db.delete(r._id);
+    }
+    // A block cuts the profile song tie both ways. Unblocking doesn't restore it.
+    for (const [picker, artist] of [
+      [me, them],
+      [them, me],
+    ] as const) {
+      if (picker.profileSong === undefined) continue;
+      const track = await ctx.db.get(picker.profileSong);
+      if (track !== null && track.profileId === artist._id) await clearPick(ctx, picker);
     }
     return null;
   },

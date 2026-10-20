@@ -1,10 +1,10 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { isBlockedEitherWay, profileForUser, requireProfile } from "./lib/access";
 import { rateLimiter } from "./lib/limits";
-import { MAX_TRACKS } from "./lib/media";
-import { profileSongFor } from "./lib/profileSongs";
+import { clearPick, profileSongFor, setPick } from "./lib/profileSongs";
 
 /** Picks are counted up to this many. The UI shows more than 1000 as "1000+". */
 export const SONG_USAGE_CAP = 1001;
@@ -26,7 +26,7 @@ export const pick = mutation({
     }
     const { ok } = await rateLimiter.limit(ctx, "songPick", { key: me._id });
     if (!ok) throw new ConvexError("Slow down");
-    await ctx.db.patch(me._id, { profileSong: trackId });
+    await setPick(ctx, me._id, song.track);
     return null;
   },
 });
@@ -37,7 +37,7 @@ export const clear = mutation({
   returns: v.null(),
   handler: async (ctx) => {
     const me = await requireProfile(ctx);
-    if (me.profileSong !== undefined) await ctx.db.patch(me._id, { profileSong: undefined });
+    await clearPick(ctx, me);
     return null;
   },
 });
@@ -61,10 +61,12 @@ export const setShareSongs = mutation({
 });
 
 /**
- * How many profiles picked one of the caller's songs. Reads at most 10 tracks
- * and at most 1001 picks in all (each read is a whole profile doc, so the cap is
- * shared across tracks rather than 1001 each). A result over 1000 means "1000+".
- * 0 for fans and signed-out callers.
+ * How many other members picked one of the caller's songs, from songPicks by
+ * artist: at most 1001 rows, so a result over 1000 means "1000+". Self-picks and
+ * picks of deleted tracks don't count (one small get per distinct track). Banned
+ * pickers do count: excluding them would need a get of each picker's whole
+ * profile doc, up to 1001 of them. 0 for fans, signed-out callers and artists
+ * with sharing off.
  */
 export const usageCount = query({
   args: {},
@@ -73,19 +75,17 @@ export const usageCount = query({
     const userId = await getAuthUserId(ctx);
     if (userId === null) return 0;
     const me = await profileForUser(ctx, userId);
-    if (me === null || me.kind !== "artist") return 0;
-    const tracks = await ctx.db
-      .query("tracks")
-      .withIndex("by_profile_order", (q) => q.eq("profileId", me._id))
-      .take(MAX_TRACKS);
+    if (me === null || me.kind !== "artist" || me.shareSongs === false) return 0;
+    const rows = await ctx.db
+      .query("songPicks")
+      .withIndex("by_artist", (q) => q.eq("artistId", me._id))
+      .take(SONG_USAGE_CAP);
+    const live = new Map<Id<"tracks">, boolean>();
     let total = 0;
-    for (const t of tracks) {
-      if (total >= SONG_USAGE_CAP) break;
-      const picks = await ctx.db
-        .query("profiles")
-        .withIndex("by_profile_song", (q) => q.eq("profileSong", t._id))
-        .take(SONG_USAGE_CAP - total);
-      total += picks.length;
+    for (const row of rows) {
+      if (row.pickerId === me._id) continue;
+      if (!live.has(row.trackId)) live.set(row.trackId, (await ctx.db.get(row.trackId)) !== null);
+      if (live.get(row.trackId)) total++;
     }
     return total;
   },

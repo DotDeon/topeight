@@ -83,6 +83,19 @@ export default defineSchema({
       filterFields: ["kind", "banned"],
     }),
 
+  /**
+   * One row per member with a profile song, kept in step with profiles.profileSong
+   * by lib/profileSongs.ts setPick and clearPick. Lets usageCount count an artist's
+   * picks without loading whole profile docs. profiles.profileSong stays the render path.
+   */
+  songPicks: defineTable({
+    pickerId: v.id("profiles"),
+    artistId: v.id("profiles"),
+    trackId: v.id("tracks"),
+  })
+    .index("by_picker", ["pickerId"])
+    .index("by_artist", ["artistId"]),
+
   /** A member's saved profiles. One row per owner and profile. */
   favorites: defineTable({
     ownerId: v.id("profiles"),
