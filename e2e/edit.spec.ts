@@ -19,6 +19,8 @@ test("an artist pastes custom HTML, saves, and the profile frame shows it", asyn
 
   await page.goto("/edit");
   await expect(page.getByRole("heading", { name: "Custom Code" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("Artist Pro is coming soon. $5 a month.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Go Pro (coming soon)" })).toBeDisabled();
   await expect(page.getByText("MP3 only, up to 5 MB, 10 tracks max")).toBeVisible();
   await expect(page.getByText("No upcoming shows.")).toBeVisible();
   await expect(page.getByText("No tracks yet.")).toBeVisible();

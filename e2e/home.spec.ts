@@ -11,6 +11,7 @@ test("logged-out homepage shows login, sign up and the cool boxes", async ({ pag
   await expect(page.getByText("TopEight Announcements")).toBeVisible();
   await expect(page.getByText("Upcoming Shows")).toBeVisible();
   await expect(page.getByText("Welcome to TopEight.")).toBeVisible();
+  await expect(page.getByText("Want this spot for your gig? Homepage ads are coming soon.")).toBeVisible();
   // Empty database shows an empty state, a seeded one shows profile links.
   const people = page.locator("section", { has: page.getByRole("heading", { name: "Cool New People" }) });
   await expect(

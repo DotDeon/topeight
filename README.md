@@ -72,6 +72,7 @@ Running the seed again is safe.
 | `NEXT_PUBLIC_MAIN_ORIGIN` | Vercel, `.env.local` | Origin of the trusted site |
 | `NEXT_PUBLIC_USERCONTENT_ORIGIN` | Vercel, `.env.local` | Origin that serves profile documents. Must be a different registrable domain in production |
 | `NEXT_PUBLIC_CONVEX_URL` | Vercel, `.env.local` | Convex deployment URL |
+| `NEXT_PUBLIC_SUPPORT_URL` | Vercel, `.env.local` | Optional http(s) link for the footer "Support TopEight" link, such as a GitHub Sponsors page. Leave blank to hide it |
 | `SITE_URL` | Convex | Main site URL used by Convex Auth for redirects |
 | `JWT_PRIVATE_KEY`, `JWKS` | Convex | Convex Auth signing keys |
 | `ADMIN_EMAILS` | Convex | Comma-separated emails that get admin rights |

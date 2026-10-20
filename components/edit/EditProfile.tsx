@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { api } from "@/convex/_generated/api";
 import { Box } from "../Box";
 import { BandForm, DetailsForm } from "./DetailsForm";
+import { ArtistProComingSoon } from "./ArtistProComingSoon";
 import { CodeEditor } from "./CodeEditor";
 import styles from "./Edit.module.css";
 import { FriendsAndBlocking } from "./FriendsAndBlocking";
@@ -55,6 +56,7 @@ export function EditProfile() {
   return (
     <div className={styles.page}>
       <h1 className={styles.title}>Edit Profile</h1>
+      {artist && <ArtistProComingSoon />}
       <DetailsForm key={me._id} me={me} />
       <PhotoForm photoUrl={photoUrl} photoKey={me.photoKey} />
       <Top8Picker top8={me.top8} />

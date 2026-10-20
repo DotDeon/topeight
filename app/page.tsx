@@ -10,7 +10,10 @@ export default function Home() {
     <div className={styles.home}>
       <div className={styles.left}>
         <div className={styles.banner}>
-          Welcome to TopEight. Make your profile, add your friends, play your music.
+          <div>
+            <div>Welcome to TopEight. Make your profile, add your friends, play your music.</div>
+            <div className={styles.bannerAds}>Want this spot for your gig? Homepage ads are coming soon.</div>
+          </div>
         </div>
         <HomeBulletins />
         <CoolNewPeople />

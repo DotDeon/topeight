@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { supportUrl } from "@/lib/supportUrl";
 import styles from "./Footer.module.css";
 
 const LINKS = [
@@ -12,6 +13,7 @@ const LINKS = [
 ];
 
 export function Footer() {
+  const support = supportUrl(process.env.NEXT_PUBLIC_SUPPORT_URL);
   return (
     <footer className={styles.footer}>
       {LINKS.map((l, i) => (
@@ -20,6 +22,12 @@ export function Footer() {
           <Link href={l.href}>{l.label}</Link>
         </span>
       ))}
+      {support && (
+        <>
+          {" | "}
+          <a href={support} target="_blank" rel="noopener noreferrer">Support TopEight</a>
+        </>
+      )}
     </footer>
   );
 }

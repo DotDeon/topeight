@@ -139,3 +139,9 @@
 .personName {
   flex: 1;
 }
+
+.proList {
+  margin: 3px 0 8px;
+  padding-left: 20px;
+  color: #333;
+}

@@ -86,6 +86,7 @@ Then push the functions with `npx convex deploy`.
 | `NEXT_PUBLIC_MAIN_ORIGIN` | Your main origin, for example `https://topeight.app` |
 | `NEXT_PUBLIC_USERCONTENT_ORIGIN` | Your usercontent origin, for example `https://topeight.site` |
 | `NEXT_PUBLIC_CONVEX_URL` | The production Convex URL, ending in `.convex.cloud` |
+| `NEXT_PUBLIC_SUPPORT_URL` | Optional. A GitHub Sponsors or Open Collective page for the footer "Support TopEight" link. Set it on Vercel; leave it unset to hide the link |
 
 3. Under Settings, Domains, attach both domains to this same project. Do not make a second project. The app tells the two apart by hostname and serves the profile documents only on the usercontent host.
 4. Set the build command to `npx convex deploy --cmd 'npm run build'` if you want Vercel to push Convex functions on each deploy. That needs a `CONVEX_DEPLOY_KEY` env var from the Convex dashboard. Skip it if you run `npx convex deploy` by hand.

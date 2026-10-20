@@ -81,3 +81,10 @@
   display: block;
   color: #cc0000;
 }
+
+.bannerAds {
+  margin-top: 6px;
+  font-size: 10px;
+  font-weight: normal;
+  color: #888;
+}
