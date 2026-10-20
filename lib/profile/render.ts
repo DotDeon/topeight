@@ -428,7 +428,8 @@ export function bridgeScript(mainOrigin: string): string {
  * Player behaviour. Does nothing when the document has no player. Playback URLs
  * are signed for 15 minutes, so the player fetches fresh ones from
  * data-tracks-url every 12 minutes and when the audio fails to load (once per
- * failure, until playback works again). No download control, no context menu.
+ * failure, until playback works again), adding the frame pass from its own
+ * address when there is one. No download control, no context menu.
  */
 export const playerScript = `document.addEventListener("DOMContentLoaded", function () {
   var ui = document.getElementById("topeight-player-ui");
@@ -443,6 +444,12 @@ export const playerScript = `document.addEventListener("DOMContentLoaded", funct
   var autoplay = Number(ui.getAttribute("data-autoplay"));
   var current = Math.max(0, autoplay);
   var tracksUrl = ui.getAttribute("data-tracks-url");
+  // A private profile's frame carries ?pass=; the refresh must send it too, or it gets a 404.
+  if (tracksUrl) {
+    var pass = null;
+    try { pass = new URLSearchParams(location.search).get("pass"); } catch (e) { pass = null; }
+    if (pass) tracksUrl += "&pass=" + encodeURIComponent(pass);
+  }
   var pending = null;
   var retried = false;
   ui.addEventListener("contextmenu", function (e) { e.preventDefault(); });

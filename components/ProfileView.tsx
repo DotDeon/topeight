@@ -8,16 +8,23 @@ import { BRIDGE_RESET_MS, BridgeGate } from "@/lib/bridgeGate";
 import { findReportableTrack, type ProfileTrack } from "@/lib/reportableTrack";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
 import { PROFILE_ACTIONS, type DialogAction } from "./profileActions";
+import { PrivateCard, PrivateCardLoader, type PrivateCardData } from "./PrivateProfile";
 import { ProfileFrame } from "./ProfileFrame";
 import { stripButtons } from "./stripActions";
 import { TrustedStrip } from "./TrustedStrip";
 
-/** Trusted strip, sandboxed profile frame and the confirm dialog they share. */
+/**
+ * Trusted strip, sandboxed profile frame and the confirm dialog they share. On a
+ * private profile a viewer who isn't a friend gets the private card in place of
+ * the frame, and no Add Comment.
+ */
 export function ProfileView({
   username,
   displayName,
   tracks,
   profileSong,
+  isPrivate = false,
+  card = null,
 }: {
   username: string;
   displayName: string;
@@ -25,6 +32,10 @@ export function ProfileView({
   tracks: readonly ProfileTrack[];
   /** The profile's own profile song, so its Report link works. Reports name its artist's username. */
   profileSong: { id: string; title: string; artistUsername: string } | null;
+  /** The owner turned Private profile on, so the frame needs a frame pass. */
+  isPrivate?: boolean;
+  /** Set when this viewer only gets the private card (profileHeader.restricted). */
+  card?: PrivateCardData | null;
 }) {
   const router = useRouter();
   const [request, setRequest] = useState<ConfirmRequest | null>(null);
@@ -45,7 +56,7 @@ export function ProfileView({
 
   const rel = useQuery(api.social.relationship, { username });
   const isHouse = useQuery(api.social.isHouseProfile, { username });
-  const buttons = stripButtons(rel, isHouse);
+  const buttons = stripButtons(rel, isHouse, { canComment: card === null });
   // null when signed out. Pick links are left off the visitor's own page.
   const me = useQuery(api.profiles.me);
   const ownPage = me === undefined ? undefined : me?.username === username;
@@ -144,15 +155,21 @@ export function ProfileView({
   return (
     <>
       <TrustedStrip displayName={displayName} buttons={buttons} onAction={onStripAction} throttled={throttled} />
-      <ProfileFrame
-        username={username}
-        displayName={displayName}
-        onAction={onBridgeAction}
-        onReportTrack={onReportTrack}
-        onPickSong={onPickSong}
-        hidePick={ownPage}
-        reloadKey={reloadKey}
-      />
+      {card ? (
+        <PrivateCard card={card} />
+      ) : (
+        <ProfileFrame
+          username={username}
+          displayName={displayName}
+          onAction={onBridgeAction}
+          onReportTrack={onReportTrack}
+          onPickSong={onPickSong}
+          hidePick={ownPage}
+          reloadKey={reloadKey}
+          needsPass={isPrivate}
+          noPass={<PrivateCardLoader username={username} />}
+        />
+      )}
       <ConfirmDialog
         request={request}
         target={target}

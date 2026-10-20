@@ -699,7 +699,7 @@ describe("player protection", () => {
 });
 
 /** Runs the player script against a tiny fake DOM. */
-function runPlayer(tracksUrl: string | null = "http://127.0.0.1:3000/lowveld?format=tracks") {
+function runPlayer(tracksUrl: string | null = "http://127.0.0.1:3000/lowveld?format=tracks", search?: string) {
   type Handler = (e: Record<string, unknown>) => void;
   const el = (attrs: Record<string, string> = {}) => {
     const listeners: Record<string, Handler[]> = {};
@@ -760,6 +760,10 @@ function runPlayer(tracksUrl: string | null = "http://127.0.0.1:3000/lowveld?for
     Number,
     Array,
     Promise,
+    URLSearchParams,
+    encodeURIComponent,
+    // The frame's own address. Left out (as in older tests) when `search` is undefined.
+    ...(search === undefined ? {} : { location: { search } }),
   });
   doc.fire("DOMContentLoaded");
   return {
@@ -804,6 +808,24 @@ describe("player script", () => {
 
   test("refreshes the URLs every 12 minutes", () => {
     expect(runPlayer().intervals).toEqual([12 * 60 * 1000]);
+  });
+
+  test("forwards the frame pass from its own address to the tracks refresh", async () => {
+    const p = runPlayer(undefined, "?own=1&pass=123.abc_-");
+    p.audio.fire("error");
+    expect(p.fetches).toEqual(["http://127.0.0.1:3000/lowveld?format=tracks&pass=123.abc_-"]);
+  });
+
+  test("encodes the pass, and adds nothing when the address has none", () => {
+    const odd = runPlayer(undefined, "?pass=a%26b%3Dc");
+    odd.audio.fire("error");
+    expect(odd.fetches).toEqual(["http://127.0.0.1:3000/lowveld?format=tracks&pass=a%26b%3Dc"]);
+    const none = runPlayer(undefined, "?own=1");
+    none.audio.fire("error");
+    expect(none.fetches).toEqual(["http://127.0.0.1:3000/lowveld?format=tracks"]);
+    const empty = runPlayer(undefined, "");
+    empty.audio.fire("error");
+    expect(empty.fetches).toEqual(["http://127.0.0.1:3000/lowveld?format=tracks"]);
   });
 
   test("does nothing extra without a refresh URL", () => {

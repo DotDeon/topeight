@@ -13,11 +13,16 @@ const button = (action: DialogAction): StripButton => ({ action, label: labelOf(
  * are in, so a wrong label never flashes. `rel` null (unknown profile) gets the
  * signed-out layout; the server still checks every click.
  */
-export function stripButtons(rel: Relationship | null | undefined, isHouse: boolean | undefined): StripButton[] {
-  const comment = button("addComment");
+export function stripButtons(
+  rel: Relationship | null | undefined,
+  isHouse: boolean | undefined,
+  { canComment = true }: { canComment?: boolean } = {},
+): StripButton[] {
+  // Viewers who only get a private profile's card can't comment, so they get no Add Comment.
+  const comment = canComment ? [button("addComment")] : [];
   const report = button("report");
-  if (rel === undefined || isHouse === undefined) return [comment, report];
-  if (rel?.self) return [comment, report];
+  if (rel === undefined || isHouse === undefined) return [...comment, report];
+  if (rel?.self) return [...comment, report];
 
   let friend: StripButton[];
   if (rel?.friends) friend = isHouse ? [] : [button("removeFriend")];
@@ -25,5 +30,5 @@ export function stripButtons(rel: Relationship | null | undefined, isHouse: bool
   else friend = [button("addFriend")];
 
   const message = isHouse ? [] : [button("message")];
-  return [...friend, ...message, comment, report, button(rel?.blocked ? "unblock" : "block")];
+  return [...friend, ...message, ...comment, report, button(rel?.blocked ? "unblock" : "block")];
 }

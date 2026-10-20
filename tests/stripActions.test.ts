@@ -8,6 +8,15 @@ const pairs = (r: Parameters<typeof stripButtons>[0], house = false) =>
 const L = (a: keyof typeof PROFILE_ACTIONS) => PROFILE_ACTIONS[a].label;
 
 describe("stripButtons", () => {
+  test("a viewer who only gets the private card has no Add Comment", () => {
+    const actions = (b: ReturnType<typeof stripButtons>) => b.map((x) => x.action);
+    expect(actions(stripButtons({ ...base, signedIn: false }, false, { canComment: false }))).toEqual([
+      "addFriend", "message", "report", "block",
+    ]);
+    expect(actions(stripButtons(base, false, { canComment: false }))).toEqual(["addFriend", "message", "report", "block"]);
+    expect(actions(stripButtons(undefined, undefined, { canComment: false }))).toEqual(["report"]);
+    expect(actions(stripButtons(base, false, { canComment: true }))).toContain("addComment");
+  });
   test("signed out and unknown show the default strip", () => {
     const def = [["addFriend", "Add to Friends"], ["message", "Send Message"], ["addComment", "Add Comment"], ["report", "Report"], ["block", "Block"]];
     expect(pairs({ ...base, signedIn: false })).toEqual(def);

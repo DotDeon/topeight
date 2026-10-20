@@ -13,6 +13,7 @@ import { FriendsAndBlocking } from "./FriendsAndBlocking";
 import { MailSetting } from "./MailSetting";
 import { MoodForm } from "./MoodForm";
 import { OnlineSetting } from "./OnlineSetting";
+import { PrivateSetting } from "./PrivateSetting";
 import { PhotoForm } from "./PhotoForm";
 import { ProfileSongForm } from "./ProfileSongForm";
 import { ShowsForm } from "./ShowsForm";
@@ -77,6 +78,7 @@ export function EditProfile() {
       <FriendsAndBlocking />
       <MailSetting key={me._id} mailFrom={me.mailFrom} />
       <OnlineSetting showOnline={me.showOnline} />
+      {!artist && <PrivateSetting isPrivate={me.private} />}
       {artist ? (
         <>
           <TracksForm />

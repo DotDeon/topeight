@@ -711,3 +711,38 @@ export const resetProfileSongFixture = internalMutation({
     return null;
   },
 });
+
+export const PRIVATE_EMAIL = "e2e-private@fixture.invalid";
+export const PAL_EMAIL = "e2e-pal@fixture.invalid";
+
+/**
+ * Fixture for e2e/private.spec.ts: two fans only that spec touches, e2eprivate
+ * and its friend e2epal, both logging in with `password`. Turns Private profile
+ * off on e2eprivate and resets its privacy limit, so the spec starts public and
+ * reruns stay under 30 an hour. Safe to call again; the spec calls it before and
+ * after. Same guards as the other login fixtures.
+ */
+export const resetPrivateFixture = internalMutation({
+  args: { password: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { password }) => {
+    await seedLoginFixture(ctx, { username: "e2eprivate", displayName: "E2E Private", email: PRIVATE_EMAIL, kind: "fan", password });
+    await seedLoginFixture(ctx, { username: "e2epal", displayName: "E2E Pal", email: PAL_EMAIL, kind: "fan", password });
+    const byName = async (username: string) =>
+      (await ctx.db
+        .query("profiles")
+        .withIndex("by_username", (q) => q.eq("username", username))
+        .unique())!;
+    const owner = await byName("e2eprivate");
+    const pal = await byName("e2epal");
+    await ctx.db.patch(owner._id, { private: undefined, location: "Pretoria, South Africa" });
+    await rateLimiter.reset(ctx, "privacy", { key: owner._id });
+    const pair = friendshipPair(owner._id, pal._id);
+    const row = await ctx.db
+      .query("friendships")
+      .withIndex("by_pair", (q) => q.eq("a", pair.a).eq("b", pair.b))
+      .first();
+    if (row === null) await ctx.db.insert("friendships", pair);
+    return null;
+  },
+});
