@@ -41,6 +41,28 @@ async function addShow(t: T, artist: Id<"profiles">, date: string, city = "Johan
   return await t.run((ctx) => ctx.db.insert("shows", { profileId: artist, date, venue, city }));
 }
 
+async function insertEvent(t: T, hostId: Id<"profiles">, startsAt: number, extra: Record<string, unknown> = {}) {
+  return await t.run((ctx) =>
+    ctx.db.insert("events", {
+      hostId,
+      title: "raw",
+      localDate: "2026-10-26",
+      localTime: "20:00",
+      timeZone: "UTC",
+      startsAt,
+      venue: "v",
+      city: "c",
+      cityKey: "c",
+      description: "",
+      cancelled: false,
+      hidden: false,
+      goingCount: 0,
+      maybeCount: 0,
+      ...extra,
+    }),
+  );
+}
+
 async function ban(t: T, boss: Id<"profiles">, profileId: Id<"profiles">) {
   await (await as(t, boss)).mutation(api.moderation.ban, { profileId });
 }
@@ -88,6 +110,12 @@ describe("events.create", () => {
     expect((await t.query(api.events.get, { id }))?.canEdit).toBe(false);
   });
 
+  test("stores the canonical timezone name", async () => {
+    const { t, host } = await world();
+    const id = await create(t, host, { timeZone: "europe/london" });
+    expect((await t.run((ctx) => ctx.db.get(id)))!.timeZone).toBe("Europe/London");
+  });
+
   test("blank description and image are allowed", async () => {
     const { t, host } = await world();
     const id = await create(t, host, { description: "  ", imageUrl: "  " });
@@ -132,7 +160,13 @@ describe("events.create", () => {
   test("the image link must be http(s) and at most 500 characters", async () => {
     const { t, host } = await world();
     const msg = "Image link must start with http:// or https://";
-    for (const imageUrl of ["javascript:alert(1)", "ftp://a.com/x.jpg", "example.com/x.jpg", "https://", "https://a.com/" + "x".repeat(500)]) {
+    for (const imageUrl of [
+      "javascript:alert(1)",
+      "ftp://a.com/x.jpg",
+      "example.com/x.jpg",
+      "https://",
+      "https://a.com/" + "x".repeat(500),
+    ]) {
       await expect(create(t, host, { imageUrl })).rejects.toThrow(msg);
     }
     await create(t, host, { imageUrl: "http://a.com/x.png" });
@@ -143,12 +177,19 @@ describe("events.create", () => {
     const t = setup();
     const fresh = await addProfile(t, "fresh");
     vi.setSystemTime(new Date(NOW.getTime() + 60 * 60 * 1000));
-    for (const extra of [{ description: "see https://a.com" }, { description: "www.a.com" }, { imageUrl: "https://a.com/x.jpg" }]) {
+    for (const extra of [
+      { description: "see https://a.com" },
+      { description: "www.a.com" },
+      { imageUrl: "https://a.com/x.jpg" },
+    ]) {
       await expect(create(t, fresh, extra)).rejects.toThrow("New accounts can't post links yet");
     }
     await create(t, fresh);
     vi.setSystemTime(new Date(NOW.getTime() + DAY + 1000));
-    await create(t, fresh, { description: "see https://a.com", imageUrl: "https://a.com/x.jpg" });
+    await create(t, fresh, {
+      description: "see https://a.com",
+      imageUrl: "https://a.com/x.jpg",
+    });
   });
 
   test("5 events a day, refused ones do not count", async () => {
@@ -173,7 +214,13 @@ describe("events.update and cancel", () => {
   test("only the host edits, and edits recompute the start and city key", async () => {
     const { t, host, guest } = await world();
     const id = await create(t, host);
-    const fields = { ...base, title: "Moved", localTime: "21:30", timeZone: "Europe/London", city: "LONDON " };
+    const fields = {
+      ...base,
+      title: "Moved",
+      localTime: "21:30",
+      timeZone: "Europe/London",
+      city: "LONDON ",
+    };
     await expect((await as(t, guest)).mutation(api.events.update, { id, ...fields })).rejects.toThrow("Not allowed");
     await expect(t.mutation(api.events.update, { id, ...fields })).rejects.toThrow("Not signed in");
     await (await as(t, host)).mutation(api.events.update, { id, ...fields });
@@ -193,7 +240,9 @@ describe("events.update and cancel", () => {
     const id = await create(t, host, { imageUrl: "https://a.com/x.jpg" });
     const h = await as(t, host);
     await expect(h.mutation(api.events.update, { id, ...base, title: "" })).rejects.toThrow("Title can't be empty");
-    await expect(h.mutation(api.events.update, { id, ...base, timeZone: "Nope/Nope" })).rejects.toThrow("Invalid timezone");
+    await expect(h.mutation(api.events.update, { id, ...base, timeZone: "Nope/Nope" })).rejects.toThrow(
+      "Invalid timezone",
+    );
     await expect(h.mutation(api.events.update, { id, ...base, localDate: "2026-10-01" })).rejects.toThrow(
       "Event must be in the future",
     );
@@ -212,9 +261,12 @@ describe("events.update and cancel", () => {
     expect((await t.query(api.events.get, { id }))?.cancelled).toBe(true);
     const list = await t.query(api.events.upcoming, {});
     expect(list.items).toEqual([expect.objectContaining({ kind: "event", id, cancelled: true })]);
-    await expect((await as(t, guest)).mutation(api.events.rsvp, { eventId: id, status: "going" })).rejects.toThrow(
-      "Event is cancelled",
-    );
+    await expect(
+      (await as(t, guest)).mutation(api.events.rsvp, {
+        eventId: id,
+        status: "going",
+      }),
+    ).rejects.toThrow("Event is cancelled");
   });
 
   test("get returns null for malformed ids and hidden events", async () => {
@@ -242,12 +294,22 @@ describe("events.rsvp", () => {
     await g.mutation(api.events.rsvp, { eventId: id, status: "going" });
     expect(await counts()).toEqual([1, 0]);
     let got = await g.query(api.events.get, { id });
-    expect(got).toMatchObject({ going: 1, maybe: 0, myStatus: "going", attendees: [{ username: "guest" }] });
+    expect(got).toMatchObject({
+      going: 1,
+      maybe: 0,
+      myStatus: "going",
+      attendees: [{ username: "guest" }],
+    });
 
     await g.mutation(api.events.rsvp, { eventId: id, status: "maybe" });
     expect(await counts()).toEqual([0, 1]);
     got = await g.query(api.events.get, { id });
-    expect(got).toMatchObject({ going: 0, maybe: 1, myStatus: "maybe", attendees: [] });
+    expect(got).toMatchObject({
+      going: 0,
+      maybe: 1,
+      myStatus: "maybe",
+      attendees: [],
+    });
 
     await (await as(t, host)).mutation(api.events.rsvp, { eventId: id, status: "going" });
     expect(await counts()).toEqual([1, 1]);
@@ -275,13 +337,34 @@ describe("events.rsvp", () => {
     expect(got?.attendees).toHaveLength(24);
   });
 
+  test("60 answers a minute per member", async () => {
+    const { t, host, guest } = await world();
+    const id = await create(t, host);
+    const g = await as(t, guest);
+    for (let i = 0; i < 60; i++) {
+      await g.mutation(api.events.rsvp, {
+        eventId: id,
+        status: i % 2 === 0 ? "going" : null,
+      });
+    }
+    await expect(g.mutation(api.events.rsvp, { eventId: id, status: "maybe" })).rejects.toThrow("Slow down");
+    vi.setSystemTime(new Date(Date.now() + 61 * 1000));
+    await g.mutation(api.events.rsvp, { eventId: id, status: "maybe" });
+  });
+
   test("blocked pairs cannot RSVP, and past events cannot take new RSVPs", async () => {
     const { t, host, guest } = await world();
-    const id = await create(t, host, { localDate: "2026-10-21", localTime: "15:00" });
+    const id = await create(t, host, {
+      localDate: "2026-10-21",
+      localTime: "15:00",
+    });
     await block(t, host, guest);
-    await expect((await as(t, guest)).mutation(api.events.rsvp, { eventId: id, status: "going" })).rejects.toThrow(
-      "Not allowed",
-    );
+    await expect(
+      (await as(t, guest)).mutation(api.events.rsvp, {
+        eventId: id,
+        status: "going",
+      }),
+    ).rejects.toThrow("Not allowed");
     const other = await addProfile(t, "other");
     const o = await as(t, other);
     await o.mutation(api.events.rsvp, { eventId: id, status: "maybe" });
@@ -302,9 +385,12 @@ describe("banned members", () => {
     expect(await t.query(api.events.get, { id })).toBeNull();
     expect((await t.query(api.events.upcoming, {})).items).toEqual([]);
     expect(await (await as(t, guest)).query(api.events.myEvents, {})).toEqual([]);
-    await expect((await as(t, guest)).mutation(api.events.rsvp, { eventId: id, status: "maybe" })).rejects.toThrow(
-      "Not found",
-    );
+    await expect(
+      (await as(t, guest)).mutation(api.events.rsvp, {
+        eventId: id,
+        status: "maybe",
+      }),
+    ).rejects.toThrow("Not found");
   });
 
   test("a banned member's RSVPs leave the grid and the counts, and come back on unban", async () => {
@@ -334,11 +420,21 @@ describe("events.upcoming", () => {
   test("merges events and artist shows by start, with the city filter on both", async () => {
     const { t, host } = await world();
     const artist = await addProfile(t, "band", { kind: "artist" });
-    const bannedArtist = await addProfile(t, "badband", { kind: "artist", banned: true });
+    const bannedArtist = await addProfile(t, "badband", {
+      kind: "artist",
+      banned: true,
+    });
     // 24 Oct 18:00Z, 23 Oct 18:00Z (Joburg), and London 24 Oct 20:00 BST = 19:00Z.
     const e1 = await create(t, host);
-    const e2 = await create(t, host, { localDate: "2026-10-23", title: "Earlier" });
-    const e3 = await create(t, host, { timeZone: "Europe/London", city: "London", title: "London" });
+    const e2 = await create(t, host, {
+      localDate: "2026-10-23",
+      title: "Earlier",
+    });
+    const e3 = await create(t, host, {
+      timeZone: "Europe/London",
+      city: "London",
+      title: "London",
+    });
     // A show on 24 Oct starts at 00:00Z that day, so before e1 and after e2.
     const s1 = await addShow(t, artist, "2026-10-24", " johannesburg ");
     const s2 = await addShow(t, artist, "2026-10-21", "London");
@@ -351,7 +447,12 @@ describe("events.upcoming", () => {
     expect(all.items[0]).toEqual({
       kind: "show",
       id: s2,
-      artist: { username: "band", displayName: "BAND", photoUrl: null, kind: "artist" },
+      artist: {
+        username: "band",
+        displayName: "BAND",
+        photoUrl: null,
+        kind: "artist",
+      },
       date: "2026-10-21",
       startsAt: Date.UTC(2026, 9, 21),
       venue: "Club",
@@ -365,12 +466,19 @@ describe("events.upcoming", () => {
       timeZone: "Africa/Johannesburg",
       venue: "The Bassline",
       city: "Johannesburg",
-      host: { username: "host", displayName: "HOST", photoUrl: null, kind: "fan" },
+      host: {
+        username: "host",
+        displayName: "HOST",
+        photoUrl: null,
+        kind: "fan",
+      },
       going: 0,
       cancelled: false,
     });
 
-    const joburg = await t.query(api.events.upcoming, { city: "  JOHANNESBURG " });
+    const joburg = await t.query(api.events.upcoming, {
+      city: "  JOHANNESBURG ",
+    });
     expect(joburg.items.map((i) => i.id)).toEqual([e2, s1, e1]);
     const london = await t.query(api.events.upcoming, { city: "london" });
     expect(london.items.map((i) => i.id)).toEqual([s2, e3]);
@@ -379,7 +487,10 @@ describe("events.upcoming", () => {
 
   test("events that have started and hidden events are left out", async () => {
     const { t, host } = await world();
-    const soon = await create(t, host, { localDate: "2026-10-21", localTime: "15:00" });
+    const soon = await create(t, host, {
+      localDate: "2026-10-21",
+      localTime: "15:00",
+    });
     const hidden = await create(t, host, { title: "Hidden" });
     await t.run((ctx) => ctx.db.patch(hidden, { hidden: true }));
     expect((await t.query(api.events.upcoming, {})).items.map((i) => i.id)).toEqual([soon]);
@@ -420,7 +531,9 @@ describe("events.upcoming", () => {
     const first = await t.query(api.events.upcoming, {});
     expect(first.items).toHaveLength(50);
     expect(first.nextCursor).not.toBeNull();
-    const second = await t.query(api.events.upcoming, { cursor: first.nextCursor! });
+    const second = await t.query(api.events.upcoming, {
+      cursor: first.nextCursor!,
+    });
     expect(second.nextCursor).toBeNull();
     const seen = [...first.items, ...second.items].map((i) => i.id);
     expect(seen).toEqual([...shows, ...events]);
@@ -456,16 +569,90 @@ describe("events.upcoming", () => {
     const first = await t.query(api.events.upcoming, {});
     expect(first.items).toEqual([]);
     expect(first.nextCursor).not.toBeNull();
-    const second = await t.query(api.events.upcoming, { cursor: first.nextCursor! });
+    const second = await t.query(api.events.upcoming, {
+      cursor: first.nextCursor!,
+    });
     expect(second.items.map((i) => i.id)).toEqual([late, show]);
     expect(second.nextCursor).toBeNull();
   });
 });
 
+describe("events.upcoming cursor edge cases", () => {
+  test("does not skip shows when the first event sits on the date of the 100th show", async () => {
+    const { t, host } = await world();
+    const artist = await addProfile(t, "band", { kind: "artist" });
+    const shows: string[] = [];
+    // 98 shows early, then 22 on the 100th show's date; only the first two of those are in the first read.
+    for (let i = 0; i < 98; i++) shows.push(await addShow(t, artist, "2026-10-22", "c"));
+    for (let i = 0; i < 22; i++) shows.push(await addShow(t, artist, "2026-10-25", "c"));
+    const events: string[] = [];
+    // A hidden event on that date makes the event read start there, and leaves the pages short.
+    await insertEvent(t, host, Date.parse("2026-10-25T00:00:00Z"), {
+      hidden: true,
+    });
+    for (let i = 0; i < 99; i++) events.push(await insertEvent(t, host, Date.parse("2026-10-26T00:00:00Z")));
+    const seen: string[] = [];
+    let cursor: { startsAt: number; skip: number } | undefined;
+    for (let i = 0; i < 20; i++) {
+      const page = await t.query(api.events.upcoming, {
+        city: "c",
+        ...(cursor ? { cursor } : {}),
+      });
+      seen.push(...page.items.map((x) => x.id));
+      if (page.nextCursor === null) break;
+      cursor = page.nextCursor;
+    }
+    expect(new Set(seen).size).toBe(seen.length);
+    expect([...seen].sort()).toEqual([...shows, ...events].sort());
+  });
+
+  test("a cursor that is not finite gives an empty page", async () => {
+    const { t, host } = await world();
+    await create(t, host);
+    for (const startsAt of [NaN, Infinity, -Infinity]) {
+      expect(await t.query(api.events.upcoming, { cursor: { startsAt, skip: 0 } })).toEqual({
+        items: [],
+        nextCursor: null,
+      });
+    }
+    expect(
+      await t.query(api.events.upcoming, {
+        cursor: { startsAt: 0, skip: NaN },
+      }),
+    ).toMatchObject({
+      nextCursor: null,
+    });
+  });
+});
+
 describe("events.myEvents", () => {
+  test("reads the newest RSVPs first when there are more than 200", async () => {
+    const { t, host, guest } = await world();
+    const start = Date.parse("2026-10-30T00:00:00Z");
+    const ids: Id<"events">[] = [];
+    for (let i = 0; i < 205; i++) ids.push(await insertEvent(t, host, start + i * 1000));
+    // Answer in reverse event order, so the newest answer is for the first event.
+    await t.run(async (ctx) => {
+      for (let i = ids.length - 1; i >= 0; i--) {
+        await ctx.db.insert("rsvps", {
+          eventId: ids[i],
+          profileId: guest,
+          status: "going",
+        });
+      }
+    });
+    const list = await (await as(t, guest)).query(api.events.myEvents, {});
+    expect(list).toHaveLength(200);
+    expect(list.some((e) => e.id === ids[0])).toBe(true);
+    expect(list.some((e) => e.id === ids[204])).toBe(false);
+  });
+
   test("upcoming events the viewer hosts or answered, soonest first", async () => {
     const { t, host, guest } = await world();
-    const mine = await create(t, (guest), { localDate: "2026-10-25", title: "Mine" });
+    const mine = await create(t, guest, {
+      localDate: "2026-10-25",
+      title: "Mine",
+    });
     const going = await create(t, host, { localDate: "2026-10-23" });
     const maybe = await create(t, host, { localDate: "2026-10-27" });
     const ignored = await create(t, host, { localDate: "2026-10-28" });
@@ -487,9 +674,25 @@ describe("events.myEvents", () => {
 describe("moderation", () => {
   test("an event can be reported, previewed and hidden", async () => {
     const { t, host, guest, boss } = await world();
-    const id = await create(t, host, { title: "Bad", description: "bad words" });
-    await (await as(t, guest)).mutation(api.moderation.report, { targetType: "event", targetId: id, reason: "spam" });
-    await (await as(t, host)).mutation(api.events.update, { id, ...base, title: "Clean", description: "clean" });
+    const id = await create(t, host, {
+      title: "Bad",
+      description: "bad words",
+    });
+    await (
+      await as(t, guest)
+    ).mutation(api.moderation.report, {
+      targetType: "event",
+      targetId: id,
+      reason: "spam",
+    });
+    await (
+      await as(t, host)
+    ).mutation(api.events.update, {
+      id,
+      ...base,
+      title: "Clean",
+      description: "clean",
+    });
     const b = await as(t, boss);
     const [row] = await b.query(api.moderation.listOpen, {});
     expect(row.preview).toEqual({
@@ -497,7 +700,12 @@ describe("moderation", () => {
       title: "Bad",
       body: "bad words",
       authorId: host,
-      author: { username: "host", displayName: "HOST", photoUrl: null, kind: "fan" },
+      author: {
+        username: "host",
+        displayName: "HOST",
+        photoUrl: null,
+        kind: "fan",
+      },
     });
     await b.mutation(api.moderation.hide, { reportId: row.id });
     expect((await t.run((ctx) => ctx.db.get(id)))?.hidden).toBe(true);

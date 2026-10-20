@@ -1,6 +1,6 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
-import { isTimeOfDay, isTimeZone, toUtc } from "../lib/eventTime";
+import { canonicalTimeZone, isTimeOfDay, isTimeZone, toUtc } from "../lib/eventTime";
 import { isCalendarDate } from "../lib/validation";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
@@ -8,6 +8,7 @@ import { isBlockedEitherWay, profileForUser, requireProfile } from "./lib/access
 import { toPublicCard, type PublicCard } from "./lib/cards";
 import { rateLimiter } from "./lib/limits";
 import { checkBody, checkLinks } from "./lib/posting";
+import { countField } from "./lib/rsvps";
 
 const MAX_TITLE = 100;
 const MAX_PLACE = 100;
@@ -23,8 +24,6 @@ const GRID_READ = 100;
 /** Upcoming hosted events and RSVPs myEvents reads. */
 const MY_HOSTED = 50;
 const MY_RSVPS = 200;
-/** RSVPs a ban or unban adjusts counts for. */
-export const MAX_BAN_RSVPS = 500;
 
 type Ctx = QueryCtx | MutationCtx;
 type Status = "going" | "maybe";
@@ -157,7 +156,8 @@ function checkEvent(me: Doc<"profiles">, args: EventArgs) {
   if (!isCalendarDate(args.localDate)) throw new ConvexError("Invalid date");
   if (!isTimeOfDay(args.localTime)) throw new ConvexError("Invalid time");
   if (!isTimeZone(args.timeZone)) throw new ConvexError("Invalid timezone");
-  const startsAt = toUtc(args.localDate, args.localTime, args.timeZone);
+  const timeZone = canonicalTimeZone(args.timeZone);
+  const startsAt = toUtc(args.localDate, args.localTime, timeZone);
   if (startsAt <= Date.now()) throw new ConvexError("Event must be in the future");
   const imageUrl = args.imageUrl?.trim() || undefined;
   if (imageUrl !== undefined && !isImageUrl(imageUrl)) {
@@ -169,7 +169,7 @@ function checkEvent(me: Doc<"profiles">, args: EventArgs) {
     title,
     localDate: args.localDate,
     localTime: args.localTime,
-    timeZone: args.timeZone,
+    timeZone,
     startsAt,
     venue,
     city,
@@ -210,28 +210,6 @@ function toEventItem(event: Doc<"events">, host: Doc<"profiles">): EventItem {
     going: event.goingCount,
     cancelled: event.cancelled,
   };
-}
-
-function countField(status: Status): "goingCount" | "maybeCount" {
-  return status === "going" ? "goingCount" : "maybeCount";
-}
-
-/**
- * Adds `delta` to the counts of every event a member answered, at most
- * MAX_BAN_RSVPS of them. A ban passes -1 and an unban +1, so banned members
- * drop out of the counts and come back.
- */
-export async function adjustRsvpCounts(ctx: MutationCtx, profileId: Id<"profiles">, delta: 1 | -1): Promise<void> {
-  const rows = await ctx.db
-    .query("rsvps")
-    .withIndex("by_pair", (q) => q.eq("profileId", profileId))
-    .take(MAX_BAN_RSVPS);
-  for (const r of rows) {
-    const event = await ctx.db.get(r.eventId);
-    if (event === null) continue;
-    const field = countField(r.status);
-    await ctx.db.patch(event._id, { [field]: Math.max(0, event[field] + delta) });
-  }
 }
 
 const eventArgs = {
@@ -318,13 +296,23 @@ export const rsvp = mutation({
       .unique();
     const old = row?.status ?? null;
     if (old === status) return null;
+    const { ok } = await rateLimiter.limit(ctx, "rsvp", { key: me._id });
+    if (!ok) throw new ConvexError("Slow down");
 
-    const counts = { goingCount: event.goingCount, maybeCount: event.maybeCount };
+    const counts = {
+      goingCount: event.goingCount,
+      maybeCount: event.maybeCount,
+    };
     if (old !== null) counts[countField(old)] = Math.max(0, counts[countField(old)] - 1);
     if (status !== null) counts[countField(status)] += 1;
     await ctx.db.patch(eventId, counts);
 
-    if (row === null) await ctx.db.insert("rsvps", { eventId, profileId: me._id, status: status! });
+    if (row === null)
+      await ctx.db.insert("rsvps", {
+        eventId,
+        profileId: me._id,
+        status: status!,
+      });
     else if (status === null) await ctx.db.delete(row._id);
     else await ctx.db.patch(row._id, { status });
     return null;
@@ -439,18 +427,18 @@ export const upcoming = query({
     nextCursor: v.union(cursorValidator, v.null()),
   }),
   handler: async (ctx, { city, cursor }): Promise<{ items: UpcomingItem[]; nextCursor: UpcomingCursor | null }> => {
+    if (cursor && !Number.isFinite(cursor.startsAt)) return { items: [], nextCursor: null };
     const now = Date.now();
     const cityKey = city === undefined ? "" : cityKeyOf(city);
     const today = new Date(now).toISOString().slice(0, 10);
     const from = cursor?.startsAt ?? 0;
-    const skip = cursor ? Math.max(0, Math.floor(cursor.skip)) : 0;
+    const skip = cursor && Number.isFinite(cursor.skip) ? Math.max(0, Math.floor(cursor.skip)) : 0;
 
     const eventFrom = Math.max(now, from);
-    const eventRows = await (cityKey
-      ? ctx.db
-          .query("events")
-          .withIndex("by_city_start", (q) => q.eq("cityKey", cityKey).gte("startsAt", eventFrom))
-      : ctx.db.query("events").withIndex("by_start", (q) => q.gte("startsAt", eventFrom))
+    const eventRows = await (
+      cityKey
+        ? ctx.db.query("events").withIndex("by_city_start", (q) => q.eq("cityKey", cityKey).gte("startsAt", eventFrom))
+        : ctx.db.query("events").withIndex("by_start", (q) => q.gte("startsAt", eventFrom))
     ).take(SOURCE_READ);
 
     const fromDate = cursor ? new Date(from).toISOString().slice(0, 10) : today;
@@ -468,8 +456,13 @@ export const upcoming = query({
     let limit = Infinity;
     if (eventsFull) limit = Math.min(limit, eventRows[eventRows.length - 1].startsAt);
     if (showsFull) limit = Math.min(limit, showStart(showRows[showRows.length - 1].date));
-    const inclusive =
-      (eventsFull && eventRows[0].startsAt === limit) || (showsFull && showStart(showRows[0].date) === limit);
+    // Only when nothing was read before the cut. Otherwise the earlier rows fill the page and the
+    // next one starts at the cut, where it reads every source afresh.
+    const firstStarts = [
+      ...(eventRows.length > 0 ? [eventRows[0].startsAt] : []),
+      ...(showRows.length > 0 ? [showStart(showRows[0].date)] : []),
+    ];
+    const inclusive = limit !== Infinity && Math.min(...firstStarts) === limit;
 
     const profiles = new Map<Id<"profiles">, Doc<"profiles"> | null>();
     const profile = async (id: Id<"profiles">) => {
@@ -520,7 +513,10 @@ export const upcoming = query({
     if (ready.length <= PAGE_SIZE) {
       if (limit === Infinity) return { items, nextCursor: null };
       // Everything before the cut is shown. An inclusive page moves past its instant.
-      return { items, nextCursor: { startsAt: inclusive ? limit + 1 : limit, skip: 0 } };
+      return {
+        items,
+        nextCursor: { startsAt: inclusive ? limit + 1 : limit, skip: 0 },
+      };
     }
     const last = items[items.length - 1].startsAt;
     let atLast = items.filter((i) => i.startsAt === last).length;
@@ -556,14 +552,17 @@ export const myEvents = query({
     }
     const answered = await ctx.db
       .query("rsvps")
-      .withIndex("by_pair", (q) => q.eq("profileId", me._id))
+      .withIndex("by_profile", (q) => q.eq("profileId", me._id))
       .order("desc")
       .take(MY_RSVPS);
     for (const r of answered) {
       if (out.has(r.eventId)) continue;
       const found = await visibleEvent(ctx, r.eventId);
       if (found === null || found.event.startsAt < now) continue;
-      out.set(r.eventId, { ...toEventItem(found.event, found.host), role: r.status });
+      out.set(r.eventId, {
+        ...toEventItem(found.event, found.host),
+        role: r.status,
+      });
     }
     return [...out.values()].sort((a, b) => a.startsAt - b.startsAt);
   },

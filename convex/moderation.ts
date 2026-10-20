@@ -8,7 +8,7 @@ import { toPublicCard, type PublicCard } from "./lib/cards";
 import { MAX_SCAN, rateLimiter } from "./lib/limits";
 import { MAX_TRACKS } from "./lib/media";
 import { storage } from "./lib/r2";
-import { adjustRsvpCounts } from "./events";
+import { adjustRsvpCounts } from "./lib/rsvps";
 import { removeTrack } from "./media";
 
 const MAX_REASON = 500;

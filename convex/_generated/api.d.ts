@@ -27,6 +27,7 @@ import type * as lib_otp from "../lib/otp.js";
 import type * as lib_password from "../lib/password.js";
 import type * as lib_posting from "../lib/posting.js";
 import type * as lib_r2 from "../lib/r2.js";
+import type * as lib_rsvps from "../lib/rsvps.js";
 import type * as mail from "../mail.js";
 import type * as media from "../media.js";
 import type * as migrations from "../migrations.js";
@@ -64,6 +65,7 @@ declare const fullApi: ApiFromModules<{
   "lib/password": typeof lib_password;
   "lib/posting": typeof lib_posting;
   "lib/r2": typeof lib_r2;
+  "lib/rsvps": typeof lib_rsvps;
   mail: typeof mail;
   media: typeof media;
   migrations: typeof migrations;

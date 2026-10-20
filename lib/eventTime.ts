@@ -50,6 +50,11 @@ export function isTimeZone(value: string): boolean {
   }
 }
 
+/** The zone's canonical IANA name, so "europe/london" becomes "Europe/London". Input must pass isTimeZone. */
+export function canonicalTimeZone(value: string): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone: value }).resolvedOptions().timeZone;
+}
+
 /** True for "HH:MM" on a 24 hour clock. */
 export function isTimeOfDay(value: string): boolean {
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
@@ -95,11 +100,30 @@ export function toUtc(localDate: string, localTime: string, timeZone: string): n
 }
 
 const displayFormats = new Map<string, Intl.DateTimeFormat>();
+const abbrFormats = new Map<string, Intl.DateTimeFormat>();
+/** Locales tried, in order, for a letter abbreviation when en-GB prints a GMT offset. */
+const ABBR_LOCALES = ["en-US", "en-ZA", "en-AU"];
+
+/** The first of en-US, en-ZA, en-AU that names the zone in letters (EDT, SAST, AEDT), or null. */
+function letterAbbreviation(startsAt: number, timeZone: string): string | null {
+  for (const locale of ABBR_LOCALES) {
+    const key = `${locale}|${timeZone}`;
+    let f = abbrFormats.get(key);
+    if (f === undefined) {
+      f = new Intl.DateTimeFormat(locale, { timeZone, timeZoneName: "short" });
+      abbrFormats.set(key, f);
+    }
+    const name = f.formatToParts(startsAt).find((p) => p.type === "timeZoneName")?.value;
+    if (name !== undefined && /^[A-Z]{2,5}$/.test(name)) return name;
+  }
+  return null;
+}
 
 /**
  * An event's start in its own zone, like "Sat 24 Oct 2026, 8:00 PM BST".
- * The abbreviation comes from the runtime's ICU data, so some zones show a
- * GMT offset instead (Node 22 prints "GMT+2" for Africa/Johannesburg).
+ * The format is en-GB. Where en-GB only has a GMT offset ("GMT+2"), the
+ * abbreviation comes from en-US, en-ZA or en-AU instead (EDT, SAST, AEDT),
+ * and stays the offset when none of them has letters.
  */
 export function formatEventTime(startsAt: number, timeZone: string): string {
   let f = displayFormats.get(timeZone);
@@ -121,5 +145,8 @@ export function formatEventTime(startsAt: number, timeZone: string): string {
   for (const part of f.formatToParts(startsAt)) p[part.type] = part.value;
   // en-GB writes September as "Sept".
   const month = p.month.slice(0, 3);
-  return `${p.weekday} ${p.day} ${month} ${p.year}, ${p.hour}:${p.minute} ${p.dayPeriod.toUpperCase()} ${p.timeZoneName}`;
+  const zone = /^GMT[+\-\u2212]/.test(p.timeZoneName)
+    ? (letterAbbreviation(startsAt, timeZone) ?? p.timeZoneName)
+    : p.timeZoneName;
+  return `${p.weekday} ${p.day} ${month} ${p.year}, ${p.hour}:${p.minute} ${p.dayPeriod.toUpperCase()} ${zone}`;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { formatEventTime, isTimeOfDay, isTimeZone, toUtc } from "../lib/eventTime";
+import { canonicalTimeZone, formatEventTime, isTimeOfDay, isTimeZone, toUtc } from "../lib/eventTime";
 
 const utc = (iso: string) => Date.parse(iso);
 
@@ -45,12 +45,25 @@ describe("toUtc", () => {
 
 describe("isTimeZone", () => {
   test("accepts IANA names and rejects junk and raw offsets", () => {
-    for (const z of ["Africa/Johannesburg", "Europe/London", "America/New_York", "UTC", "America/Argentina/Buenos_Aires"]) {
+    for (const z of [
+      "Africa/Johannesburg",
+      "Europe/London",
+      "America/New_York",
+      "UTC",
+      "America/Argentina/Buenos_Aires",
+    ]) {
       expect(isTimeZone(z)).toBe(true);
     }
     for (const z of ["", "Mars/Olympus", "not a zone", "+02:00", "-05:00", "x".repeat(65)]) {
       expect(isTimeZone(z)).toBe(false);
     }
+  });
+});
+
+describe("canonicalTimeZone", () => {
+  test("fixes the case of a zone name", () => {
+    expect(canonicalTimeZone("europe/london")).toBe("Europe/London");
+    expect(canonicalTimeZone("Africa/Johannesburg")).toBe("Africa/Johannesburg");
   });
 });
 
@@ -73,9 +86,13 @@ describe("formatEventTime", () => {
   });
 
   test("Africa/Johannesburg shows its local time with an abbreviation", () => {
-    // Node 22's ICU prints GMT+2 for this zone in en-GB; a browser may print SAST.
-    expect(formatEventTime(utc("2026-10-24T18:00:00Z"), "Africa/Johannesburg")).toMatch(
-      /^Sat 24 Oct 2026, 8:00 PM (GMT\+2|SAST)$/,
-    );
+    expect(formatEventTime(utc("2026-10-24T18:00:00Z"), "Africa/Johannesburg")).toBe("Sat 24 Oct 2026, 8:00 PM SAST");
+  });
+
+  test("New York and Sydney get letter abbreviations", () => {
+    expect(formatEventTime(utc("2026-10-24T22:00:00Z"), "America/New_York")).toBe("Sat 24 Oct 2026, 6:00 PM EDT");
+    expect(formatEventTime(utc("2026-12-24T22:00:00Z"), "America/New_York")).toBe("Thu 24 Dec 2026, 5:00 PM EST");
+    expect(formatEventTime(utc("2026-12-24T09:00:00Z"), "Australia/Sydney")).toBe("Thu 24 Dec 2026, 8:00 PM AEDT");
+    expect(formatEventTime(utc("2026-07-24T09:00:00Z"), "Australia/Sydney")).toBe("Fri 24 Jul 2026, 7:00 PM AEST");
   });
 });

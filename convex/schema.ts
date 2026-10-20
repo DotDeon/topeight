@@ -206,8 +206,9 @@ export default defineSchema({
     status: v.union(v.literal("going"), v.literal("maybe")),
   })
     .index("by_event_status", ["eventId", "status"])
-    // Profile first, so it also lists a member's RSVPs.
-    .index("by_pair", ["profileId", "eventId"]),
+    .index("by_pair", ["profileId", "eventId"])
+    // Newest first with order("desc"), for a member's RSVP list.
+    .index("by_profile", ["profileId"]),
 
   blocks: defineTable({
     blocker: v.id("profiles"),
