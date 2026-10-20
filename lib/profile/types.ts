@@ -60,6 +60,12 @@ export type PublicProfile = {
    * short-lived signed playback URL, null until the usercontent route merges one in.
    */
   tracks: Array<{ id: string; title: string; url: string | null; autoplay: boolean }>;
+  /**
+   * The member's profile song, null when none is picked or it is unavailable (track
+   * deleted, artist banned or sharing off). `id` is the Convex track id; `url` is
+   * null until the usercontent route merges in a signed one.
+   */
+  profileSong?: { id: string; title: string; url: string | null; artist: PublicCard } | null;
   shows: Array<{ date: string; venue: string; city: string }>;
   custom: { css: string; html: string; js: string };
 };

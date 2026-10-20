@@ -12,6 +12,7 @@ import { MAX_SCAN, rateLimiter } from "./lib/limits";
 import { isOnline } from "./lib/presence";
 import { moodIcon } from "./lib/moods";
 import { MAX_TRACKS, photoUrl, syncMediaFlags } from "./lib/media";
+import { profileSongFor } from "./lib/profileSongs";
 
 const MIN_AGE = 13;
 const MAX_DISPLAY_NAME = 50;
@@ -420,6 +421,8 @@ export const getPublicProfile = query({
     // signs short-lived playback URLs at render time (media.playbackUrls).
     for (const t of trackRows) tracks.push({ id: t._id, title: t.title, url: null, autoplay: t.autoplay });
 
+    const song = await profileSongFor(ctx, p);
+
     const today = new Date().toISOString().slice(0, 10);
     const shows = await ctx.db
       .query("shows")
@@ -453,6 +456,11 @@ export const getPublicProfile = query({
       latestBulletin: bulletin ? { body: bulletin.body, createdAt: bulletin._creationTime } : null,
       latestBlog: blog ? { id: blog._id, title: blog.title, createdAt: blog._creationTime } : null,
       tracks,
+      // No URL here either: the usercontent route merges in the one playbackUrls signs.
+      profileSong:
+        song === null
+          ? null
+          : { id: song.track._id, title: song.track.title, url: null, artist: toPublicCard(song.artist) },
       shows: shows.map((s) => ({ date: s.date, venue: s.venue, city: s.city })),
       // Fans get CSS only. The renderer drops fan html and js too.
       custom: {

@@ -755,3 +755,104 @@ describe("player script", () => {
   });
 });
 
+
+describe("profile song in the player", () => {
+  const song = (over: Partial<NonNullable<PublicProfile["profileSong"]>> = {}) => ({
+    id: "ps1",
+    title: "Red Dust",
+    url: "https://media.example/ps1.mp3",
+    artist: card("nightjar", "artist"),
+    ...over,
+  });
+  const rows = (html: string) => html.match(/<li[ >].*?<\/li>/g) ?? [];
+  const text = (row: string | undefined) => (row ?? "").replace(/<[^>]+>/g, "").replace(/&#9654; /, "");
+
+  test("a fan with a song gets the player with one track, 'title by artist', artist linked", () => {
+    const html = renderProfileDocument(fan({ profileSong: song() }), opts);
+    expect(html).toContain('id="topeight-player"');
+    const r = rows(html);
+    expect(r).toHaveLength(1);
+    expect(text(r[0])).toBe("Red Dust by Nightjar");
+    expect(r[0]).toContain('data-track-id="ps1"');
+    expect(r[0]).toContain('data-src="https://media.example/ps1.mp3"');
+    expect(r[0]).toContain('<a href="#" data-topeight-navigate="nightjar">Nightjar</a>');
+    // The artist link sits outside the play button.
+    expect(r[0]).toMatch(/<\/button>.*data-topeight-navigate="nightjar"/);
+    expect(html).toContain('data-autoplay="0"');
+    expect(html).toContain('src="https://media.example/ps1.mp3"');
+  });
+
+  test("a fan without a song, or with one that has no playable URL, gets no player", () => {
+    expect(renderProfileDocument(fan({ profileSong: null }), opts)).not.toContain('id="topeight-player"');
+    expect(renderProfileDocument(fan({ profileSong: song({ url: null }) }), opts)).not.toContain(
+      'id="topeight-player"',
+    );
+    expect(renderProfileDocument(fan({ profileSong: song({ url: "javascript:alert(1)" }) }), opts)).not.toContain(
+      'id="topeight-player"',
+    );
+  });
+
+  test("a fan's own uploaded tracks never show next to the song", () => {
+    const html = renderProfileDocument(fan({ profileSong: song(), tracks: [t("Mine", true)] }), opts);
+    expect(rows(html)).toHaveLength(1);
+    expect(html).not.toContain(">Mine<");
+  });
+
+  test("an artist's picked song comes first and autoplays, then their own tracks", () => {
+    const html = renderProfileDocument(
+      artist({ profileSong: song(), tracks: [{ ...t("Own A"), id: "k1" }, { ...t("Own B", true), id: "k2" }] }),
+      opts,
+    );
+    const r = rows(html);
+    expect(r.map(text)).toEqual(["Red Dust by Nightjar", "Own AReport", "Own BReport"]);
+    expect(r[0]).toContain('data-index="0"');
+    expect(r[1]).toContain('data-index="1"');
+    expect(html).toContain('data-autoplay="0"');
+    expect(r[0]).toContain('class="player-track current"');
+  });
+
+  test("without a song, an artist's own autoplay track stays first to play", () => {
+    const html = renderProfileDocument(
+      artist({ profileSong: null, tracks: [{ ...t("Own A"), id: "k1" }, { ...t("Own B", true), id: "k2" }] }),
+      opts,
+    );
+    expect(html).toContain('data-autoplay="1"');
+  });
+
+  test("an artist who picked their own song gets it on top once", () => {
+    const html = renderProfileDocument(
+      artist({
+        profileSong: song({ id: "k1", artist: card("lowveld", "artist") }),
+        tracks: [{ ...t("Own A", true), id: "k1" }, { ...t("Own B"), id: "k2" }],
+      }),
+      opts,
+    );
+    const r = rows(html);
+    expect(r.map(text)).toEqual(["Red Dust by Lowveld", "Own BReport"]);
+  });
+
+  test("song title, artist name, username and id are escaped", () => {
+    const evil = '"><img src=x onerror=alert(1)>';
+    const html = renderProfileDocument(
+      fan({
+        profileSong: song({
+          id: evil,
+          title: evil,
+          artist: { username: evil, displayName: evil, photoUrl: null, kind: "artist" },
+        }),
+      }),
+      opts,
+    );
+    expect(html).not.toContain("<img src=x onerror");
+    expect(html).toContain('data-topeight-navigate="&quot;&gt;&lt;img src=x onerror=alert(1)&gt;"');
+    expect(html).toContain('data-track-id="&quot;&gt;&lt;img src=x onerror=alert(1)&gt;"');
+  });
+
+  test("a fan's song player refreshes from the fan's own tracks URL", () => {
+    const html = renderProfileDocument(fan({ profileSong: song() }), {
+      ...opts,
+      usercontentOrigin: "http://127.0.0.1:3000",
+    });
+    expect(html).toContain('data-tracks-url="http://127.0.0.1:3000/jess?format=tracks"');
+  });
+});

@@ -56,7 +56,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/usercontent/
 
   const tracksOnly = new URL(request.url).searchParams.get("format") === "tracks";
   let profile;
-  let signed: Array<{ id: string; url: string }> | null;
+  let signed: Array<{ id: string; url: string; profileSong?: true }> | null;
   try {
     const client = new ConvexHttpClient(requireEnv("NEXT_PUBLIC_CONVEX_URL"));
     // The tracks refresh only needs existence and ban status, so it skips the full profile.
@@ -79,7 +79,8 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/usercontent/
 
   if (tracksOnly) {
     if (signed === null) return plain(503, "Tracks temporarily unavailable", csp);
-    return new Response(JSON.stringify({ tracks: signed.map(({ id, url }) => ({ id, url })) }), {
+    const tracks = signed.map(({ id, url, profileSong }) => ({ id, url, ...(profileSong ? { profileSong } : {}) }));
+    return new Response(JSON.stringify({ tracks }), {
       status: 200,
       headers: {
         ...baseHeaders(csp),
@@ -91,10 +92,14 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/usercontent/
   }
 
   // Without signed URLs the page still renders, just without a player.
-  const urls = new Map((signed ?? []).map((t) => [t.id, t.url]));
+  const urls = new Map((signed ?? []).filter((t) => !t.profileSong).map((t) => [t.id, t.url]));
+  const signedSong = signed?.find((t) => t.profileSong);
   if (!("tracks" in profile)) return plain(404, "Not found", csp);
   const tracks = profile.tracks.map((t) => ({ ...t, url: urls.get(t.id) ?? null }));
-  return new Response(renderProfileDocument({ ...profile, tracks }, { mainOrigin, usercontentOrigin }), {
+  // The profile song's URL comes only from the flagged entry, and only when it signs the same track.
+  const song = profile.profileSong;
+  const profileSong = song && { ...song, url: signedSong?.id === song.id ? signedSong.url : null };
+  return new Response(renderProfileDocument({ ...profile, tracks, profileSong }, { mainOrigin, usercontentOrigin }), {
     status: 200,
     headers: { ...baseHeaders(csp), "Content-Type": "text/html; charset=utf-8" },
   });

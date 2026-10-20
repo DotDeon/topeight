@@ -122,6 +122,24 @@ describe("usercontent route", () => {
     expect(html).toContain('data-tracks-url="http://127.0.0.1:3000/band?format=tracks"');
   });
 
+  test("merges the profile song's signed URL into a fan's player", async () => {
+    const mia: PublicProfile = {
+      ...profile,
+      username: "mia",
+      profileSong: {
+        id: "ps1",
+        title: "Red Dust",
+        url: null,
+        artist: { username: "band", displayName: "Band", photoUrl: null, kind: "artist" },
+      },
+    };
+    query.mockResolvedValue(mia);
+    action.mockResolvedValue([{ id: "ps1", url: "https://audio.example/ps1", profileSong: true }]);
+    const html = await (await get("mia")).text();
+    expect(html).toContain('data-src="https://audio.example/ps1"');
+    expect(html).toContain('data-topeight-navigate="band"');
+  });
+
   test("still serves the document when signing fails", async () => {
     query.mockResolvedValue(profile);
     action.mockRejectedValue(new Error("boom"));
@@ -140,6 +158,13 @@ describe("usercontent route ?format=tracks", () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     expect(await res.json()).toEqual({ tracks: [{ id: "t1", url: "https://audio.example/t1" }] });
+  });
+
+  test("includes the profile song entry with its flag", async () => {
+    query.mockResolvedValue(profile);
+    action.mockResolvedValue([{ id: "ps1", url: "https://audio.example/ps1", profileSong: true }]);
+    const res = await get("jess", "127.0.0.1:3000", "?format=tracks");
+    expect(await res.json()).toEqual({ tracks: [{ id: "ps1", url: "https://audio.example/ps1", profileSong: true }] });
   });
 
   test("404s on the main host, for bad usernames, and for missing or banned profiles", async () => {

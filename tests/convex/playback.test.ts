@@ -105,6 +105,60 @@ describe("media.playbackUrls", () => {
   });
 });
 
+describe("media.playbackUrls profile song", () => {
+  async function fanWithSong(t: T) {
+    const band = await addProfile(t, "band", { kind: "artist" });
+    const [track] = await addTracks(t, band, 1);
+    await addProfile(t, "mia", { profileSong: track });
+    return { band, track };
+  }
+
+  test("signs the picked song against the artist's key, flagged profileSong", async () => {
+    const t = setup();
+    const { band, track } = await fanWithSong(t);
+    const urls = await t.action(api.media.playbackUrls, { username: "mia" });
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toMatchObject({ id: track, profileSong: true });
+    const u = new URL(urls[0].url);
+    expect(u.host).toBe("test-audio-bucket.test-account.r2.cloudflarestorage.com");
+    expect(u.pathname).toBe(`/tracks/${band}/0`);
+    expect(u.searchParams.get("X-Amz-Expires")).toBe("900");
+  });
+
+  test("signs nothing for the song once it is unavailable", async () => {
+    const t = setup();
+    const { band, track } = await fanWithSong(t);
+    await t.run((ctx) => ctx.db.patch(band, { shareSongs: false }));
+    expect(await t.action(api.media.playbackUrls, { username: "mia" })).toEqual([]);
+    await t.run((ctx) => ctx.db.patch(band, { shareSongs: undefined, banned: true }));
+    expect(await t.action(api.media.playbackUrls, { username: "mia" })).toEqual([]);
+    await t.run((ctx) => ctx.db.patch(band, { banned: false }));
+    await t.run((ctx) => ctx.db.delete(track));
+    expect(await t.action(api.media.playbackUrls, { username: "mia" })).toEqual([]);
+  });
+
+  test("an artist gets the picked song as an extra entry on top of 10 own tracks", async () => {
+    const t = setup();
+    const other = await addProfile(t, "other", { kind: "artist" });
+    const [picked] = await addTracks(t, other, 1);
+    const band = await addProfile(t, "band", { kind: "artist", profileSong: picked });
+    const own = await addTracks(t, band, 12);
+    const urls = await t.action(api.media.playbackUrls, { username: "band" });
+    expect(urls).toHaveLength(11);
+    expect(urls[0]).toMatchObject({ id: picked, profileSong: true });
+    expect(urls.slice(1).map((u) => u.id)).toEqual(own.slice(0, 10));
+    expect(urls.slice(1).every((u) => u.profileSong === undefined)).toBe(true);
+  });
+
+  test("a banned fan's picked song is not signed", async () => {
+    const t = setup();
+    const band = await addProfile(t, "band", { kind: "artist" });
+    const [track] = await addTracks(t, band, 1);
+    await addProfile(t, "mia", { profileSong: track, banned: true });
+    expect(await t.action(api.media.playbackUrls, { username: "mia" })).toEqual([]);
+  });
+});
+
 describe("getPublicProfile tracks", () => {
   test("carry no URL, even with a public media base", async () => {
     const t = setup();

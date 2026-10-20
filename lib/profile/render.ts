@@ -4,7 +4,7 @@ import { moodLabel, moodSvg } from "@/lib/moodSvg";
 import { MOOD_ICONS } from "@/lib/moods";
 import { onlineNowHtml } from "@/lib/onlineBadge";
 import { PROFILE_CSS } from "./profile-css";
-import type { PublicProfile } from "./types";
+import type { PublicCard, PublicProfile } from "./types";
 
 export type { PublicCard, PublicProfile } from "./types";
 
@@ -148,18 +148,41 @@ function detailsRows(rows: Array<[string, string | undefined]>): string {
     .join("");
 }
 
+type PlayerRow = { id: string; title: string; url: string; autoplay: boolean; by?: PublicCard };
+
+/**
+ * The rows the player shows. The profile song (if it has a playable URL) comes
+ * first, labelled with its artist. Fans get only that; artists follow it with
+ * their own tracks, skipping their own song if they picked it.
+ */
+function playerRows(p: PublicProfile): PlayerRow[] {
+  const song = p.profileSong && safeUrl(p.profileSong.url) !== null ? p.profileSong : null;
+  const rows: PlayerRow[] = song
+    ? [{ id: song.id, title: song.title, url: song.url!, autoplay: true, by: song.artist }]
+    : [];
+  if (p.kind !== "artist") return rows;
+  for (const t of p.tracks) {
+    if (safeUrl(t.url) === null || t.id === song?.id) continue;
+    rows.push({ id: t.id, title: t.title, url: t.url!, autoplay: song ? false : t.autoplay });
+  }
+  return rows;
+}
+
+function playerRow(t: PlayerRow, i: number, current: boolean): string {
+  const button = `<button type="button" class="player-track${current ? " current" : ""}" data-index="${i}" data-track-id="${escapeHtml(t.id)}" data-src="${escapeHtml(t.url)}"><span><span class="mark">&#9654; </span>${escapeHtml(t.title)}</span><span class="dur"></span></button>`;
+  // Links sit outside the button, so clicking them never toggles playback.
+  if (t.by) {
+    return `<li class="player-song">${button}<span class="player-by"> by ${navLink(t.by.username, escapeHtml(t.by.displayName))}</span></li>`;
+  }
+  return `<li>${button}<a href="#" class="player-report" data-topeight-report-track="${escapeHtml(t.id)}">Report</a></li>`;
+}
+
 function renderPlayer(p: PublicProfile, name: string, opts: RenderOptions): string {
-  const tracks = p.tracks.filter((t): t is typeof t & { url: string } => safeUrl(t.url) !== null);
-  if (p.kind !== "artist" || tracks.length === 0) return "";
+  const tracks = playerRows(p);
+  if (tracks.length === 0) return "";
   const autoplay = tracks.findIndex((t) => t.autoplay);
   const first = autoplay >= 0 ? autoplay : 0;
-  const items = tracks
-    .map(
-      (t, i) =>
-        // The Report link sits outside the button, so clicking it never toggles playback.
-        `<li><button type="button" class="player-track${i === first ? " current" : ""}" data-index="${i}" data-track-id="${escapeHtml(t.id)}" data-src="${escapeHtml(t.url)}"><span><span class="mark">&#9654; </span>${escapeHtml(t.title)}</span><span class="dur"></span></button><a href="#" class="player-report" data-topeight-report-track="${escapeHtml(t.id)}">Report</a></li>`,
-    )
-    .join("");
+  const items = tracks.map((t, i) => playerRow(t, i, i === first)).join("");
   const refresh = opts.usercontentOrigin
     ? ` data-tracks-url="${escapeHtml(`${opts.usercontentOrigin.replace(/\/+$/, "")}/${encodeURIComponent(p.username)}?format=tracks`)}"`
     : "";
