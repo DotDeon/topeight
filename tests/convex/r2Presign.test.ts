@@ -1,4 +1,4 @@
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { CopyObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("@aws-sdk/s3-request-presigner", async (importOriginal) => {
@@ -92,5 +92,19 @@ describe("headObject", () => {
       throw Object.assign(new Error("NotFound"), { name: "NotFound", $metadata: { httpStatusCode: 404 } });
     });
     expect(await headObject("tracks/p1/missing", "test-audio-bucket")).toBeNull();
+  });
+});
+
+describe("storage.copyToAudio", () => {
+  test("copies a key from the public bucket to the audio bucket on the server side", async () => {
+    const send = vi.spyOn(S3Client.prototype, "send").mockImplementation(async () => ({}));
+    await storage.copyToAudio("tracks/p1/abc");
+    const command = send.mock.calls[0][0] as CopyObjectCommand;
+    expect(command).toBeInstanceOf(CopyObjectCommand);
+    expect(command.input).toEqual({
+      Bucket: "test-audio-bucket",
+      Key: "tracks/p1/abc",
+      CopySource: "test-bucket/tracks/p1/abc",
+    });
   });
 });

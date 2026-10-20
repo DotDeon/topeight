@@ -1,7 +1,13 @@
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  CopyObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { R2 } from "@convex-dev/r2";
-import type { GenericMutationCtx, GenericQueryCtx } from "convex/server";
+import type { GenericActionCtx, GenericMutationCtx, GenericQueryCtx } from "convex/server";
 import { components } from "../_generated/api";
 import type { DataModel } from "../_generated/dataModel";
 
@@ -14,7 +20,9 @@ export const UPLOAD_URL_TTL_S = 300;
 export const PLAYBACK_URL_TTL_S = 900;
 
 type ReadCtx = Pick<GenericQueryCtx<DataModel>, "runQuery">;
-type WriteCtx = Pick<GenericMutationCtx<DataModel>, "runQuery" | "runMutation">;
+type WriteCtx =
+  | Pick<GenericMutationCtx<DataModel>, "runQuery" | "runMutation">
+  | Pick<GenericActionCtx<DataModel>, "runQuery" | "runMutation" | "runAction">;
 
 export type MediaPurpose = "photo" | "track";
 export type PutTarget = { key: string; size: number; contentType: string; purpose: MediaPurpose };
@@ -34,11 +42,15 @@ export function audioConfigured(): boolean {
   return ["R2_AUDIO_BUCKET", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"].every((k) => !!process.env[k]);
 }
 
-function bucketFor(purpose: MediaPurpose): string {
-  if (purpose === "track") return audioBucket();
+/** The public photo bucket. Tracks uploaded before the audio bucket existed are here too. */
+export function photoBucket(): string {
   const bucket = r2.config.bucket;
   if (!bucket) throw new Error("R2_BUCKET must be set");
   return bucket;
+}
+
+function bucketFor(purpose: MediaPurpose): string {
+  return purpose === "track" ? audioBucket() : photoBucket();
 }
 
 let s3: S3Client | undefined;
@@ -124,5 +136,27 @@ export const storage = {
   async remove(ctx: WriteCtx, key: string, purpose: MediaPurpose): Promise<void> {
     const client = purpose === "track" ? new R2(components.r2, { bucket: audioBucket() }) : r2;
     await client.deleteObject(ctx, key);
+  },
+  /**
+   * Best effort: delete a track key from the public bucket too, where tracks
+   * uploaded before the audio bucket existed may still sit. Deleting a missing
+   * key is a no-op in R2. Never throws.
+   */
+  async removeLegacyPublic(ctx: WriteCtx, key: string): Promise<void> {
+    try {
+      await r2.deleteObject(ctx, key);
+    } catch (e) {
+      console.warn(`Legacy public delete failed for ${key}`, e);
+    }
+  },
+  /** Server-side copy of a key from the public bucket to the audio bucket. */
+  async copyToAudio(key: string): Promise<void> {
+    await client().send(
+      new CopyObjectCommand({
+        Bucket: audioBucket(),
+        Key: key,
+        CopySource: `${photoBucket()}/${key.split("/").map(encodeURIComponent).join("/")}`,
+      }),
+    );
   },
 };

@@ -339,7 +339,10 @@ export const playbackUrls = action({
   returns: v.array(v.object({ id: v.id("tracks"), url: v.string() })),
   handler: async (ctx, { username }): Promise<Array<{ id: Id<"tracks">; url: string }>> => {
     // Without an audio bucket (local dev) there is nothing to sign.
-    if (!audioConfigured()) return [];
+    if (!audioConfigured()) {
+      console.warn("R2 audio bucket not configured");
+      return [];
+    }
     const tracks: Array<{ id: Id<"tracks">; key: string }> = await ctx.runQuery(internal.media.playableTracks, {
       username,
     });
@@ -399,6 +402,8 @@ export const deleteTrack = mutation({
 /** Deletes a track and its R2 object, and passes autoplay on to the next track. No access check. */
 export async function removeTrack(ctx: MutationCtx, track: Doc<"tracks">): Promise<void> {
   await storage.remove(ctx, track.key, "track");
+  // A track from before the audio bucket may still have a public copy. Remove it too.
+  await storage.removeLegacyPublic(ctx, track.key);
   await ctx.db.delete(track._id);
   if (track.autoplay) {
     const rest = await tracksFor(ctx, track.profileId);

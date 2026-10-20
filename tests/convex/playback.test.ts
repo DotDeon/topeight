@@ -69,7 +69,11 @@ describe("media.playbackUrls", () => {
     const t = setup();
     const band = await addProfile(t, "band", { kind: "artist" });
     await addTracks(t, band, 1);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(await t.action(api.media.playbackUrls, { username: "band" })).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith("R2 audio bucket not configured");
+    warn.mockRestore();
   });
 });
 

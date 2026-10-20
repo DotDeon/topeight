@@ -14,6 +14,10 @@ const MB = 1024 * 1024;
 /** Metadata the mocked R2 reports for each key, as if the client had uploaded it. */
 let objects: Map<string, { size: number; contentType: string }>;
 let removed: string[];
+/** [key, purpose] for every storage.remove call, so tests can check the bucket. */
+let removals: Array<[string, string]>;
+/** Keys sent to the best-effort legacy delete on the public bucket. */
+let legacyRemoved: string[];
 
 beforeEach(() => {
   // Fake setTimeout too, so scheduled functions (expiry, the component's HEAD sync)
@@ -22,6 +26,8 @@ beforeEach(() => {
   vi.setSystemTime(NOW);
   objects = new Map();
   removed = [];
+  removals = [];
+  legacyRemoved = [];
   vi.spyOn(storage, "uploadUrl").mockImplementation(async ({ key }) => ({
     key,
     url: `https://r2.test/${key}?signed`,
@@ -30,8 +36,12 @@ beforeEach(() => {
     const o = objects.get(key);
     return o ? { key, size: o.size, contentType: o.contentType } : null;
   });
-  vi.spyOn(storage, "remove").mockImplementation(async (_ctx, key: string) => {
+  vi.spyOn(storage, "remove").mockImplementation(async (_ctx, key: string, purpose: string) => {
     removed.push(key);
+    removals.push([key, purpose]);
+  });
+  vi.spyOn(storage, "removeLegacyPublic").mockImplementation(async (_ctx, key: string) => {
+    legacyRemoved.push(key);
   });
   // HEAD on the audio bucket, as if the client had uploaded the object.
   vi.spyOn(storage, "head").mockImplementation(async (key: string) => objects.get(key) ?? null);
@@ -207,6 +217,8 @@ describe("confirmTrackUpload", () => {
       expect(await me.action(api.media.confirmTrackUpload, { uploadId })).toEqual({ accepted: false });
     }
     expect(removed).toEqual(keys);
+    // Rejected tracks are deleted from the audio bucket.
+    expect(removals.map(([, purpose]) => purpose)).toEqual(["track", "track"]);
     expect(await tracksOf(t, band)).toHaveLength(0);
     expect(await pendingCount(t)).toBe(0);
   });
@@ -373,7 +385,10 @@ describe("onSyncMetadata for photos", () => {
     const fan = await addProfile(t, "fan", { photoKey: "photos/old" });
     const big = await upload(t, fan, "photo", jpeg(), undefined, jpeg(2 * MB + 1));
     const svg = await upload(t, fan, "photo", jpeg(100), undefined, { size: 100, contentType: "image/svg+xml" });
-    expect(removed).toEqual([big, svg]);
+    expect(removals).toEqual([
+      [big, "photo"],
+      [svg, "photo"],
+    ]);
     expect((await t.run((ctx) => ctx.db.get(fan)))!.photoKey).toBe("photos/old");
     expect(await pendingCount(t)).toBe(0);
   });
@@ -383,7 +398,7 @@ describe("onSyncMetadata for photos", () => {
     const fan = await addProfile(t, "fan", { photoKey: "photos/old" });
     const key = await upload(t, fan, "photo", { size: 2 * MB, contentType: "image/webp" });
     expect((await t.run((ctx) => ctx.db.get(fan)))!.photoKey).toBe(key);
-    expect(removed).toEqual(["photos/old"]);
+    expect(removals).toEqual([["photos/old", "photo"]]);
   });
 });
 
@@ -550,7 +565,9 @@ describe("track management", () => {
       ["b", true],
       ["c", false],
     ]);
-    expect(removed).toEqual([key]);
+    // Deleted from the audio bucket, and from the public bucket in case it is a legacy upload.
+    expect(removals).toEqual([[key, "track"]]);
+    expect(legacyRemoved).toEqual([key]);
   });
 
   test("deleting the last autoplay track wraps to the first", async () => {

@@ -6,6 +6,8 @@ import { storage } from "../../convex/lib/r2";
 import { DAY, NOW, addProfile, as, befriend, setup, type T } from "./helpers";
 
 let removed: string[];
+let removals: Array<[string, string]>;
+let legacyRemoved: string[];
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -13,8 +15,14 @@ beforeEach(() => {
   vi.stubEnv("ADMIN_EMAILS", " Boss@Example.com ,other@example.com");
   vi.stubEnv("NEXT_PUBLIC_R2_PUBLIC_URL", "https://cdn.example.com");
   removed = [];
-  vi.spyOn(storage, "remove").mockImplementation(async (_ctx, key: string) => {
+  removals = [];
+  legacyRemoved = [];
+  vi.spyOn(storage, "remove").mockImplementation(async (_ctx, key: string, purpose: string) => {
     removed.push(key);
+    removals.push([key, purpose]);
+  });
+  vi.spyOn(storage, "removeLegacyPublic").mockImplementation(async (_ctx, key: string) => {
+    legacyRemoved.push(key);
   });
 });
 afterEach(() => {
@@ -324,6 +332,9 @@ describe("admin functions", () => {
     await (await as(t, boss)).mutation(api.moderation.deleteTrack, { trackId: track });
     expect(await t.run((ctx) => ctx.db.get(track))).toBeNull();
     expect(removed).toEqual([`tracks/${target}/Loud Song`]);
+    // Both buckets: the audio one, and the public one for legacy uploads.
+    expect(removals).toEqual([[`tracks/${target}/Loud Song`, "track"]]);
+    expect(legacyRemoved).toEqual([`tracks/${target}/Loud Song`]);
   });
 });
 

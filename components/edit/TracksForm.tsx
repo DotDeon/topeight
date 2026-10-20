@@ -78,13 +78,15 @@ export function TracksForm() {
         // Only a 128 kbps copy is uploaded. The encoder loads here, not with the page.
         setConverting(true);
         let file: File;
+        let tooLong: string;
         try {
-          const { transcodeToMp3_128 } = await import("@/lib/transcode");
-          file = await transcodeToMp3_128(original);
+          const transcode = await import("@/lib/transcode");
+          tooLong = transcode.TOO_LONG;
+          file = await transcode.transcodeToMp3_128(original);
         } finally {
           setConverting(false);
         }
-        if (file.size > TRACK_MAX_BYTES) throw new Error("That song is too long. Songs can be about 5 minutes.");
+        if (file.size > TRACK_MAX_BYTES) throw new Error(tooLong);
         await upload(file, { purpose: "track", title });
         watch.uploaded();
       } catch (err) {

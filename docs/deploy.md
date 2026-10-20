@@ -117,3 +117,7 @@ Running the seed again is safe. It updates the demo profiles and refreshes the s
 ## 10. After upgrading
 
 Run `npx convex run migrations:backfillMediaFlags` once. It sets the photo and track flags that Cool New People and Cool New Music read, on profiles made before those flags existed. It works through 100 profiles at a time and schedules itself until done. Running it again is safe.
+
+### Move existing songs to the private bucket
+
+Right after deploying the version with `R2_AUDIO_BUCKET`, run `npx convex run migrations:moveTracksToAudioBucket` once. Songs uploaded before then sit in the public photo bucket, where anyone with the link can reach them and where they no longer play. The migration copies each one to `R2_AUDIO_BUCKET` unless it is already there, then deletes the public copy. It works through 50 songs at a time and schedules itself until done. Running it again is safe, and songs that already moved are skipped. Set `R2_AUDIO_BUCKET` before you run it.

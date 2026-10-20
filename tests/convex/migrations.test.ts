@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { internal } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { storage } from "../../convex/lib/r2";
 import { NOW, addProfile, setup, type T } from "./helpers";
 
 beforeEach(() => {
@@ -53,5 +54,82 @@ describe("backfillMediaFlags", () => {
     expect(await done()).toBe(100);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(await done()).toBe(250);
+  });
+});
+
+describe("moveTracksToAudioBucket", () => {
+  /** Objects per bucket, as a stubbed R2 sees them. */
+  let buckets: Record<string, Set<string>>;
+  let copies: string[];
+  let deletes: string[];
+
+  beforeEach(() => {
+    buckets = { "test-bucket": new Set(), "test-audio-bucket": new Set() };
+    copies = [];
+    deletes = [];
+    vi.spyOn(storage, "head").mockImplementation(async (key: string, bucket: string) =>
+      buckets[bucket]?.has(key) ? { size: 1, contentType: "audio/mpeg" } : null,
+    );
+    vi.spyOn(storage, "copyToAudio").mockImplementation(async (key: string) => {
+      copies.push(key);
+      buckets["test-audio-bucket"].add(key);
+    });
+    vi.spyOn(storage, "removeLegacyPublic").mockImplementation(async (_ctx, key: string) => {
+      deletes.push(key);
+      buckets["test-bucket"].delete(key);
+    });
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  async function addTracks(t: T, n: number, where: "public" | "audio") {
+    const band = await addProfile(t, `band${where}`, { kind: "artist" });
+    const keys: string[] = [];
+    await t.run(async (ctx) => {
+      for (let i = 0; i < n; i++) {
+        const key = `tracks/${band}/${where}-${i}`;
+        keys.push(key);
+        await ctx.db.insert("tracks", { profileId: band, title: `s${i}`, key, size: 1, order: i, autoplay: i === 0 });
+      }
+    });
+    for (const k of keys) buckets[where === "public" ? "test-bucket" : "test-audio-bucket"].add(k);
+    return keys;
+  }
+
+  async function runAll(t: T) {
+    await t.action(internal.migrations.moveTracksToAudioBucket, {});
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+  }
+
+  test("copies each legacy track to the audio bucket, then deletes the public copy", async () => {
+    const t = setup();
+    const legacy = await addTracks(t, 3, "public");
+    await runAll(t);
+    expect(copies).toEqual(legacy);
+    expect(deletes).toEqual(legacy);
+    expect([...buckets["test-audio-bucket"]]).toEqual(legacy);
+    expect(buckets["test-bucket"].size).toBe(0);
+  });
+
+  test("skips tracks already in the audio bucket, and a second run does nothing", async () => {
+    const t = setup();
+    await addTracks(t, 2, "audio");
+    const legacy = await addTracks(t, 1, "public");
+    await runAll(t);
+    expect(copies).toEqual(legacy);
+    expect(deletes).toEqual(legacy);
+    copies = [];
+    deletes = [];
+    await runAll(t);
+    expect(copies).toEqual([]);
+    expect(deletes).toEqual([]);
+  });
+
+  test("a run handles at most 50 tracks and schedules itself for the rest", async () => {
+    const t = setup();
+    const legacy = await addTracks(t, 120, "public");
+    await t.action(internal.migrations.moveTracksToAudioBucket, {});
+    expect(copies).toHaveLength(50);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(copies.sort()).toEqual([...legacy].sort());
   });
 });
