@@ -112,3 +112,39 @@
 - [ ] **Step 3: Implement** per the installed `@convex-dev/rate-limiter` README's sharding option. If the installed version has no `shards`, report BLOCKED with the version.
 - [ ] **Step 4: Run** all tests, expect PASS.
 - [ ] **Step 5: Commit** `feat: shard the anonymous view limit`
+
+### Task 5: Protect uploaded MP3s
+
+Approved by the owner in chat on 2026-10-20: short-lived playback links, a 128 kbps streaming copy instead of the original, and no download button or right-click save. DRM and previews are out of scope.
+
+**Decisions (controller calls):**
+- Tracks move to a second, private bucket `R2_AUDIO_BUCKET`, using the same R2 credentials. Photos stay in the public `R2_BUCKET`. Nothing in the audio bucket is ever publicly reachable.
+- The artist's browser re-encodes every track to 128 kbps MP3 (44.1 kHz) before upload. It decodes with `AudioContext.decodeAudioData` and encodes with `wasm-media-encoders`. Only that copy is stored, so no original ever reaches the server. A tampered client can only upload its own music at a different quality, and the size and type limits still apply.
+- Audio uploads are confirmed by an action `media.confirmTrackUpload({ uploadId })`. It runs `HeadObject` against the audio bucket, checks that ContentLength and ContentType match the pending row, then calls the existing accept or reject logic. Photo uploads keep the current component sync path.
+- Playback URLs are presigned GETs with a 15-minute expiry (`PLAYBACK_URL_TTL_S = 900`). They come from a public action `media.playbackUrls({ username }) -> Array<{ id, url }>`. The action signs only tracks of an unbanned profile, signs at most 10, and does no DB writes.
+- `getPublicProfile` stops returning track URLs (`url: null`). The usercontent route calls `playbackUrls` at render time and merges the URLs in.
+- The player refreshes its URLs from `GET <usercontent>/<username>?format=tracks`. It does this on an audio `error` event and on a 12-minute timer. The response is JSON `{ tracks: [{ id, url }] }` with `Access-Control-Allow-Origin: *`, `Cache-Control: no-store`, and the same 404 rules as the profile document. `routeForHost` allows that query on the single-segment path.
+- The edit-page preview and the admin queue fetch playback URLs through the action. For the admin queue this is a new admin-only action `moderation.trackPlaybackUrl({ trackId })`, which works even for banned profiles.
+- The player sets `controlsList="nodownload"` on the `<audio>` element and calls `preventDefault()` on `contextmenu` over the player.
+- Seed media uploads tracks to the audio bucket. README, `docs/deploy.md` and `.env.example` document `R2_AUDIO_BUCKET`, and state that it must stay private, with no public domain and no r2.dev URL. CORS for that bucket follows the same rules.
+
+**Files:**
+- Modify: `convex/lib/r2.ts`, `convex/media.ts`, `convex/lib/media.ts`, `convex/profiles.ts`, `convex/moderation.ts`, `app/usercontent/[username]/route.ts`, `lib/hosts.ts`, `lib/profile/render.ts`, `components/useMediaUpload.ts`, `components/edit/CodeEditor.tsx`, `components/AdminQueue.tsx`, `scripts/seed-media.mjs`, `.env.example`, `README.md`, `docs/deploy.md`
+- Create: `lib/transcode.ts` (browser-only `transcodeToMp3_128(file: File): Promise<File>`)
+- Test: `tests/convex/media.test.ts`, `tests/convex/playback.test.ts`, `tests/usercontentRoute.test.ts`, `tests/hosts.test.ts`, `tests/render.test.ts`, `e2e/sandbox.spec.ts`
+
+**Interfaces:**
+- Produces: `presignGet(key: string, bucket: string, expiresIn: number): Promise<string>` in `convex/lib/r2.ts`; `headObject(key, bucket): Promise<{ size: number; contentType: string } | null>`; `api.media.playbackUrls`; `api.media.confirmTrackUpload`; `api.moderation.trackPlaybackUrl`; `routeForHost("usercontent", "/lowveld", "?format=tracks")` resolves to the tracks JSON route.
+
+- [ ] **Step 1: Write failing tests**
+  - Track presign PUT targets `R2_AUDIO_BUCKET`, and photo presign targets `R2_BUCKET`.
+  - `confirmTrackUpload` accepts when HEAD matches, rejects and deletes when size or type differ, and refuses another user's upload.
+  - `playbackUrls` returns signed URLs with `X-Amz-Expires=900` for an unbanned profile, returns `[]` for a banned or missing one, and returns at most 10.
+  - `getPublicProfile` tracks have `url: null`.
+  - The usercontent route merges signed URLs into the document. The `?format=tracks` JSON has the right headers and returns 404 on the main host.
+  - The rendered player has `controlsList="nodownload"` and a contextmenu guard. The refresh script fetches `?format=tracks` on error.
+  - `trackPlaybackUrl` is admin-only.
+- [ ] **Step 2: Run**, expect FAIL.
+- [ ] **Step 3: Implement** per the decisions above.
+- [ ] **Step 4: Run** all tests and e2e, expect PASS. Note in the report that real R2 has not been exercised.
+- [ ] **Step 5: Commit** `feat: private audio bucket, signed playback and 128 kbps uploads`
