@@ -204,6 +204,16 @@ describe("groups.update and remove", () => {
   });
 });
 
+describe("groups.update limit", () => {
+  test("thirty edits an hour; refused edits cost no quota", async () => {
+    const { t, owner, groupId } = await withGroup();
+    const o = await as(t, owner);
+    await expect(o.mutation(api.groups.update, { groupId, ...base, name: "x" })).rejects.toThrow("Name is too short");
+    for (let i = 0; i < 30; i++) await o.mutation(api.groups.update, { groupId, ...base, name: `Name ${i}` });
+    await expect(o.mutation(api.groups.update, { groupId, ...base })).rejects.toThrow("Slow down");
+  });
+});
+
 describe("membership", () => {
   test("join and leave keep memberCount in sync", async () => {
     const { t, member, other, groupId, slug } = await withGroup();
@@ -268,10 +278,86 @@ describe("membership", () => {
     // Removed, not banned: they can come back.
     await (await as(t, member)).mutation(api.groups.join, { groupId });
     expect(await memberCount(t, groupId)).toBe(2);
-    // Removing a banned member doesn't count them twice.
+  });
+
+  test("removeMember refuses a banned row, so the ban still blocks join", async () => {
+    const { t, owner, member, groupId } = await withGroup();
+    const o = await as(t, owner);
     await o.mutation(api.groups.banMember, { groupId, username: "member" });
-    await o.mutation(api.groups.removeMember, { groupId, username: "member" });
+    await expect(o.mutation(api.groups.removeMember, { groupId, username: "member" })).rejects.toThrow(
+      "Not a member",
+    );
+    await expect((await as(t, member)).mutation(api.groups.join, { groupId })).rejects.toThrow(
+      "You're banned from this group",
+    );
     expect(await memberCount(t, groupId)).toBe(1);
+  });
+
+  test("unbanMember lifts the ban and lets them join again", async () => {
+    const { t, owner, member, groupId, slug } = await withGroup();
+    const o = await as(t, owner);
+    await o.mutation(api.groups.banMember, { groupId, username: "member" });
+    const banned = await o.query(api.groups.bannedMembers, { slug, cursor: null });
+    expect(banned.page).toEqual([{ profileId: member, member: expect.objectContaining({ username: "member" }) }]);
+    await o.mutation(api.groups.unbanMember, { groupId, profileId: member });
+    expect(await memberCount(t, groupId)).toBe(1);
+    expect((await o.query(api.groups.bannedMembers, { slug, cursor: null })).page).toEqual([]);
+    await expect(o.mutation(api.groups.unbanMember, { groupId, profileId: member })).rejects.toThrow("Not banned");
+    await (await as(t, member)).mutation(api.groups.join, { groupId });
+    expect(await memberCount(t, groupId)).toBe(2);
+  });
+
+  test("banning a non-member blocks them from joining", async () => {
+    const { t, owner, other, groupId, slug } = await withGroup();
+    await (await as(t, owner)).mutation(api.groups.banMember, { groupId, username: "other" });
+    expect(await memberCount(t, groupId)).toBe(2);
+    await expect((await as(t, other)).mutation(api.groups.join, { groupId })).rejects.toThrow(
+      "You're banned from this group",
+    );
+    expect((await t.query(api.groups.members, { slug, cursor: null })).page.map((m) => m.member.username)).toEqual([
+      "owner",
+      "member",
+    ]);
+  });
+
+  test("non-owners can't unban or list banned members", async () => {
+    const { t, owner, member, other, groupId, slug } = await withGroup();
+    await (await as(t, owner)).mutation(api.groups.banMember, { groupId, username: "other" });
+    const m = await as(t, member);
+    await expect(m.mutation(api.groups.unbanMember, { groupId, profileId: other })).rejects.toThrow("Not allowed");
+    await expect(m.query(api.groups.bannedMembers, { slug, cursor: null })).rejects.toThrow("Not allowed");
+    await expect(t.query(api.groups.bannedMembers, { slug, cursor: null })).rejects.toThrow("Not allowed");
+  });
+
+  test("bannedMembers pages 50 at a time", async () => {
+    const { t, owner, groupId, slug } = await withGroup();
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 51; i++) {
+        const userId = await ctx.db.insert("users", { email: `b${i}@example.com` });
+        const profileId = await ctx.db.insert("profiles", {
+          userId,
+          username: `banned${i}`,
+          displayName: `B${i}`,
+          kind: "fan",
+          birthDate: "2000-01-01",
+          headline: "",
+          location: "",
+          aboutMe: "",
+          whoIdLikeToMeet: "",
+          lastLoginAt: 0,
+          customCss: "",
+          customHtml: "",
+          customJs: "",
+          top8: [],
+          isHouse: false,
+          banned: false,
+        });
+        await ctx.db.insert("groupMembers", { groupId, profileId, banned: true });
+      }
+    });
+    const first = await (await as(t, owner)).query(api.groups.bannedMembers, { slug, cursor: null });
+    expect(first.page).toHaveLength(50);
+    expect(first.isDone).toBe(false);
   });
 
   test("the owner cannot remove or ban themselves", async () => {
@@ -440,6 +526,27 @@ describe("board", () => {
     await expect(m.mutation(api.groups.reply, { topicId, body: "late" })).rejects.toThrow("Not found");
   });
 
+  test("removing posts moves lastReplyAt back to the newest visible post, or the topic's creation", async () => {
+    const { t, owner, member, groupId } = await withGroup();
+    const { topicId, replyId: firstId } = await startTopic(t, member, groupId);
+    const created = Date.now();
+    const m = await as(t, member);
+    vi.setSystemTime(new Date(created + 1000));
+    const second = await m.mutation(api.groups.reply, { topicId, body: "second" });
+    vi.setSystemTime(new Date(created + 2000));
+    const third = await m.mutation(api.groups.reply, { topicId, body: "third" });
+    vi.setSystemTime(new Date(created + 5000));
+    const o = await as(t, owner);
+    await o.mutation(api.groups.removePost, { replyId: third });
+    expect((await t.run((ctx) => ctx.db.get(topicId)))!.lastReplyAt).toBe(created + 1000);
+    await o.mutation(api.groups.removePost, { replyId: second });
+    const firstRow = (await t.run((ctx) => ctx.db.get(firstId)))!;
+    expect((await t.run((ctx) => ctx.db.get(topicId)))!.lastReplyAt).toBe(firstRow._creationTime);
+    await o.mutation(api.groups.removePost, { replyId: firstId });
+    const topic = (await t.run((ctx) => ctx.db.get(topicId)))!;
+    expect(topic.lastReplyAt).toBe(topic._creationTime);
+  });
+
   test("site-banned users' posts are hidden; a banned owner's group stays visible", async () => {
     const { t, owner, member, boss, groupId, slug } = await withGroup();
     const own = await startTopic(t, owner, groupId, "By owner");
@@ -531,6 +638,15 @@ describe("groups.list", () => {
     const res = await t.query(api.groups.list, { q: "punk", cursor: null });
     expect(res.page.map((g) => g.slug)).toEqual(["punk-kids"]);
     expect(res.isDone).toBe(true);
+  });
+
+  test("a search with a category filters before taking 20", async () => {
+    const { t, owner } = await world();
+    for (let i = 0; i < 25; i++) await insertGroup(t, owner, `punk-music-${i}`, { name: `Punk Music ${i}` });
+    await insertGroup(t, owner, "punk-local", { name: "Punk Local", category: "local" });
+    const res = await t.query(api.groups.list, { q: "punk", category: "local", cursor: null });
+    expect(res.page.map((g) => g.slug)).toEqual(["punk-local"]);
+    expect((await t.query(api.groups.list, { q: "punk", cursor: null })).page).toHaveLength(20);
   });
 });
 

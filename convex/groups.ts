@@ -98,8 +98,13 @@ const replyView = v.object({
   canRemove: v.boolean(),
 });
 const memberView = v.object({ member: cardValidator, isOwner: v.boolean() });
+const bannedView = v.object({ profileId: v.id("profiles"), member: cardValidator });
 
-const pageOf = <T extends typeof summaryView | typeof topicItem | typeof replyView | typeof memberView>(item: T) =>
+const pageOf = <
+  T extends typeof summaryView | typeof topicItem | typeof replyView | typeof memberView | typeof bannedView,
+>(
+  item: T,
+) =>
   v.object({ page: v.array(item), isDone: v.boolean(), continueCursor: v.string() });
 
 export type GroupSummary = {
@@ -143,6 +148,7 @@ export type GroupReplyView = {
   canRemove: boolean;
 };
 export type GroupMemberView = { member: PublicCard; isOwner: boolean };
+export type BannedMemberView = { profileId: Id<"profiles">; member: PublicCard };
 type Page<T> = { page: T[]; isDone: boolean; continueCursor: string };
 
 /** Lowercase a–z, 0–9 and single hyphens, no hyphen at either end, at most 60 characters. Accents are dropped. */
@@ -236,9 +242,14 @@ export async function transferOwnership(ctx: MutationCtx, group: Doc<"groups">, 
   await ctx.db.patch(group._id, { ownerId: to._id });
 }
 
+/** Posts read from the newest back to find a topic's latest visible post after a removal. */
+const LAST_REPLY_SCAN = 50;
+
 /**
  * Hides a post and takes it off its topic's reply count, never below 0.
- * Hiding a topic's first post hides the whole topic. Already hidden posts are left alone.
+ * Hiding a topic's first post hides the whole topic. lastReplyAt moves back to
+ * the newest visible post among the latest 50, or the topic's creation time.
+ * Already hidden posts are left alone.
  */
 export async function hideReply(ctx: MutationCtx, reply: Doc<"groupReplies">): Promise<void> {
   if (reply.hidden) return;
@@ -249,8 +260,15 @@ export async function hideReply(ctx: MutationCtx, reply: Doc<"groupReplies">): P
     .query("groupReplies")
     .withIndex("by_topic", (q) => q.eq("topicId", topic._id))
     .first();
+  const recent = await ctx.db
+    .query("groupReplies")
+    .withIndex("by_topic", (q) => q.eq("topicId", topic._id))
+    .order("desc")
+    .take(LAST_REPLY_SCAN);
+  const newest = recent.find((r) => !r.hidden);
   await ctx.db.patch(topic._id, {
     replyCount: Math.max(0, topic.replyCount - 1),
+    lastReplyAt: newest?._creationTime ?? topic._creationTime,
     ...(first?._id === reply._id ? { hidden: true } : {}),
   });
 }
@@ -323,7 +341,10 @@ export const update = mutation({
   handler: async (ctx, { groupId, ...args }) => {
     const me = await requireProfile(ctx);
     await ownGroup(ctx, me, groupId);
-    await ctx.db.patch(groupId, checkGroup(me, args));
+    const fields = checkGroup(me, args);
+    const { ok } = await rateLimiter.limit(ctx, "groupEdit", { key: me._id });
+    if (!ok) throw new ConvexError("Slow down");
+    await ctx.db.patch(groupId, fields);
     return null;
   },
 });
@@ -374,47 +395,66 @@ export const leave = mutation({
   },
 });
 
-/** The member row for `username` in a group the caller owns, refusing the owner's own row. */
+/** The profile for `username` and their row in a group the caller owns, refusing the owner. */
 async function memberRow(
   ctx: MutationCtx,
   group: Doc<"groups">,
   username: string,
   selfError: string,
-): Promise<Doc<"groupMembers">> {
+): Promise<{ target: Doc<"profiles">; row: Doc<"groupMembers"> | null }> {
   const target = await profileByUsername(ctx, username);
   if (target === null) throw new ConvexError("Not a member");
   if (target._id === group.ownerId) throw new ConvexError(selfError);
-  const row = await membership(ctx, group._id, target._id);
-  if (row === null) throw new ConvexError("Not a member");
-  return row;
+  return { target, row: await membership(ctx, group._id, target._id) };
 }
 
-/** Owner: deletes a membership. Their posts stay. Removing a banned member lifts the group ban. */
+/** Owner: deletes a membership. Their posts stay. Banned rows are refused: unbanMember lifts a ban. */
 export const removeMember = mutation({
   args: { groupId: v.id("groups"), username: v.string() },
   returns: v.null(),
   handler: async (ctx, { groupId, username }) => {
     const me = await requireProfile(ctx);
     const group = await ownGroup(ctx, me, groupId);
-    const row = await memberRow(ctx, group, username, "You can't remove yourself");
+    const { row } = await memberRow(ctx, group, username, "You can't remove yourself");
+    if (row === null || row.banned) throw new ConvexError("Not a member");
     await ctx.db.delete(row._id);
-    // A banned member was already taken off the count.
-    if (!row.banned) await bumpMembers(ctx, group, -1);
+    await bumpMembers(ctx, group, -1);
     return null;
   },
 });
 
-/** Owner: bans a member from the group. They can't post or rejoin. Their posts stay. */
+/**
+ * Owner: bans someone from the group. They can't post or rejoin, and their posts
+ * stay. A non-member gets a banned row too, so leaving can't dodge a ban.
+ */
 export const banMember = mutation({
   args: { groupId: v.id("groups"), username: v.string() },
   returns: v.null(),
   handler: async (ctx, { groupId, username }) => {
     const me = await requireProfile(ctx);
     const group = await ownGroup(ctx, me, groupId);
-    const row = await memberRow(ctx, group, username, "You can't ban yourself");
+    const { target, row } = await memberRow(ctx, group, username, "You can't ban yourself");
+    if (row === null) {
+      await ctx.db.insert("groupMembers", { groupId, profileId: target._id, banned: true });
+      return null;
+    }
     if (row.banned) return null;
     await ctx.db.patch(row._id, { banned: true });
     await bumpMembers(ctx, group, -1);
+    return null;
+  },
+});
+
+/** Owner: lifts a group ban by deleting the banned row. They can join again; the count is unchanged. */
+export const unbanMember = mutation({
+  args: { groupId: v.id("groups"), profileId: v.id("profiles") },
+  returns: v.null(),
+  handler: async (ctx, { groupId, profileId }) => {
+    const me = await requireProfile(ctx);
+    await ownGroup(ctx, me, groupId);
+    const row = await membership(ctx, groupId, profileId);
+    if (row === null || !row.banned) throw new ConvexError("Not banned");
+    await ctx.db.delete(row._id);
     return null;
   },
 });
@@ -535,11 +575,12 @@ export const list = query({
         .query("groups")
         .withSearchIndex("search_name", (s) => {
           const base = s.search("name", text);
-          return admin ? base : base.eq("deleted", false).eq("hidden", false);
+          const scoped = category ? base.eq("category", category) : base;
+          return admin ? scoped : scoped.eq("deleted", false).eq("hidden", false);
         })
         .take(SEARCH_SIZE);
       return {
-        page: rows.filter((g) => !category || g.category === category).map(toSummary),
+        page: rows.map(toSummary),
         isDone: true,
         continueCursor: "",
       };
@@ -570,14 +611,35 @@ export const members = query({
     if (!readable(group, await isAdmin(ctx))) return empty;
     const result = await ctx.db
       .query("groupMembers")
-      .withIndex("by_group", (q) => q.eq("groupId", group._id))
+      .withIndex("by_group_banned", (q) => q.eq("groupId", group._id).eq("banned", false))
       .paginate({ numItems: MEMBERS_PER_PAGE, cursor });
     const page: GroupMemberView[] = [];
     for (const row of result.page) {
-      if (row.banned) continue;
       const p = await ctx.db.get(row.profileId);
       if (p === null || p.banned) continue;
       page.push({ member: toPublicCard(p), isOwner: p._id === group.ownerId });
+    }
+    return { page, isDone: result.isDone, continueCursor: result.continueCursor };
+  },
+});
+
+/** Owner only: one page (50) of the people banned from a live group, for the Unban list. */
+export const bannedMembers = query({
+  args: { slug: v.string(), cursor: v.union(v.string(), v.null()) },
+  returns: pageOf(bannedView),
+  handler: async (ctx, { slug, cursor }): Promise<Page<BannedMemberView>> => {
+    const viewer = await viewerProfile(ctx);
+    const group = await groupBySlug(ctx, slug);
+    if (!live(group)) throw new ConvexError("Not found");
+    if (viewer === null || viewer._id !== group.ownerId) throw new ConvexError("Not allowed");
+    const result = await ctx.db
+      .query("groupMembers")
+      .withIndex("by_group_banned", (q) => q.eq("groupId", group._id).eq("banned", true))
+      .paginate({ numItems: MEMBERS_PER_PAGE, cursor });
+    const page: BannedMemberView[] = [];
+    for (const row of result.page) {
+      const p = await ctx.db.get(row.profileId);
+      if (p !== null) page.push({ profileId: p._id, member: toPublicCard(p) });
     }
     return { page, isDone: result.isDone, continueCursor: result.continueCursor };
   },

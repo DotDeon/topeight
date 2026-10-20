@@ -238,7 +238,7 @@ export default defineSchema({
     .index("by_category", ["category"])
     .searchIndex("search_name", {
       searchField: "name",
-      filterFields: ["deleted", "hidden"],
+      filterFields: ["deleted", "hidden", "category"],
     }),
 
   /** One row per member and group. A group ban keeps the row with banned: true so they can't rejoin. */
@@ -248,6 +248,7 @@ export default defineSchema({
     banned: v.boolean(),
   })
     .index("by_group", ["groupId"])
+    .index("by_group_banned", ["groupId", "banned"])
     .index("by_pair", ["groupId", "profileId"])
     .index("by_profile", ["profileId"]),
 

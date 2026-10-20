@@ -32,6 +32,7 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   groupCreate: { kind: "fixed window", rate: 3, period: DAY },
   groupTopic: { kind: "fixed window", rate: 10, period: HOUR },
   groupReply: { kind: "fixed window", rate: 60, period: HOUR },
+  groupEdit: { kind: "fixed window", rate: 30, period: HOUR },
   upload: { kind: "fixed window", rate: 30, period: HOUR },
   report: { kind: "fixed window", rate: 20, period: HOUR },
   mail: { kind: "fixed window", rate: 30, period: HOUR },
