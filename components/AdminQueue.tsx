@@ -57,6 +57,17 @@ function Preview({ p }: { p: ReportPreview }) {
           <blockquote style={{ whiteSpace: "pre-wrap", margin: "4px 0 4px 12px" }}>{p.body}</blockquote>
         </>
       );
+    case "message":
+      return (
+        <>
+          <p>
+            Message from{" "}
+            {p.sender ? <Link href={`/${p.sender.username}`}>{p.sender.displayName}</Link> : "unknown"}
+          </p>
+          <p>Subject: {p.subject}</p>
+          <blockquote style={{ whiteSpace: "pre-wrap", margin: "4px 0 4px 12px" }}>{p.body}</blockquote>
+        </>
+      );
     case "track":
       return (
         <>
@@ -96,7 +107,13 @@ function ReportRow({ r }: { r: Row }) {
   // Who the separate "Ban user" button bans: whoever wrote or uploaded the content.
   // On a profile report the hide action already bans, so it is the ban button.
   const bannedId: Id<"profiles"> | null =
-    p.kind === "comment" || p.kind === "bulletin" ? p.authorId : p.kind === "track" ? p.ownerId : null;
+    p.kind === "comment" || p.kind === "bulletin"
+      ? p.authorId
+      : p.kind === "track"
+        ? p.ownerId
+        : p.kind === "message"
+          ? p.senderId
+          : null;
   const banPrompt = "Ban this user? They are signed out and their profile disappears.";
   const deleteTrackButton = (trackId: Id<"tracks">, title: string) => (
     <button

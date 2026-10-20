@@ -352,6 +352,80 @@ describe("admin functions", () => {
   });
 });
 
+describe("message reports", () => {
+  /** target mails reporter, who is a friend. */
+  async function mailed(t: T, target: Id<"profiles">, reporter: Id<"profiles">) {
+    await befriend(t, target, reporter);
+    return await (await as(t, target)).mutation(api.mail.send, { to: "reporter", subject: "buy now", body: "spam body" });
+  }
+
+  test("only the recipient can report a message, and the report keeps a snapshot", async () => {
+    const { t, boss, reporter, target } = await world();
+    const id = await mailed(t, target, reporter);
+    for (const who of [target, boss]) {
+      await expect(
+        (await as(t, who)).mutation(api.moderation.report, { targetType: "message", targetId: id, reason: "x" }),
+      ).rejects.toThrow("Not found");
+    }
+    await (await as(t, reporter)).mutation(api.moderation.report, { targetType: "message", targetId: id, reason: "spam" });
+    const rows = await reports(t);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      reporterId: reporter,
+      targetType: "message",
+      targetId: id,
+      snapshot: { subject: "buy now", body: "spam body", senderId: target },
+    });
+  });
+
+  test("a recipient who deleted their copy can no longer report it", async () => {
+    const { t, reporter, target } = await world();
+    const id = await mailed(t, target, reporter);
+    await (await as(t, reporter)).mutation(api.mail.remove, { id });
+    await expect(
+      (await as(t, reporter)).mutation(api.moderation.report, { targetType: "message", targetId: id, reason: "x" }),
+    ).rejects.toThrow("Not found");
+  });
+
+  test("listOpen previews the snapshot, even after both sides delete the message", async () => {
+    const { t, boss, reporter, target } = await world();
+    const id = await mailed(t, target, reporter);
+    await (await as(t, reporter)).mutation(api.moderation.report, { targetType: "message", targetId: id, reason: "spam" });
+    await (await as(t, reporter)).mutation(api.mail.remove, { id });
+    await (await as(t, target)).mutation(api.mail.remove, { id });
+    expect(await t.run((ctx) => ctx.db.get(id))).toBeNull();
+    const [row] = await (await as(t, boss)).query(api.moderation.listOpen, {});
+    expect(row.preview).toEqual({
+      kind: "message",
+      subject: "buy now",
+      body: "spam body",
+      senderId: target,
+      sender: { username: "target", displayName: "TARGET", photoUrl: null, kind: "fan" },
+    });
+  });
+
+  test("hide on a message report deletes the message for both sides", async () => {
+    const { t, boss, reporter, target } = await world();
+    const id = await mailed(t, target, reporter);
+    await (await as(t, reporter)).mutation(api.moderation.report, { targetType: "message", targetId: id, reason: "spam" });
+    const [row] = await reports(t);
+    await (await as(t, boss)).mutation(api.moderation.hide, { reportId: row._id });
+    expect(await t.run((ctx) => ctx.db.get(id))).toBeNull();
+    expect((await (await as(t, reporter)).query(api.mail.inbox, { cursor: null })).page).toHaveLength(0);
+    expect((await (await as(t, target)).query(api.mail.sent, { cursor: null })).page).toHaveLength(0);
+    expect((await reports(t))[0].status).toBe("actioned");
+  });
+
+  test("unreported mail never reaches an admin", async () => {
+    const { t, boss, reporter, target } = await world();
+    const id = await mailed(t, target, reporter);
+    const b = await as(t, boss);
+    expect(await b.query(api.moderation.listOpen, {})).toEqual([]);
+    await expect(b.mutation(api.mail.read, { id })).rejects.toThrow("Not found");
+    expect((await b.query(api.mail.inbox, { cursor: null })).page).toHaveLength(0);
+  });
+});
+
 describe("moderation.ban", () => {
   test("bans everywhere, signs the user out, and actions reports on them", async () => {
     const { t, boss, reporter, target } = await world();

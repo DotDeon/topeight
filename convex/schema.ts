@@ -49,6 +49,8 @@ export default defineSchema({
     top8: v.array(v.id("profiles")),
     isHouse: v.boolean(),
     banned: v.boolean(),
+    /** Who may send this member mail. Undefined means friends only. */
+    mailFrom: v.optional(v.union(v.literal("friends"), v.literal("anyone"))),
   })
     .index("by_username", ["username"])
     .index("by_user", ["userId"])
@@ -141,6 +143,26 @@ export default defineSchema({
     .index("by_pair", ["blocker", "blocked"])
     .index("by_blocker", ["blocker"]),
 
+  /**
+   * Private mail. Each side deletes its own copy; the row goes when both have.
+   * `unread` is the indexed flag, `readAt` is informational.
+   */
+  messages: defineTable({
+    senderId: v.id("profiles"),
+    recipientId: v.id("profiles"),
+    subject: v.string(),
+    body: v.string(),
+    unread: v.boolean(),
+    readAt: v.optional(v.number()),
+    senderDeleted: v.boolean(),
+    recipientDeleted: v.boolean(),
+    /** A message this one answers. Always one the sender received from the recipient. */
+    replyTo: v.optional(v.id("messages")),
+  })
+    .index("by_recipient", ["recipientId", "recipientDeleted"])
+    .index("by_sender", ["senderId", "senderDeleted"])
+    .index("by_recipient_unread", ["recipientId", "recipientDeleted", "unread"]),
+
   reports: defineTable({
     reporterId: v.id("profiles"),
     targetType: v.union(
@@ -148,9 +170,18 @@ export default defineSchema({
       v.literal("comment"),
       v.literal("bulletin"),
       v.literal("track"),
+      v.literal("message"),
     ),
     targetId: v.string(),
     reason: v.string(),
+    /** A copy of reported mail, so the report outlives both sides deleting it. */
+    snapshot: v.optional(
+      v.object({
+        subject: v.optional(v.string()),
+        body: v.string(),
+        senderId: v.optional(v.id("profiles")),
+      }),
+    ),
     status: v.union(
       v.literal("open"),
       v.literal("actioned"),

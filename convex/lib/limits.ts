@@ -8,6 +8,7 @@ export const MAX_FRIENDS = 1000;
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
 
 /** Profile views counted per signed-in viewer per minute. */
 export const VIEWS_PER_MINUTE = 60;
@@ -24,6 +25,8 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   bulletin: { kind: "fixed window", rate: 10, period: HOUR },
   upload: { kind: "fixed window", rate: 30, period: HOUR },
   report: { kind: "fixed window", rate: 20, period: HOUR },
+  mail: { kind: "fixed window", rate: 30, period: HOUR },
+  mailDaily: { kind: "fixed window", rate: 200, period: DAY },
   // Keyed by the normalized username being played.
   playback: { kind: "fixed window", rate: 120, period: MINUTE },
   // Keyed by the viewer's profile id.

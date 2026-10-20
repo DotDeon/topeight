@@ -16,9 +16,21 @@ const ABOUT_SNIPPET = 300;
 /** Most sessions, and refresh tokens per session, a ban deletes. */
 const MAX_SESSIONS = 100;
 
-const targetType = v.union(v.literal("profile"), v.literal("comment"), v.literal("bulletin"), v.literal("track"));
-type TargetType = "profile" | "comment" | "bulletin" | "track";
-const TABLE = { profile: "profiles", comment: "comments", bulletin: "bulletins", track: "tracks" } as const;
+const targetType = v.union(
+  v.literal("profile"),
+  v.literal("comment"),
+  v.literal("bulletin"),
+  v.literal("track"),
+  v.literal("message"),
+);
+type TargetType = "profile" | "comment" | "bulletin" | "track" | "message";
+const TABLE = {
+  profile: "profiles",
+  comment: "comments",
+  bulletin: "bulletins",
+  track: "tracks",
+  message: "messages",
+} as const;
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -98,6 +110,8 @@ export type ReportPreview =
       ownerId: Id<"profiles">;
       owner: PublicCard | null;
     }
+  // Built from the report's snapshot only. Admins never read the messages table.
+  | { kind: "message"; subject: string; body: string; senderId: Id<"profiles"> | null; sender: PublicCard | null }
   | { kind: "gone" };
 
 async function preview(ctx: Ctx, report: Doc<"reports">): Promise<ReportPreview> {
@@ -115,6 +129,18 @@ async function preview(ctx: Ctx, report: Doc<"reports">): Promise<ReportPreview>
       aboutMe: p.aboutMe.slice(0, ABOUT_SNIPPET),
       banned: p.banned,
       tracks: await profileTracks(ctx, p._id),
+    };
+  }
+  if (type === "message") {
+    const snap = report.snapshot;
+    if (!snap) return { kind: "gone" };
+    const senderId = snap.senderId ?? null;
+    return {
+      kind: "message",
+      subject: snap.subject ?? "",
+      body: snap.body,
+      senderId,
+      sender: senderId === null ? null : await cardFor(ctx, senderId),
     };
   }
   if (type === "comment" || type === "bulletin") {
@@ -148,9 +174,10 @@ async function trackIsOn(ctx: Ctx, track: Doc<"tracks">, username: string | unde
 }
 
 /**
- * Report a profile, comment, bulletin or track. A repeat open report by the
- * same member adds nothing. A track report must name the profile it was seen
- * on in `profileUsername`, and the track must belong to it.
+ * Report a profile, comment, bulletin, track or message. A repeat open report
+ * by the same member adds nothing. A track report must name the profile it was
+ * seen on in `profileUsername`, and the track must belong to it. Only the
+ * recipient can report a message, and the report keeps a copy of it.
  */
 export const report = mutation({
   args: { targetType, targetId: v.string(), reason: v.string(), profileUsername: v.optional(v.string()) },
@@ -166,6 +193,12 @@ export const report = mutation({
     if (args.targetType === "track" && !(await trackIsOn(ctx, target as Doc<"tracks">, args.profileUsername))) {
       throw new ConvexError("Not found");
     }
+    let snapshot: Doc<"reports">["snapshot"];
+    if (args.targetType === "message") {
+      const m = target as Doc<"messages">;
+      if (m.recipientId !== me._id || m.recipientDeleted) throw new ConvexError("Not found");
+      snapshot = { subject: m.subject, body: m.body, senderId: m.senderId };
+    }
     const targetId = target._id as string;
 
     const open = await openReportsOn(ctx, args.targetType, targetId, MAX_SCAN);
@@ -179,6 +212,7 @@ export const report = mutation({
       targetId,
       reason,
       status: "open",
+      ...(snapshot ? { snapshot } : {}),
     });
     return null;
   },
@@ -218,7 +252,8 @@ async function openReport(ctx: MutationCtx, reportId: Id<"reports">) {
 
 /**
  * Admin: acts on the reported content. Comments and bulletins are hidden,
- * tracks deleted, profiles banned. Closes every open report on that target.
+ * tracks deleted, profiles banned, messages deleted for both sides. Closes
+ * every open report on that target.
  */
 export const hide = mutation({
   args: { reportId: v.id("reports") },
@@ -233,6 +268,9 @@ export const hide = mutation({
     } else if (type === "bulletin") {
       const id = ctx.db.normalizeId("bulletins", r.targetId);
       if (id && (await ctx.db.get(id))) await ctx.db.patch(id, { hidden: true });
+    } else if (type === "message") {
+      const id = ctx.db.normalizeId("messages", r.targetId);
+      if (id && (await ctx.db.get(id))) await ctx.db.delete(id);
     } else if (type === "track") {
       const id = ctx.db.normalizeId("tracks", r.targetId);
       const track = id && (await ctx.db.get(id));
