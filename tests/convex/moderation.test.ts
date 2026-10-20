@@ -416,12 +416,40 @@ describe("message reports", () => {
     expect((await reports(t))[0].status).toBe("actioned");
   });
 
+  test("banning a sender marks their sent mail read so it stops filling unread counts", async () => {
+    const { t, boss, reporter, target } = await world();
+    const other = await addProfile(t, "other");
+    await befriend(t, other, reporter);
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 100; i++) {
+        await ctx.db.insert("messages", {
+          senderId: target,
+          recipientId: reporter,
+          subject: `spam${i}`,
+          body: "b",
+          unread: true,
+          senderDeleted: i % 2 === 0,
+          recipientDeleted: false,
+        });
+      }
+    });
+    vi.advanceTimersByTime(1000);
+    await (await as(t, other)).mutation(api.mail.send, { to: "reporter", subject: "real", body: "hello" });
+    const r = await as(t, reporter);
+    expect(await r.query(api.mail.unreadCount, {})).toBe(100);
+    // unreadCount reads the oldest 100 unread rows. Without the ban clean-up they would all be spam.
+    await (await as(t, boss)).mutation(api.moderation.ban, { profileId: target });
+    const rows = await t.run((ctx) => ctx.db.query("messages").take(200));
+    expect(rows.filter((m) => m.senderId === target && m.unread)).toHaveLength(0);
+    expect(await r.query(api.mail.unreadCount, {})).toBe(1);
+  });
+
   test("unreported mail never reaches an admin", async () => {
     const { t, boss, reporter, target } = await world();
     const id = await mailed(t, target, reporter);
     const b = await as(t, boss);
     expect(await b.query(api.moderation.listOpen, {})).toEqual([]);
-    await expect(b.mutation(api.mail.read, { id })).rejects.toThrow("Not found");
+    await expect(b.query(api.mail.get, { id })).rejects.toThrow("Not found");
     expect((await b.query(api.mail.inbox, { cursor: null })).page).toHaveLength(0);
   });
 });

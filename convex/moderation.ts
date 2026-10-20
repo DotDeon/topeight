@@ -15,6 +15,8 @@ const QUEUE_SIZE = 50;
 const ABOUT_SNIPPET = 300;
 /** Most sessions, and refresh tokens per session, a ban deletes. */
 const MAX_SESSIONS = 100;
+/** Most of a banned member's sent messages a ban marks read, newest first. */
+const MAX_BAN_MAIL = 500;
 
 const targetType = v.union(
   v.literal("profile"),
@@ -58,7 +60,7 @@ async function actionAllOn(ctx: MutationCtx, type: TargetType, targetId: string)
   }
 }
 
-/** Bans a profile, signs its user out everywhere, and closes the open reports on it. */
+/** Bans a profile, signs its user out everywhere, marks its sent mail read, and closes the open reports on it. */
 async function banProfile(ctx: MutationCtx, profile: Doc<"profiles">) {
   if (profile.isHouse) throw new ConvexError("Not allowed");
   await ctx.db.patch(profile._id, { banned: true });
@@ -74,6 +76,14 @@ async function banProfile(ctx: MutationCtx, profile: Doc<"profiles">) {
     for (const tok of tokens) await ctx.db.delete(tok._id);
     await ctx.db.delete(s._id);
   }
+  // Their mail is hidden from inboxes now; marking it read keeps it from filling
+  // the recipients' bounded unread counts.
+  const sent = await ctx.db
+    .query("messages")
+    .withIndex("by_sender", (q) => q.eq("senderId", profile._id))
+    .order("desc")
+    .take(MAX_BAN_MAIL);
+  for (const m of sent) if (m.unread) await ctx.db.patch(m._id, { unread: false });
   await actionAllOn(ctx, "profile", profile._id);
 }
 

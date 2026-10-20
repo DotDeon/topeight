@@ -9,6 +9,8 @@ import { rateLimiter } from "./lib/limits";
 import { MAX_MESSAGE, MAX_SUBJECT, checkBody, checkLinks } from "./lib/posting";
 
 const PAGE_SIZE = 25;
+/** Most inbox rows one page reads while skipping hidden ones: three pages' worth. */
+const INBOX_SCAN = 3 * PAGE_SIZE;
 /** Most unread rows unreadCount reads. The header only needs "any", the inbox shows "99+". */
 const MAX_UNREAD = 100;
 
@@ -34,6 +36,8 @@ export type MessageView = {
   canReply: boolean;
   isRecipient: boolean;
   replyTo?: { subject: string };
+  /** Recipient only. Always false for the sender: senders get no read receipts. */
+  unread: boolean;
 };
 
 const cardValidator = v.object({
@@ -56,6 +60,7 @@ const pageValidator = v.object({
   continueCursor: v.string(),
 });
 const viewValidator = v.object({
+  unread: v.boolean(),
   id: v.id("messages"),
   from: cardValidator,
   to: cardValidator,
@@ -150,44 +155,70 @@ export const send = mutation({
   },
 });
 
-/** Turns a page of rows into summaries, dropping rows whose other party is banned or gone. */
-async function summarize(
-  ctx: QueryCtx,
-  rows: Doc<"messages">[],
-  otherOf: (m: Doc<"messages">) => Id<"profiles">,
-  showUnread: boolean,
-): Promise<MessageSummary[]> {
+/**
+ * Card lookups for the other party, cached per profile. Null means the row is
+ * hidden: the other party is gone or banned, or (when `checkBlocks` is set)
+ * either side has blocked the other.
+ */
+function otherParty(ctx: QueryCtx, me: Doc<"profiles">, checkBlocks: boolean) {
   const cards = new Map<Id<"profiles">, PublicCard | null>();
-  const out: MessageSummary[] = [];
-  for (const m of rows) {
-    const otherId = otherOf(m);
+  return async (otherId: Id<"profiles">): Promise<PublicCard | null> => {
     if (!cards.has(otherId)) {
       const p = await ctx.db.get(otherId);
-      cards.set(otherId, p === null || p.banned ? null : toPublicCard(p));
+      const hidden = p === null || p.banned || (checkBlocks && (await isBlockedEitherWay(ctx, me._id, otherId)));
+      cards.set(otherId, hidden ? null : toPublicCard(p));
     }
-    const other = cards.get(otherId);
-    if (!other) continue;
-    out.push({ id: m._id, other, subject: m.subject, createdAt: m._creationTime, unread: showUnread && m.unread });
-  }
-  return out;
+    return cards.get(otherId) ?? null;
+  };
+}
+
+function summary(m: Doc<"messages">, other: PublicCard, unread: boolean): MessageSummary {
+  return { id: m._id, other, subject: m.subject, createdAt: m._creationTime, unread };
 }
 
 const cursorArg = { cursor: v.union(v.string(), v.null()) };
 
-/** The viewer's received mail, 25 a page, newest first. Banned senders are dropped, so a page can come back short. */
+/**
+ * The viewer's received mail, 25 a page, newest first. Mail from banned
+ * senders, and from anyone either side has blocked, is skipped. To keep pages
+ * full, one call reads up to 75 rows and returns the first 25 visible ones.
+ * The cursor is the `_creationTime` of the last row consumed, so the next call
+ * starts right after it. If 75 rows in a row are hidden the page comes back
+ * empty with `isDone: false`, and the next cursor moves past them.
+ * This is a plain query with its own cursor, not a Convex paginated query:
+ * call it with `useQuery` and keep the cursor in state.
+ */
 export const inbox = query({
   args: cursorArg,
   returns: pageValidator,
   handler: async (ctx, { cursor }): Promise<Page> => {
     const me = await viewerProfile(ctx);
     if (me === null) return EMPTY;
-    const result = await ctx.db
+    const before = cursor === null ? null : Number(cursor);
+    if (before !== null && !Number.isFinite(before)) return EMPTY;
+    const rows = await ctx.db
       .query("messages")
-      .withIndex("by_recipient", (q) => q.eq("recipientId", me._id).eq("recipientDeleted", false))
+      .withIndex("by_recipient", (q) => {
+        const base = q.eq("recipientId", me._id).eq("recipientDeleted", false);
+        return before === null ? base : base.lt("_creationTime", before);
+      })
       .order("desc")
-      .paginate({ numItems: PAGE_SIZE, cursor });
-    const page = await summarize(ctx, result.page, (m) => m.senderId, true);
-    return { page, isDone: result.isDone, continueCursor: result.continueCursor };
+      .take(INBOX_SCAN);
+    const cardFor = otherParty(ctx, me, true);
+    const page: MessageSummary[] = [];
+    let last: number | null = null;
+    let i = 0;
+    for (; i < rows.length && page.length < PAGE_SIZE; i++) {
+      const m = rows[i];
+      last = m._creationTime;
+      const other = await cardFor(m.senderId);
+      if (other) page.push(summary(m, other, m.unread));
+    }
+    // Rows left over from this read decide isDone when the scan was not cut short.
+    let moreVisible = false;
+    for (let j = i; j < rows.length && !moreVisible; j++) moreVisible = (await cardFor(rows[j].senderId)) !== null;
+    const isDone = rows.length < INBOX_SCAN && !moreVisible;
+    return { page, isDone, continueCursor: last === null ? (cursor ?? "") : String(last) };
   },
 });
 
@@ -206,17 +237,22 @@ export const sent = query({
       .withIndex("by_sender", (q) => q.eq("senderId", me._id).eq("senderDeleted", false))
       .order("desc")
       .paginate({ numItems: PAGE_SIZE, cursor });
-    const page = await summarize(ctx, result.page, (m) => m.recipientId, false);
+    const cardFor = otherParty(ctx, me, false);
+    const page: MessageSummary[] = [];
+    for (const m of result.page) {
+      const other = await cardFor(m.recipientId);
+      if (other) page.push(summary(m, other, false));
+    }
     return { page, isDone: result.isDone, continueCursor: result.continueCursor };
   },
 });
 
 /**
- * Opens one of the viewer's own messages and marks it read when the viewer is
- * the recipient. Anyone else, admins included, gets "Not found". A message
- * whose other party is banned still opens, but cannot be replied to.
+ * One of the viewer's own messages. Anyone else, admins included, gets
+ * "Not found". A message whose other party is banned still opens, but cannot
+ * be replied to. No side effects: the client calls markRead when it opens.
  */
-export const read = mutation({
+export const get = query({
   args: { id: v.id("messages") },
   returns: viewValidator,
   handler: async (ctx, { id }): Promise<MessageView> => {
@@ -226,8 +262,6 @@ export const read = mutation({
     const isRecipient = m.recipientId === me._id;
     const [from, to] = await Promise.all([ctx.db.get(m.senderId), ctx.db.get(m.recipientId)]);
     if (from === null || to === null) throw new ConvexError("Not found");
-    if (isRecipient && m.unread) await ctx.db.patch(m._id, { unread: false, readAt: Date.now() });
-
     const canReply = isRecipient && (await refusal(ctx, me, from)) === null;
     const original = m.replyTo !== undefined ? await ctx.db.get(m.replyTo) : null;
     return {
@@ -239,8 +273,22 @@ export const read = mutation({
       createdAt: m._creationTime,
       canReply,
       isRecipient,
+      unread: isRecipient && m.unread,
       ...(original !== null ? { replyTo: { subject: original.subject } } : {}),
     };
+  },
+});
+
+/** Marks one of the viewer's received messages read. Does nothing for the sender or a message already read. */
+export const markRead = mutation({
+  args: { id: v.id("messages") },
+  returns: v.null(),
+  handler: async (ctx, { id }) => {
+    const me = await requireProfile(ctx);
+    const m = viewerCopy(await ctx.db.get(id), me);
+    if (m === null) throw new ConvexError("Not found");
+    if (m.recipientId === me._id && m.unread) await ctx.db.patch(m._id, { unread: false, readAt: Date.now() });
+    return null;
   },
 });
 
@@ -260,7 +308,10 @@ export const remove = mutation({
   },
 });
 
-/** Unread mail in the viewer's inbox from unbanned senders, reading at most 100 rows. 0 when signed out. */
+/**
+ * Unread mail in the viewer's inbox, reading at most 100 rows and skipping the
+ * same senders the inbox hides (banned, or blocked either way). 0 when signed out.
+ */
 export const unreadCount = query({
   args: {},
   returns: v.number(),
@@ -273,15 +324,9 @@ export const unreadCount = query({
         q.eq("recipientId", me._id).eq("recipientDeleted", false).eq("unread", true),
       )
       .take(MAX_UNREAD);
-    const banned = new Map<Id<"profiles">, boolean>();
+    const cardFor = otherParty(ctx, me, true);
     let count = 0;
-    for (const m of rows) {
-      if (!banned.has(m.senderId)) {
-        const p = await ctx.db.get(m.senderId);
-        banned.set(m.senderId, p === null || p.banned);
-      }
-      if (!banned.get(m.senderId)) count++;
-    }
+    for (const m of rows) if ((await cardFor(m.senderId)) !== null) count++;
     return count;
   },
 });
