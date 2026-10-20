@@ -12,8 +12,12 @@
 
 export const FRAME_PASS_TTL_MS = 2 * 60 * 60 * 1000;
 
-/** 43 characters is 32 bytes of HMAC-SHA256 in unpadded base64url. */
-const TOKEN = /^([1-9][0-9]{0,15})\.([A-Za-z0-9_-]{43})$/;
+/**
+ * The shape of a pass. 43 characters is 32 bytes of HMAC-SHA256 in unpadded
+ * base64url. lib/hosts.ts uses it to decide which `pass` values reach the route.
+ */
+export const FRAME_PASS_FORMAT = /^([1-9][0-9]{0,15})\.([A-Za-z0-9_-]{43})$/;
+const TOKEN = FRAME_PASS_FORMAT;
 
 /** The deployment's FRAME_PASS_SECRET, or null when unset or blank. */
 export function framePassSecret(): string | null {

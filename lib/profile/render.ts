@@ -445,6 +445,8 @@ export const playerScript = `document.addEventListener("DOMContentLoaded", funct
   var current = Math.max(0, autoplay);
   var tracksUrl = ui.getAttribute("data-tracks-url");
   // A private profile's frame carries ?pass=; the refresh must send it too, or it gets a 404.
+  // The pass isn't renewed here. On a visit longer than its 2 hours the refresh gets a
+  // 404, so playback stops once the last signed URLs expire, until the frame reloads.
   if (tracksUrl) {
     var pass = null;
     try { pass = new URLSearchParams(location.search).get("pass"); } catch (e) { pass = null; }

@@ -10,9 +10,10 @@ const PASSWORD = randomBytes(18).toString("base64url");
 
 function reset() {
   const envFile = process.env.E2E_CONVEX_ENV_FILE ? ["--env-file", process.env.E2E_CONVEX_ENV_FILE] : [];
-  execFileSync("npx", ["convex", "run", ...envFile, "testing:resetPrivateFixture", JSON.stringify({ password: PASSWORD })], {
-    stdio: "inherit",
-  });
+  // Two calls, one password hash each (see convex/testing.ts).
+  for (const fn of ["testing:seedPrivatePalFixture", "testing:resetPrivateFixture"]) {
+    execFileSync("npx", ["convex", "run", ...envFile, fn, JSON.stringify({ password: PASSWORD })], { stdio: "inherit" });
+  }
 }
 
 test.beforeAll(reset);
@@ -49,6 +50,10 @@ async function expectPrivateCard(page: Page) {
   await expect(card).toContainText("E2E Private");
   await expect(card).toContainText("Pretoria, South Africa");
   await expect(card).toContainText(NOTE);
+  await expect(card).toContainText("Mood:");
+  await expect(card).toContainText("keeping it private");
+  await expect(card.locator("svg[data-mood-icon='happy']")).toBeVisible();
+  await expect(card).toContainText("Online Now!");
   await expect(page.locator("iframe[data-topeight-profile]")).toHaveCount(0);
   const strip = page.locator("[data-topeight-strip]");
   await expect(strip.getByRole("button", { name: "Add to Friends" })).toBeVisible({ timeout: 15_000 });

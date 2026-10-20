@@ -1,3 +1,4 @@
+import "server-only";
 import { convexAuthNextjsToken } from "@convex-dev/auth/nextjs/server";
 
 /**

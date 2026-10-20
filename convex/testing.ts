@@ -716,26 +716,53 @@ export const PRIVATE_EMAIL = "e2e-private@fixture.invalid";
 export const PAL_EMAIL = "e2e-pal@fixture.invalid";
 
 /**
- * Fixture for e2e/private.spec.ts: two fans only that spec touches, e2eprivate
- * and its friend e2epal, both logging in with `password`. Turns Private profile
- * off on e2eprivate and resets its privacy limit, so the spec starts public and
- * reruns stay under 30 an hour. Safe to call again; the spec calls it before and
- * after. Same guards as the other login fixtures.
+ * Fixtures for e2e/private.spec.ts: two fans only that spec touches, e2eprivate
+ * and its friend e2epal, both logging in with `password`. Two mutations, one
+ * password hash each, so neither runs near the 1 s mutation limit on a busy
+ * machine. Call seedPrivatePalFixture first. Same guards as the other login
+ * fixtures.
+ */
+export const seedPrivatePalFixture = internalMutation({
+  args: { password: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { password }) => {
+    await seedLoginFixture(ctx, { username: "e2epal", displayName: "E2E Pal", email: PAL_EMAIL, kind: "fan", password });
+    return null;
+  },
+});
+
+/**
+ * Seeds e2eprivate and turns Private profile off, gives it a mood and a fresh
+ * presence row (Online Now!), resets its privacy limit, and makes it friends with
+ * e2epal. The spec starts public and reruns stay under 30 an hour. Safe to call
+ * again; the spec calls it before and after.
  */
 export const resetPrivateFixture = internalMutation({
   args: { password: v.string() },
   returns: v.null(),
   handler: async (ctx, { password }) => {
     await seedLoginFixture(ctx, { username: "e2eprivate", displayName: "E2E Private", email: PRIVATE_EMAIL, kind: "fan", password });
-    await seedLoginFixture(ctx, { username: "e2epal", displayName: "E2E Pal", email: PAL_EMAIL, kind: "fan", password });
-    const byName = async (username: string) =>
-      (await ctx.db
+    const byName = (username: string) =>
+      ctx.db
         .query("profiles")
         .withIndex("by_username", (q) => q.eq("username", username))
-        .unique())!;
-    const owner = await byName("e2eprivate");
+        .unique();
+    const owner = (await byName("e2eprivate"))!;
     const pal = await byName("e2epal");
-    await ctx.db.patch(owner._id, { private: undefined, location: "Pretoria, South Africa" });
+    if (pal === null) throw new ConvexError("Run testing:seedPrivatePalFixture first");
+    await ctx.db.patch(owner._id, {
+      private: undefined,
+      location: "Pretoria, South Africa",
+      mood: { icon: "happy", text: "keeping it private" },
+      showOnline: undefined,
+    });
+    // Online Now! on the card without waiting for the owner's heartbeat.
+    const seen = await ctx.db
+      .query("presence")
+      .withIndex("by_profile", (q) => q.eq("profileId", owner._id))
+      .unique();
+    if (seen === null) await ctx.db.insert("presence", { profileId: owner._id, lastSeenAt: Date.now() });
+    else await ctx.db.patch(seen._id, { lastSeenAt: Date.now() });
     await rateLimiter.reset(ctx, "privacy", { key: owner._id });
     const pair = friendshipPair(owner._id, pal._id);
     const row = await ctx.db
