@@ -1,0 +1,75 @@
+.form label {
+  display: block;
+  font-weight: bold;
+  margin: 6px 0 2px;
+}
+
+.form input[type="text"],
+.form input[type="date"],
+.form input[type="time"],
+.form textarea,
+.form select {
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.form input[type="text"],
+.form textarea {
+  width: 100%;
+}
+
+.when {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.error {
+  margin-left: 8px;
+  color: #c00;
+}
+
+.muted {
+  color: #666;
+}
+
+.item {
+  margin: 0 0 8px;
+  padding: 4px 6px;
+  background: #d5e8fb;
+  overflow-wrap: anywhere;
+}
+
+.tag {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 4px;
+  background: #ff9933;
+  color: #fff;
+  font-size: 9px;
+  font-weight: bold;
+}
+
+.cancelled {
+  color: #c00;
+  font-weight: bold;
+}
+
+.filter {
+  margin: 0 0 8px;
+}
+
+.description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.flyer {
+  max-width: 100%;
+}
+
+.rsvp button[aria-pressed="true"] {
+  font-weight: bold;
+  background: #ff9933;
+  color: #fff;
+}

@@ -9,14 +9,15 @@ import styles from "./Posts.module.css";
 
 const MAX_REASON = 500;
 
-/** A small Report button for one comment, bulletin, message, blog post or blog comment. Asks for a reason with window.prompt. */
-type ReportTarget = "comment" | "bulletin" | "message" | "blogPost" | "blogComment";
+/** A small Report button for one comment, bulletin, message, blog post, blog comment or event. Asks for a reason with window.prompt. */
+type ReportTarget = "comment" | "bulletin" | "message" | "blogPost" | "blogComment" | "event";
 const TARGET_NAME: Record<ReportTarget, string> = {
   comment: "comment",
   bulletin: "bulletin",
   message: "message",
   blogPost: "blog post",
   blogComment: "blog comment",
+  event: "event",
 };
 
 export function ReportLink({ targetType, targetId }: { targetType: ReportTarget; targetId: string }) {

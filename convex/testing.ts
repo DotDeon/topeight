@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx } from "./_generated/server";
+import { rateLimiter } from "./lib/limits";
 import { friendshipPair } from "./lib/friendships";
 import { syncMediaFlags } from "./lib/media";
 import { hashPassword } from "./lib/password";
@@ -463,6 +464,49 @@ export const seedMailFixture = internalMutation({
         .filter((q) => q.eq(q.field("senderId"), from))
         .take(100);
       for (const m of rows) await ctx.db.delete(m._id);
+    }
+    return null;
+  },
+});
+
+/**
+ * Fixture for e2e/events.spec.ts: deletes every event hosted by the e2e
+ * accounts, with its RSVPs, and resets their event and RSVP rate limits so
+ * repeated runs do not hit the 5 events a day cap.
+ */
+export const resetEventsFixture = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    if (process.env.TOPEIGHT_TEST_FIXTURES !== "1") {
+      throw new ConvexError("Set TOPEIGHT_TEST_FIXTURES=1 on this deployment to seed test fixtures");
+    }
+    for (const username of ["e2eadmin", "e2ecommenter"]) {
+      const profile = await ctx.db
+        .query("profiles")
+        .withIndex("by_username", (q) => q.eq("username", username))
+        .unique();
+      if (profile === null) continue;
+      const events = await ctx.db
+        .query("events")
+        .withIndex("by_host", (q) => q.eq("hostId", profile._id))
+        .take(100);
+      for (const e of events) {
+        const rsvps = await ctx.db
+          .query("rsvps")
+          .withIndex("by_event_status", (q) => q.eq("eventId", e._id))
+          .take(100);
+        for (const r of rsvps) await ctx.db.delete(r._id);
+        await ctx.db.delete(e._id);
+      }
+      const own = await ctx.db
+        .query("rsvps")
+        .withIndex("by_profile", (q) => q.eq("profileId", profile._id))
+        .take(100);
+      for (const r of own) await ctx.db.delete(r._id);
+      for (const name of ["event", "eventEdit", "rsvp"] as const) {
+        await rateLimiter.reset(ctx, name, { key: profile._id });
+      }
     }
     return null;
   },

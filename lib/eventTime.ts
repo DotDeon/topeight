@@ -150,3 +150,19 @@ export function formatEventTime(startsAt: number, timeZone: string): string {
     : p.timeZoneName;
   return `${p.weekday} ${p.day} ${month} ${p.year}, ${p.hour}:${p.minute} ${p.dayPeriod.toUpperCase()} ${zone}`;
 }
+
+/** A show's "YYYY-MM-DD" date as "Sat 24 Oct 2026". Shows have no time, so none is shown. */
+export function formatShowDate(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const parts: Record<string, string> = {};
+  for (const p of new Intl.DateTimeFormat("en-GB", {
+    timeZone: "UTC",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).formatToParts(Date.UTC(y, m - 1, d))) {
+    parts[p.type] = p.value;
+  }
+  return `${parts.weekday} ${parts.day} ${parts.month.slice(0, 3)} ${parts.year}`;
+}
