@@ -25,8 +25,10 @@ test("a friend removes a friend from the trusted strip", async ({ page }) => {
     await login(page, "e2e-commenter@fixture.invalid", process.env.E2E_COMMENTER_PASSWORD, "E2E_COMMENTER_PASSWORD");
     await page.goto("/sandboxtest");
     const strip = page.locator("[data-openspace-strip]");
+    const remove = strip.getByRole("button", { name: "Remove from Friends" });
+    await expect(remove).toBeVisible({ timeout: 15_000 });
     await expect(strip.getByRole("button", { name: "Add to Friends" })).toHaveCount(0);
-    await strip.getByRole("button", { name: "Remove from Friends" }).click();
+    await remove.click();
 
     const dialog = page.locator("dialog[data-openspace-confirm]");
     await expect(dialog).toContainText("Remove Sandbox Test from your friends?");
@@ -48,6 +50,9 @@ test("a signed-in user sees no friend actions on their own profile", async ({ pa
   await page.goto("/e2ecommenter");
   const strip = page.locator("[data-openspace-strip]");
   await expect(strip.getByRole("button", { name: "Add Comment" })).toBeVisible();
+  // Friend and block slots fill in once the relationship loads, so a missing button needs a loaded signal.
+  await expect(page.getByRole("link", { name: "Log Out" })).toBeVisible();
+  await expect.poll(() => strip.getByRole("button").count()).toBe(2);
   await expect(strip.getByRole("button", { name: "Add to Friends" })).toHaveCount(0);
   await expect(strip.getByRole("button", { name: "Block" })).toHaveCount(0);
 });

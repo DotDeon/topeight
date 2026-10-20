@@ -39,7 +39,7 @@ export function ProfileView({
   }, [username, recordView]);
 
   const rel = useQuery(api.social.relationship, { username });
-  const isHouse = useQuery(api.social.isHouseProfile, { username }) ?? false;
+  const isHouse = useQuery(api.social.isHouseProfile, { username });
   const buttons = stripButtons(rel, isHouse);
 
   const show = useCallback((action: DialogAction, fromBridge: boolean, track?: ProfileTrack) => {

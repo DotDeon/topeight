@@ -42,6 +42,12 @@ describe("parseBridgeMessage: sender checks", () => {
   });
 });
 
+describe("parseBridgeMessage: strip-only actions", () => {
+  test.each(["removeFriend", "unblock", "reportTrack"])("drops %s as an action", (action) => {
+    expect(parseBridgeMessage(ev({ type: "openspace:action", action }), frame)).toBeNull();
+  });
+});
+
 describe("parseBridgeMessage: payload checks", () => {
   test.each([null, undefined, "openspace:action", 42, [], true])("rejects non-object data %j", (data) => {
     expect(parseBridgeMessage(ev(data), frame)).toBeNull();

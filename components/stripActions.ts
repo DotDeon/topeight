@@ -1,26 +1,28 @@
 import type { Relationship } from "@/convex/social";
-import type { DialogAction } from "./profileActions";
+import { PROFILE_ACTIONS, type DialogAction } from "./profileActions";
 
 /** One button in the trusted strip. `disabled` buttons show a state, not an action. */
 export type StripButton = { action: DialogAction; label: string; disabled?: boolean };
 
+const labelOf = (action: DialogAction) => PROFILE_ACTIONS[action].label;
+const button = (action: DialogAction): StripButton => ({ action, label: labelOf(action) });
+
 /**
- * The strip's buttons for this viewer and profile. `rel` is undefined while it
- * loads and null when the profile is unknown; both fall back to the signed-out
- * layout, which the server still checks on every click.
+ * The strip's buttons for this viewer and profile. `rel` and `isHouse` are
+ * undefined while they load: the friend and block slots stay empty until both
+ * are in, so a wrong label never flashes. `rel` null (unknown profile) gets the
+ * signed-out layout; the server still checks every click.
  */
-export function stripButtons(rel: Relationship | null | undefined, isHouse: boolean): StripButton[] {
-  const comment: StripButton = { action: "addComment", label: "Add Comment" };
-  const report: StripButton = { action: "report", label: "Report" };
+export function stripButtons(rel: Relationship | null | undefined, isHouse: boolean | undefined): StripButton[] {
+  const comment = button("addComment");
+  const report = button("report");
+  if (rel === undefined || isHouse === undefined) return [comment, report];
   if (rel?.self) return [comment, report];
 
   let friend: StripButton[];
-  if (rel?.friends) friend = isHouse ? [] : [{ action: "removeFriend", label: "Remove from Friends" }];
+  if (rel?.friends) friend = isHouse ? [] : [button("removeFriend")];
   else if (rel?.pendingOut) friend = [{ action: "addFriend", label: "Request sent", disabled: true }];
-  else friend = [{ action: "addFriend", label: "Add to Friends" }];
+  else friend = [button("addFriend")];
 
-  const block: StripButton = rel?.blocked
-    ? { action: "unblock", label: "Unblock" }
-    : { action: "block", label: "Block" };
-  return [...friend, comment, report, block];
+  return [...friend, comment, report, button(rel?.blocked ? "unblock" : "block")];
 }
