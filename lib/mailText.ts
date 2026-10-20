@@ -1,6 +1,6 @@
 /** Same limits as convex/lib/posting.ts. */
-const MAX_SUBJECT = 100;
-const MAX_MESSAGE = 5000;
+export const MAX_SUBJECT = 100;
+export const MAX_MESSAGE = 5000;
 
 /** The line between a reply and the message it quotes. */
 export const QUOTE_RULE = "--------------------";
@@ -29,4 +29,9 @@ export function quoteBody(body: string): string {
 export function unreadBadge(count: number): string {
   if (count <= 0) return "";
   return count > 99 ? "99+" : String(count);
+}
+
+/** "2026-10-20 14:05 UTC" */
+export function mailDate(t: number): string {
+  return new Date(t).toISOString().slice(0, 16).replace("T", " ") + " UTC";
 }

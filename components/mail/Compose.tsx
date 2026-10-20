@@ -6,14 +6,11 @@ import { useCallback, useDeferredValue, useEffect, useRef, useState, type FormEv
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { errorText } from "@/lib/errorText";
-import { quoteBody, replySubject } from "@/lib/mailText";
+import { MAX_MESSAGE, MAX_SUBJECT, quoteBody, replySubject } from "@/lib/mailText";
 import { validateUsername } from "@/lib/validation";
 import { Box } from "../Box";
 import { MailBoundary } from "./MessageView";
 import styles from "./Mail.module.css";
-
-const MAX_SUBJECT = 100;
-const MAX_MESSAGE = 5000;
 
 /** Loads the message being answered and hands its subject and quoted body up, once. */
 function ReplySource({ id, onLoad }: { id: Id<"messages">; onLoad: (subject: string, body: string) => void }) {
@@ -43,12 +40,14 @@ export function Compose({ to: initialTo, replyTo }: { to: string; replyTo?: stri
     setBody(b);
   }, []);
 
-  const name = useDeferredValue(to.trim().toLowerCase());
+  const live = to.trim().toLowerCase();
+  const name = useDeferredValue(live);
   const checked = name === "" ? null : validateUsername(name);
   const valid = checked?.ok ? checked.username : null;
   const allowed = useQuery(api.mail.canMessage, valid ? { username: valid } : "skip");
 
-  const ready = valid !== null && allowed === true && subject.trim() !== "" && body.trim() !== "";
+  // Send only to the name that was checked: not while the box is ahead of the deferred check.
+  const ready = name === live && valid !== null && allowed === true && subject.trim() !== "" && body.trim() !== "";
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();

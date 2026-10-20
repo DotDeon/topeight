@@ -7,12 +7,11 @@ import { Component, useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { errorText } from "@/lib/errorText";
+import { mailDate } from "@/lib/mailText";
 import { Box } from "../Box";
 import { PostBody } from "../PostBody";
 import { ReportLink } from "../ReportLink";
 import styles from "./Mail.module.css";
-
-const when = (t: number) => new Date(t).toISOString().slice(0, 16).replace("T", " ") + " UTC";
 
 /** A bad id or a message that is gone makes the query throw. Show "not found" instead of crashing the page. */
 export class MailBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { failed: boolean }> {
@@ -71,7 +70,7 @@ function Message({ id }: { id: Id<"messages"> }) {
           <Link href={`/${other.username}`}>{other.displayName}</Link>
         </span>
         <span className={styles.key}>Date:</span>
-        <span className={styles.val}>{when(view.createdAt)}</span>
+        <span className={styles.val}>{mailDate(view.createdAt)}</span>
         <span className={styles.key}>Subject:</span>
         <span className={styles.val} data-mail-subject="">
           {view.subject}

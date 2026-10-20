@@ -71,10 +71,6 @@ export function ProfileView({
   const onBridgeAction = useCallback(
     (action: DialogAction, track?: ProfileTrack) => {
       if (open.current) return;
-      if (action === "message") {
-        openCompose();
-        return;
-      }
       const verdict = gate.current.check(Date.now());
       if (verdict === "cooldown") return;
       if (verdict === "throttled") {
@@ -85,6 +81,12 @@ export function ProfileView({
         return;
       }
       setThrottled(false);
+      if (action === "message") {
+        // No dialog, but it counts like a cancelled one so artist code cannot loop the redirect.
+        gate.current.closed(Date.now(), { fromBridge: true, counts: true, outcome: "cancelled" });
+        openCompose();
+        return;
+      }
       show(action, true, track);
     },
     [show, openCompose],

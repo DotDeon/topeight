@@ -4,10 +4,9 @@ import { useQuery } from "convex/react";
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@/convex/_generated/api";
+import { mailDate } from "@/lib/mailText";
 import { Box } from "../Box";
 import styles from "./Mail.module.css";
-
-const when = (t: number) => new Date(t).toISOString().slice(0, 16).replace("T", " ") + " UTC";
 
 /**
  * Inbox or sent mail, 25 a page. The queries take a cursor, so Next pushes the
@@ -54,7 +53,7 @@ export function MailList({ kind }: { kind: "inbox" | "sent" }) {
                 <td>
                   <Link href={`/mail/${m.id}`}>{m.subject}</Link>
                 </td>
-                <td>{when(m.createdAt)}</td>
+                <td>{mailDate(m.createdAt)}</td>
               </tr>
             ))}
           </tbody>

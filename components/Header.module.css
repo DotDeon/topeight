@@ -62,12 +62,13 @@
 
 @keyframes blink {
   50% {
-    visibility: hidden;
+    opacity: 0.25;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .newMail {
+  .newMail,
+  .newMail:hover {
     animation: none;
   }
 }
