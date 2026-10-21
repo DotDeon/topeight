@@ -19,7 +19,7 @@ import { BULLETIN_WINDOW_MS } from "./lib/bulletins";
 import { toPublicCard, toPublicCardOnline, type PublicCard } from "./lib/cards";
 import { friendIds, friendshipPair } from "./lib/friendships";
 import { MAX_SCAN, rateLimiter } from "./lib/limits";
-import { isOnline } from "./lib/presence";
+import { isOnline, onlineAsOf } from "./lib/presence";
 import { moodIcon } from "./lib/moods";
 import { MAX_TRACKS, photoUrl, syncMediaFlags } from "./lib/media";
 import { profileSongFor } from "./lib/profileSongs";
@@ -139,6 +139,21 @@ export const me = query({
     const userId = await getAuthUserId(ctx);
     if (userId === null) return null;
     return await profileForUser(ctx, userId);
+  },
+});
+
+/**
+ * The caller's photo URL for Edit Profile, built on the server because the
+ * photo bucket's base URL is a Convex variable. Null when signed out or no photo.
+ */
+export const myPhotoUrl = query({
+  args: {},
+  returns: v.union(v.null(), v.string()),
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) return null;
+    const me = await profileForUser(ctx, userId);
+    return me === null ? null : photoUrl(me.photoKey);
   },
 });
 
@@ -439,7 +454,12 @@ function ageOf(p: Doc<"profiles">): { age?: number } {
  * restricted card when `full` is false and the profile is private, and the whole
  * page otherwise. Every read is bounded.
  */
-async function profileResult(ctx: QueryCtx, p: Doc<"profiles"> | null, full: boolean): Promise<ProfileResult> {
+async function profileResult(
+  ctx: QueryCtx,
+  p: Doc<"profiles"> | null,
+  full: boolean,
+  asOf: number | undefined,
+): Promise<ProfileResult> {
   if (p === null) return null;
   if (p.banned) return { unavailable: true };
   if (!full && p.private === true) {
@@ -450,18 +470,19 @@ async function profileResult(ctx: QueryCtx, p: Doc<"profiles"> | null, full: boo
       ...ageOf(p),
       location: p.location,
       mood: p.mood ?? null,
-      online: await isOnline(ctx, p, Date.now()),
+      online: await isOnline(ctx, p, onlineAsOf(asOf)),
     };
   }
-  return await fullProfile(ctx, p);
+  return await fullProfile(ctx, p, asOf);
 }
 
-async function fullProfile(ctx: QueryCtx, p: Doc<"profiles">): Promise<PublicProfile> {
-  const now = Date.now();
+async function fullProfile(ctx: QueryCtx, p: Doc<"profiles">, asOf: number | undefined): Promise<PublicProfile> {
+  // Only the online checks use asOf; everything else reads the real clock.
+  const onlineAt = onlineAsOf(asOf);
   const top8: PublicCard[] = [];
   for (const id of p.top8.slice(0, 8)) {
     const friend = await ctx.db.get(id);
-    if (friend !== null && !friend.banned) top8.push(await toPublicCardOnline(ctx, friend, now));
+    if (friend !== null && !friend.banned) top8.push(await toPublicCardOnline(ctx, friend, onlineAt));
   }
 
   const counted = await ctx.db
@@ -516,7 +537,7 @@ async function fullProfile(ctx: QueryCtx, p: Doc<"profiles">): Promise<PublicPro
     kind: p.kind,
     headline: p.headline,
     mood: p.mood ?? null,
-    online: await isOnline(ctx, p, now),
+    online: await isOnline(ctx, p, onlineAt),
     location: p.location,
     gender: p.gender,
     ...ageOf(p),
@@ -558,12 +579,14 @@ async function fullProfile(ctx: QueryCtx, p: Doc<"profiles">): Promise<PublicPro
  * card ({ restricted: true, ... }) for a private profile the signed-in viewer
  * may not see in full (canSeeFull). Nothing private (email, birth date, user or
  * profile ids) is returned. Track ids are public, for the player's Report links.
+ * `asOf` is the caller's current minute, used only for the online flags
+ * (lib/presence.ts onlineAsOf).
  */
 export const getPublicProfile = query({
-  args: { username: v.string() },
-  handler: async (ctx, { username }): Promise<ProfileResult> => {
+  args: { username: v.string(), asOf: v.optional(v.number()) },
+  handler: async (ctx, { username, asOf }): Promise<ProfileResult> => {
     const p = await profileByUsername(ctx, username);
-    return await profileResult(ctx, p, p !== null && (await canSeeFull(ctx, await viewerProfile(ctx), p)));
+    return await profileResult(ctx, p, p !== null && (await canSeeFull(ctx, await viewerProfile(ctx), p)), asOf);
   },
 });
 
@@ -573,14 +596,14 @@ export const getPublicProfile = query({
  * `now` comes from the action, so a cached result never outlives a pass.
  */
 export const publicProfileForFrame = internalQuery({
-  args: { username: v.string(), pass: v.optional(v.string()), now: v.number() },
-  handler: async (ctx, { username, pass, now }): Promise<ProfileResult> => {
+  args: { username: v.string(), pass: v.optional(v.string()), now: v.number(), asOf: v.optional(v.number()) },
+  handler: async (ctx, { username, pass, now, asOf }): Promise<ProfileResult> => {
     const p = await profileByUsername(ctx, username);
     if (p === null) return null;
     const full =
       (await canSeeFull(ctx, await viewerProfile(ctx), p)) ||
       (await verifyFramePass(pass, p._id, now, framePassSecret()));
-    return await profileResult(ctx, p, full);
+    return await profileResult(ctx, p, full, asOf);
   },
 });
 
@@ -589,9 +612,9 @@ export const publicProfileForFrame = internalQuery({
  * the real time on every call, never against a cached query result.
  */
 export const getPublicProfileWithPass = action({
-  args: { username: v.string(), pass: v.optional(v.string()) },
-  handler: async (ctx, { username, pass }): Promise<ProfileResult> =>
-    await ctx.runQuery(internal.profiles.publicProfileForFrame, { username, pass, now: Date.now() }),
+  args: { username: v.string(), pass: v.optional(v.string()), asOf: v.optional(v.number()) },
+  handler: async (ctx, { username, pass, asOf }): Promise<ProfileResult> =>
+    await ctx.runQuery(internal.profiles.publicProfileForFrame, { username, pass, now: Date.now(), asOf }),
 });
 
 async function statsFor(ctx: QueryCtx | MutationCtx, profileId: Id<"profiles">) {

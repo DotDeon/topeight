@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "../../convex/_generated/api";
+import { onlineAsOf } from "../../convex/lib/presence";
 import { addProfile, as, befriend, NOW, setup, type T } from "./helpers";
 
 beforeEach(() => {
@@ -144,5 +145,96 @@ describe("online flag", () => {
     const cool = await t.query(api.home.coolNewPeople, {});
     expect(cool.find((c) => c.username === "on")!.online).toBe(true);
     expect(cool.find((c) => c.username === "off")!.online).toBe(false);
+  });
+});
+
+describe("asOf", () => {
+  test("onlineAsOf uses asOf within 2 minutes of the clock and ignores it otherwise", () => {
+    const now = NOW.getTime();
+    expect(onlineAsOf(undefined, now)).toBe(now);
+    expect(onlineAsOf(now - 2 * MIN, now)).toBe(now - 2 * MIN);
+    expect(onlineAsOf(now + 2 * MIN, now)).toBe(now + 2 * MIN);
+    expect(onlineAsOf(now - 2 * MIN - 1, now)).toBe(now);
+    expect(onlineAsOf(now + 2 * MIN + 1, now)).toBe(now);
+  });
+
+  test("the result for a given asOf goes offline once asOf passes the window", async () => {
+    const t = setup();
+    const me = await addProfile(t, "mia", { hasPhoto: true });
+    const friend = await addProfile(t, "pal", { hasPhoto: true });
+    await befriend(t, me, friend);
+    await t.run((ctx) => ctx.db.patch(me, { top8: [friend] }));
+    await (await as(t, me)).mutation(api.presence.heartbeat, {});
+    await (await as(t, friend)).mutation(api.presence.heartbeat, {});
+
+    const read = async (asOf: number) => {
+      const p = await t.query(api.profiles.getPublicProfile, { username: "mia", asOf });
+      if (p === null || "unavailable" in p || "restricted" in p) throw new Error("expected profile");
+      const friends = await t.query(api.social.listFriends, { username: "mia", asOf });
+      const cool = await t.query(api.home.coolNewPeople, { asOf });
+      return [
+        p.online,
+        p.top8[0].online,
+        friends!.friends[0].online,
+        cool.find((c) => c.username === "pal")!.online,
+      ];
+    };
+
+    vi.setSystemTime(NOW.getTime() + 4 * MIN);
+    expect(await read(NOW.getTime() + 4 * MIN)).toEqual([true, true, true, true]);
+    vi.setSystemTime(NOW.getTime() + 5 * MIN);
+    expect(await read(NOW.getTime() + 5 * MIN)).toEqual([false, false, false, false]);
+  });
+
+  test("asOf is used for the check: a minute-rounded asOf inside the slack decides", async () => {
+    const t = setup();
+    const id = await addProfile(t, "mia");
+    await (await as(t, id)).mutation(api.presence.heartbeat, {});
+    // The clock says 5 minutes and 30 seconds (offline), the rounded minute says 5:00 minus 1ms (online).
+    vi.setSystemTime(NOW.getTime() + 5 * MIN + 30_000);
+    expect(
+      await t.query(api.profiles.getPublicProfile, { username: "mia", asOf: NOW.getTime() + 5 * MIN - 1 }),
+    ).toMatchObject({ online: true });
+  });
+
+  test("an out-of-range asOf is ignored", async () => {
+    const t = setup();
+    const id = await addProfile(t, "mia");
+    await (await as(t, id)).mutation(api.presence.heartbeat, {});
+    // Far in the past while the member went offline: the clock decides.
+    vi.setSystemTime(NOW.getTime() + 10 * MIN);
+    expect(await t.query(api.profiles.getPublicProfile, { username: "mia", asOf: NOW.getTime() })).toMatchObject({
+      online: false,
+    });
+    // Far in the future while the member is online: still the clock.
+    vi.setSystemTime(NOW.getTime() + MIN);
+    expect(
+      await t.query(api.profiles.getPublicProfile, { username: "mia", asOf: NOW.getTime() + 60 * MIN }),
+    ).toMatchObject({ online: true });
+  });
+
+  test("the profile never carries lastSeenAt", async () => {
+    const t = setup();
+    const id = await addProfile(t, "mia");
+    await (await as(t, id)).mutation(api.presence.heartbeat, {});
+    const p = await t.query(api.profiles.getPublicProfile, { username: "mia", asOf: NOW.getTime() });
+    expect(JSON.stringify(p)).not.toContain("lastSeenAt");
+  });
+});
+
+describe("presence.setShowOnline limit", () => {
+  test("is limited to 30 an hour", async () => {
+    const t = setup();
+    const id = await addProfile(t, "mia");
+    const mia = await as(t, id);
+    for (let i = 0; i < 30; i++) await mia.mutation(api.presence.setShowOnline, { value: i % 2 === 0 });
+    await expect(mia.mutation(api.presence.setShowOnline, { value: true })).rejects.toThrow("Slow down");
+    vi.setSystemTime(NOW.getTime() + 61 * MIN);
+    await mia.mutation(api.presence.setShowOnline, { value: true });
+  });
+
+  test("refuses a signed-out caller before counting", async () => {
+    const t = setup();
+    await expect(t.mutation(api.presence.setShowOnline, { value: true })).rejects.toThrow("Not signed in");
   });
 });

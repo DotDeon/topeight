@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation } from "./_generated/server";
 import { requireProfile } from "./lib/access";
 import { rateLimiter } from "./lib/limits";
@@ -29,12 +29,14 @@ export const heartbeat = mutation({
   },
 });
 
-/** Turns Online Now! on or off. Turning it off deletes the presence row. */
+/** Turns Online Now! on or off. Turning it off deletes the presence row. 30 an hour. */
 export const setShowOnline = mutation({
   args: { value: v.boolean() },
   returns: v.null(),
   handler: async (ctx, { value }) => {
     const me = await requireProfile(ctx);
+    const { ok } = await rateLimiter.limit(ctx, "showOnline", { key: me._id });
+    if (!ok) throw new ConvexError("Slow down");
     await ctx.db.patch(me._id, { showOnline: value });
     if (!value) {
       const row = await ctx.db

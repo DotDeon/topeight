@@ -26,19 +26,45 @@ export const pick = mutation({
     }
     const { ok } = await rateLimiter.limit(ctx, "songPick", { key: me._id });
     if (!ok) throw new ConvexError("Slow down");
-    await setPick(ctx, me._id, song.track);
+    await setPick(ctx, me, song.track);
     return null;
   },
 });
 
-/** Removes the caller's profile song. */
+/** Removes the caller's profile song. Shares pick's limit of 20 an hour. */
 export const clear = mutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
     const me = await requireProfile(ctx);
+    const { ok } = await rateLimiter.limit(ctx, "songPick", { key: me._id });
+    if (!ok) throw new ConvexError("Slow down");
     await clearPick(ctx, me);
     return null;
+  },
+});
+
+/**
+ * The caller's profile song for Edit Profile: title and artist, or null when
+ * signed out, there is no pick, or the song isn't available right now.
+ */
+export const mine = query({
+  args: {},
+  returns: v.union(
+    v.null(),
+    v.object({ title: v.string(), artist: v.object({ username: v.string(), displayName: v.string() }) }),
+  ),
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) return null;
+    const me = await profileForUser(ctx, userId);
+    if (me === null) return null;
+    const song = await profileSongFor(ctx, me);
+    if (song === null) return null;
+    return {
+      title: song.track.title,
+      artist: { username: song.artist.username, displayName: song.artist.displayName },
+    };
   },
 });
 

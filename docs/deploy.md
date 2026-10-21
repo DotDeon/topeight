@@ -126,11 +126,12 @@ Follow these steps in order on an existing deployment.
 2. Add its CORS policy, the same one as in section 3.
 3. Give the API token Object Read & Write on both buckets.
 4. Set `R2_AUDIO_BUCKET` on Convex: `npx convex env set R2_AUDIO_BUCKET <bucket name>`.
-5. Deploy.
-6. Run `npx convex run migrations:moveTracksToAudioBucket`.
-7. Run `npx convex run migrations:backfillMediaFlags`.
-8. Run `npx convex run migrations:backfillSongPicks`.
-9. Smoke test: upload a song, play it, delete it.
+5. Set `FRAME_PASS_SECRET` on Convex (any long random string, for example from `openssl rand -base64 48`).
+6. Deploy.
+7. Run `npx convex run migrations:moveTracksToAudioBucket`.
+8. Run `npx convex run migrations:backfillMediaFlags`.
+9. Run `npx convex run migrations:backfillSongPicks`.
+10. Smoke test: upload a song, play it, delete it.
 
 Deletes fail until `R2_AUDIO_BUCKET` is set, so do not deploy before step 4.
 

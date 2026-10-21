@@ -21,7 +21,14 @@ import { StatusLine, useSaver } from "./shared";
 import { Top8Picker } from "./Top8Picker";
 import { TracksForm } from "./TracksForm";
 
-function BecomeArtist() {
+/** The confirm before switching to artist. A private fan is told the setting goes. */
+export function becomeArtistConfirm(isPrivate: boolean): string {
+  return isPrivate
+    ? "Artist pages are public. Switching turns off your private profile setting. Continue?"
+    : "Switch to an artist profile?";
+}
+
+function BecomeArtist({ isPrivate }: { isPrivate: boolean }) {
   const become = useMutation(api.profiles.becomeArtist);
   const { status, busy, run } = useSaver();
   return (
@@ -32,7 +39,7 @@ function BecomeArtist() {
           type="button"
           disabled={busy}
           onClick={() => {
-            if (confirm("Switch to an artist profile?")) void run(() => become({}), "You are now an artist");
+            if (confirm(becomeArtistConfirm(isPrivate))) void run(() => become({}), "You are now an artist");
           }}
         >
           Switch to an artist profile
@@ -47,7 +54,9 @@ export function EditProfile() {
   const router = useRouter();
   const { isLoading, isAuthenticated } = useConvexAuth();
   const me = useQuery(api.profiles.me, isAuthenticated ? {} : "skip");
-  const pub = useQuery(api.profiles.getPublicProfile, me ? { username: me.username } : "skip");
+  // Small reads instead of the whole public profile: only the song and photo are needed here.
+  const song = useQuery(api.profileSongs.mine, me ? {} : "skip");
+  const photoUrl = useQuery(api.profiles.myPhotoUrl, me ? {} : "skip");
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.replace("/login");
@@ -57,7 +66,6 @@ export function EditProfile() {
   if (isLoading || !isAuthenticated || !me) return <p className={styles.note}>Loading...</p>;
 
   const artist = me.kind === "artist";
-  const photoUrl = pub && !("unavailable" in pub) && !("restricted" in pub) ? pub.photoUrl : null;
   return (
     <div className={styles.page}>
       <h1 className={styles.title}>Edit Profile</h1>
@@ -66,11 +74,11 @@ export function EditProfile() {
       <Box title="Mood" color="orange">
         <MoodForm key={me._id} mood={me.mood} label="Profile mood" />
       </Box>
-      <PhotoForm photoUrl={photoUrl} photoKey={me.photoKey} />
+      <PhotoForm photoUrl={photoUrl ?? null} photoKey={me.photoKey} />
       <ProfileSongForm
-        song={pub && !("unavailable" in pub) && !("restricted" in pub) && pub.profileSong ? pub.profileSong : null}
+        song={song ?? null}
         hasPick={me.profileSong !== undefined}
-        loading={pub === undefined}
+        loading={song === undefined}
         artist={artist}
         shareSongs={me.shareSongs !== false}
       />
@@ -86,7 +94,7 @@ export function EditProfile() {
           <BandForm me={me} />
         </>
       ) : (
-        <BecomeArtist />
+        <BecomeArtist isPrivate={me.private === true} />
       )}
       <CodeEditor key={`${me._id}-${me.kind}`} me={me} />
     </div>

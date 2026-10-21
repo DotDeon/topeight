@@ -7,6 +7,7 @@ import { areFriends, canSeeFull, isBlockedEitherWay, profileForUser, requireProf
 import { toPublicCard, toPublicCardOnline, type PublicCard } from "./lib/cards";
 import { friendIds, friendshipPair } from "./lib/friendships";
 import { MAX_FRIENDS, rateLimiter } from "./lib/limits";
+import { onlineAsOf } from "./lib/presence";
 import { clearPick } from "./lib/profileSongs";
 
 const TOP8_MAX = 8;
@@ -210,10 +211,11 @@ export const unblock = mutation({
 /**
  * A profile's friends as cards, at most 1000, banned profiles left out. Null for
  * an unknown username, and no friends on a private profile the viewer can't see in full.
+ * `asOf` is the caller's current minute, for the online flags only.
  */
 export const listFriends = query({
-  args: { username: v.string() },
-  handler: async (ctx, { username }): Promise<{ friends: PublicCard[]; total: number } | null> => {
+  args: { username: v.string(), asOf: v.optional(v.number()) },
+  handler: async (ctx, { username, asOf }): Promise<{ friends: PublicCard[]; total: number } | null> => {
     const checked = validateUsername(username);
     if (!checked.ok) return null;
     const p = await ctx.db
@@ -224,7 +226,7 @@ export const listFriends = query({
     if (!(await canSeeFull(ctx, await viewerProfile(ctx), p))) return { friends: [], total: 0 };
     const ids = (await friendIds(ctx, p._id)).slice(0, MAX_FRIENDS);
     const friends: PublicCard[] = [];
-    const now = Date.now();
+    const now = onlineAsOf(asOf);
     for (const id of ids) {
       const f = await ctx.db.get(id);
       if (f !== null && !f.banned) friends.push(await toPublicCardOnline(ctx, f, now));

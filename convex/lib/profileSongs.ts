@@ -24,13 +24,18 @@ export async function profileSongFor(
   return { track, artist };
 }
 
-/** Sets a member's profile song and upserts their songPicks row. */
+/**
+ * Sets a member's profile song and upserts their songPicks row. Skips the
+ * profile patch when the pick is already this track, so queries reading the
+ * profile doc don't re-run.
+ */
 export async function setPick(
   ctx: Pick<MutationCtx, "db">,
-  pickerId: Id<"profiles">,
+  picker: Pick<Doc<"profiles">, "_id" | "profileSong">,
   track: Pick<Doc<"tracks">, "_id" | "profileId">,
 ): Promise<void> {
-  await ctx.db.patch(pickerId, { profileSong: track._id });
+  const pickerId = picker._id;
+  if (picker.profileSong !== track._id) await ctx.db.patch(pickerId, { profileSong: track._id });
   const row = await pickRow(ctx, pickerId);
   const fields = { pickerId, artistId: track.profileId, trackId: track._id };
   if (row === null) await ctx.db.insert("songPicks", fields);

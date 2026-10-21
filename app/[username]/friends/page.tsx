@@ -5,6 +5,7 @@ import { Box } from "@/components/Box";
 import { FriendsList } from "@/components/FriendsList";
 import { PrivateNotice } from "@/components/PrivateProfile";
 import { api } from "@/convex/_generated/api";
+import { currentMinute } from "@/lib/minute";
 import { validateUsername } from "@/lib/validation";
 import { viewerAuth } from "@/lib/viewerToken";
 
@@ -17,7 +18,7 @@ export default async function FriendsPage({ params }: PageProps<"/[username]/fri
   const auth = await viewerAuth();
   const [profile, list] = await Promise.all([
     fetchQuery(api.profiles.profileHeader, { username }, auth),
-    fetchQuery(api.social.listFriends, { username }, auth),
+    fetchQuery(api.social.listFriends, { username, asOf: currentMinute() }, auth),
   ]);
   if (profile === null || profile.banned || list === null) notFound();
 

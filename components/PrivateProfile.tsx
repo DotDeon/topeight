@@ -6,6 +6,7 @@ import { MOOD_ICONS } from "@/lib/moods";
 import type { RestrictedProfile } from "@/lib/profile/types";
 import { moodLabel, MoodIcon } from "./MoodIcon";
 import { OnlineNow } from "./OnlineNow";
+import { useMinute } from "./useMinute";
 import styles from "./PrivateProfile.module.css";
 
 /** What a private profile's card shows: the left-column basics. */
@@ -69,7 +70,8 @@ export function PrivateCard({ card }: { card: PrivateCardData }) {
  * through: whichever shape getPublicProfile returns, the card fields are in it.
  */
 export function PrivateCardLoader({ username }: { username: string }) {
-  const p = useQuery(api.profiles.getPublicProfile, { username });
+  const asOf = useMinute();
+  const p = useQuery(api.profiles.getPublicProfile, { username, asOf });
   if (p === undefined) return <p>Loading…</p>;
   if (p === null || "unavailable" in p) return <p>This profile is unavailable</p>;
   return (

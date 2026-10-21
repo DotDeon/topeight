@@ -76,6 +76,18 @@ describe("usercontent route", () => {
     expect(await res.text()).toContain("window.topeight");
   });
 
+  test("asks for the profile as of the current minute", async () => {
+    query.mockResolvedValue(profile);
+    const before = Math.floor(Date.now() / 60_000) * 60_000;
+    await get("jess");
+    const after = Math.floor(Date.now() / 60_000) * 60_000;
+    const args = query.mock.calls[0][1] as { username: string; asOf: number };
+    expect(args.username).toBe("jess");
+    expect(args.asOf % 60_000).toBe(0);
+    expect(args.asOf).toBeGreaterThanOrEqual(before);
+    expect(args.asOf).toBeLessThanOrEqual(after);
+  });
+
   test("404s on the main host without querying", async () => {
     const res = await get("jess", "localhost:3000");
     expect(res.status).toBe(404);
@@ -238,6 +250,11 @@ describe("usercontent route on private profiles", () => {
     expectBaseHeaders(res);
     expect(await res.text()).toContain("only friends");
     expect(action).toHaveBeenCalledWith(expect.anything(), { username: "priv", pass: "good" });
+    expect(action).toHaveBeenCalledWith(expect.anything(), {
+      username: "priv",
+      pass: "good",
+      asOf: expect.any(Number),
+    });
   });
 
   test("answers ?format=tracks with a valid pass", async () => {

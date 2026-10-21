@@ -308,3 +308,52 @@ describe("blocking cuts the profile song tie", () => {
     ).toBeUndefined();
   });
 });
+
+describe("profileSongs.clear limit and mine", () => {
+  test("clear shares the songPick limit of 20 an hour", async () => {
+    const { track, mia } = await world();
+    for (let i = 0; i < 10; i++) {
+      await mia.mutation(api.profileSongs.pick, { trackId: track });
+      await mia.mutation(api.profileSongs.clear, {});
+    }
+    await expect(mia.mutation(api.profileSongs.clear, {})).rejects.toThrow("Slow down");
+    await expect(mia.mutation(api.profileSongs.pick, { trackId: track })).rejects.toThrow("Slow down");
+  });
+
+  test("mine is the caller's pick summary, null when none or signed out", async () => {
+    const { t, band, track, mia } = await world();
+    expect(await t.query(api.profileSongs.mine, {})).toBeNull();
+    expect(await mia.query(api.profileSongs.mine, {})).toBeNull();
+    await mia.mutation(api.profileSongs.pick, { trackId: track });
+    expect(await mia.query(api.profileSongs.mine, {})).toEqual({
+      title: "Red Dust",
+      artist: { username: "band", displayName: "BAND" },
+    });
+    await t.run((ctx) => ctx.db.patch(band, { shareSongs: false }));
+    expect(await mia.query(api.profileSongs.mine, {})).toBeNull();
+  });
+
+  test("picking the same song again leaves the profile doc untouched", async () => {
+    const { t, me, track, mia } = await world();
+    await mia.mutation(api.profileSongs.pick, { trackId: track });
+    const before = await t.run((ctx) => ctx.db.get(me));
+    await mia.mutation(api.profileSongs.pick, { trackId: track });
+    expect(await t.run((ctx) => ctx.db.get(me))).toEqual(before);
+  });
+});
+
+describe("profiles.myPhotoUrl", () => {
+  test("is the caller's photo URL, null when signed out or no photo", async () => {
+    vi.stubEnv("NEXT_PUBLIC_R2_PUBLIC_URL", "https://media.example");
+    try {
+      const t = setup();
+      const id = await addProfile(t, "mia", { photoKey: "photos/mia.jpg" });
+      const none = await addProfile(t, "nop", { photoKey: undefined });
+      expect(await t.query(api.profiles.myPhotoUrl, {})).toBeNull();
+      expect(await (await as(t, id)).query(api.profiles.myPhotoUrl, {})).toBe("https://media.example/photos/mia.jpg");
+      expect(await (await as(t, none)).query(api.profiles.myPhotoUrl, {})).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});

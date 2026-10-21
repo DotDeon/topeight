@@ -51,7 +51,7 @@ export const backfillSongPicks = internalMutation({
     for (const p of page.page) {
       if (p.profileSong === undefined) continue;
       const track = await ctx.db.get(p.profileSong);
-      if (track !== null) await setPick(ctx, p._id, track);
+      if (track !== null) await setPick(ctx, p, track);
     }
     if (!page.isDone) {
       await ctx.scheduler.runAfter(0, internal.migrations.backfillSongPicks, { cursor: page.continueCursor });

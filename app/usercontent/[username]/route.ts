@@ -2,6 +2,7 @@ import { ConvexHttpClient } from "convex/browser";
 import type { NextRequest } from "next/server";
 import { api } from "@/convex/_generated/api";
 import { classifyHost } from "@/lib/hosts";
+import { currentMinute } from "@/lib/minute";
 import { buildUsercontentCsp } from "@/lib/profile/csp";
 import { renderProfileDocument } from "@/lib/profile/render";
 import { validateUsername } from "@/lib/validation";
@@ -73,11 +74,13 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/usercontent/
   let signed: Array<{ id: string; url: string; profileSong?: true }> | null;
   try {
     const client = new ConvexHttpClient(requireEnv("NEXT_PUBLIC_CONVEX_URL"));
+    // The current minute, so a cached profile can't keep a stale Online Now!.
+    const asOf = currentMinute();
     // The tracks refresh only needs existence, ban and private status, so it skips the full profile.
     [profile, signed] = await Promise.all([
       tracksOnly
         ? client.query(api.profiles.profileHeader, { username })
-        : client.query(api.profiles.getPublicProfile, { username }),
+        : client.query(api.profiles.getPublicProfile, { username, asOf }),
       client.action(api.media.playbackUrls, { username, ...(pass ? { pass } : {}) }).catch((e: unknown) => {
         console.error("usercontent: playbackUrls failed", e);
         return null;
@@ -91,7 +94,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/usercontent/
         if (!(await client.action(api.framePass.verify, { username, pass }))) return plain(404, "Not found", csp);
         profile = { ...profile, restricted: false };
       } else {
-        profile = await client.action(api.profiles.getPublicProfileWithPass, { username, pass });
+        profile = await client.action(api.profiles.getPublicProfileWithPass, { username, pass, asOf });
       }
     }
   } catch (e) {

@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { Box } from "@/components/Box";
 import { ProfileView } from "@/components/ProfileView";
 import { api } from "@/convex/_generated/api";
+import { currentMinute } from "@/lib/minute";
 import { validateUsername } from "@/lib/validation";
 import { viewerAuth } from "@/lib/viewerToken";
 
@@ -29,7 +30,11 @@ export default async function ProfilePage({ params }: PageProps<"/[username]">) 
   }
   let card = null;
   if (profile.restricted) {
-    const p = await fetchQuery(api.profiles.getPublicProfile, { username: checked.username }, auth);
+    const p = await fetchQuery(
+      api.profiles.getPublicProfile,
+      { username: checked.username, asOf: currentMinute() },
+      auth,
+    );
     if (p === null || "unavailable" in p) notFound();
     if ("restricted" in p) {
       const { displayName, photoUrl, age, location, mood, online } = p;

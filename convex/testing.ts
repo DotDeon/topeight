@@ -652,6 +652,7 @@ export const resetOnlineFixture = internalMutation({
       .unique();
     if (row !== null) await ctx.db.delete(row._id);
     await rateLimiter.reset(ctx, "heartbeat", { key: profile._id });
+    await rateLimiter.reset(ctx, "showOnline", { key: profile._id });
     return null;
   },
 });

@@ -20,3 +20,18 @@ export async function isOnline(
     .unique();
   return row !== null && now - row.lastSeenAt < ONLINE_WINDOW_MS;
 }
+
+/** How far a caller's `asOf` may sit from the server clock before it is ignored. */
+export const AS_OF_SLACK_MS = 2 * 60 * 1000;
+
+/**
+ * The time to judge "online" against. Callers pass `asOf`, the current minute,
+ * so the query's cache key moves every minute and a cached `online: true` can't
+ * outlive the window: nothing is written when someone goes offline, so without
+ * it a cached result would only refresh when something else it reads changes.
+ * An `asOf` more than 2 minutes from the server clock is ignored, so a caller
+ * can't pick an arbitrary time.
+ */
+export function onlineAsOf(asOf: number | undefined, now: number = Date.now()): number {
+  return asOf !== undefined && Math.abs(asOf - now) <= AS_OF_SLACK_MS ? asOf : now;
+}

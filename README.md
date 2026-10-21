@@ -23,6 +23,10 @@ TopEight is an open source rebuild of 2006-era MySpace. It has the classic 800 p
 - Blogs with a mood and a song for each post, comments, and a feed of your friends' posts.
 - Events with RSVPs, listed by city next to artists' show dates.
 - Groups with a discussion board, members, owner tools and group bans.
+- A profile mood, a mood face and a few words, shown on your profile.
+- An Online Now! badge on profiles and friend cards while a member is active. Members can turn it off.
+- A profile song. Any member can put an artist's track on their profile, and artists can turn sharing off.
+- Private profiles. Only friends see the full page. Everyone else gets a small card with the name, photo, age, location and mood.
 - Invite and Forum are not built yet. Their nav items link to a coming soon page.
 
 ## How the artist sandbox works
@@ -33,6 +37,7 @@ Artists can run their own JavaScript on their profile. That is the feature that 
 - **Sandboxed iframe.** The main site shows each profile in an iframe with `sandbox="allow-scripts allow-popups"`. It never has `allow-same-origin`, so profile code cannot read the parent page, cookies or storage.
 - **Content Security Policy.** The usercontent origin sends a strict CSP. `connect-src` allows only the usercontent origin and `form-action` is `'none'`, so profile code cannot call the main site's APIs or post a form to it. The CSP also carries `sandbox allow-scripts allow-popups`, so a profile document opened directly in its own tab still runs in an opaque origin and cannot set or read cookies or storage on the usercontent origin.
 - **The trusted strip.** The bar above every profile is drawn by the main site, outside the iframe. It holds the Add Friend, Comment and Report actions, so artist code cannot hide, fake or restyle it. Profile code can ask for an action by posting a message to the parent. An action that changes something, such as adding a friend, opens a confirm dialog drawn by the parent, and nothing happens until the viewer confirms. "Send Message" changes nothing, so it opens no dialog. It only takes the viewer to the compose page for that profile, where they still write and send the message themselves.
+- **Private profiles in the frame.** The usercontent origin has no sign-in, so it can't tell who is looking. A private profile loads its frame only with a signed pass that lasts 2 hours. The main site issues a pass only to the profile's friends, its owner and admins, and the usercontent origin checks it before serving the full page.
 
 The full design is in [docs/superpowers/specs/2026-10-19-topeight-design.md](docs/superpowers/specs/2026-10-19-topeight-design.md).
 
@@ -91,6 +96,7 @@ Running the seed again is safe.
 | `R2_BUCKET` | Convex, seed script | Public R2 bucket for photos |
 | `R2_AUDIO_BUCKET` | Convex, seed script | Private R2 bucket for tracks. Keep it private: no public domain and no `r2.dev` URL |
 | `NEXT_PUBLIC_R2_PUBLIC_URL` | Convex | Public base URL of the photo bucket |
+| `FRAME_PASS_SECRET` | Convex | Long random string that signs the 2-hour frame passes for private profiles. Without it, private profiles never render in the frame |
 | `TOPEIGHT_TEST_FIXTURES` | Convex, dev only | Enables e2e test fixtures. Never set in production |
 | `TOPEIGHT_ALLOW_SEED` | Convex, dev only | Allows `seed:run`. Never leave set in production |
 | `PORT` | Local shell | Port for the dev server and e2e tests |
