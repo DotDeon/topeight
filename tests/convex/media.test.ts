@@ -119,35 +119,35 @@ describe("beginUpload", () => {
     expect(p.key).toMatch(new RegExp(`^photos/${band}/[0-9a-f-]{36}$`));
   });
 
-  test("an 11th track is refused, counting pending uploads too", async () => {
+  test("a 6th track is refused, counting pending uploads too", async () => {
     const t = mediaSetup();
     const band = await addProfile(t, "band", { kind: "artist" });
-    for (let i = 0; i < 9; i++) await upload(t, band, "track", mp3());
+    for (let i = 0; i < 4; i++) await upload(t, band, "track", mp3());
     const me = await as(t, band);
-    await me.mutation(api.media.beginUpload, { purpose: "track", ...mp3() }); // 10th, still pending
+    await me.mutation(api.media.beginUpload, { purpose: "track", ...mp3() }); // 5th, still pending
     await expect(me.mutation(api.media.beginUpload, { purpose: "track", ...mp3() })).rejects.toThrow(
-      "Maximum 10 tracks",
+      "Maximum 5 tracks",
     );
   });
 
   test("pending track uploads older than an hour stop counting", async () => {
     const t = mediaSetup();
     const band = await addProfile(t, "band", { kind: "artist" });
-    for (let i = 0; i < 9; i++) await upload(t, band, "track", mp3());
+    for (let i = 0; i < 4; i++) await upload(t, band, "track", mp3());
     const me = await as(t, band);
     await me.mutation(api.media.beginUpload, { purpose: "track", ...mp3() });
     vi.setSystemTime(new Date(NOW.getTime() + 61 * 60 * 1000));
     await expect(me.mutation(api.media.beginUpload, { purpose: "track", ...mp3() })).resolves.toBeTruthy();
   });
 
-  test("10 stored tracks refuse another", async () => {
+  test("5 stored tracks refuse another", async () => {
     const t = mediaSetup();
     const band = await addProfile(t, "band", { kind: "artist" });
-    for (let i = 0; i < 10; i++) await upload(t, band, "track", mp3());
-    expect(await tracksOf(t, band)).toHaveLength(10);
+    for (let i = 0; i < 5; i++) await upload(t, band, "track", mp3());
+    expect(await tracksOf(t, band)).toHaveLength(5);
     await expect(
       (await as(t, band)).mutation(api.media.beginUpload, { purpose: "track", ...mp3() }),
-    ).rejects.toThrow("Maximum 10 tracks");
+    ).rejects.toThrow("Maximum 5 tracks");
   });
 });
 
@@ -349,10 +349,10 @@ describe("track checks on confirm", () => {
     expect(removed).toEqual([]);
   });
 
-  test("the 10 track limit is checked again when the upload lands", async () => {
+  test("the 5 track limit is checked again when the upload lands", async () => {
     const t = mediaSetup();
     const band = await addProfile(t, "band", { kind: "artist" });
-    for (let i = 0; i < 9; i++) await upload(t, band, "track", mp3());
+    for (let i = 0; i < 4; i++) await upload(t, band, "track", mp3());
     const me = await as(t, band);
     const a = await me.mutation(api.media.beginUpload, { purpose: "track", ...mp3() });
     // Simulate a race: an extra track row appears before the pending upload lands.
@@ -363,7 +363,7 @@ describe("track checks on confirm", () => {
     objects.set(key, mp3());
     await me.action(api.media.confirmTrackUpload, { uploadId: a.uploadId });
     expect(removed).toEqual([key]);
-    expect(await tracksOf(t, band)).toHaveLength(10);
+    expect(await tracksOf(t, band)).toHaveLength(5);
   });
 });
 

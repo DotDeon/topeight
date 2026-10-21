@@ -107,7 +107,7 @@ export function TracksForm() {
 
   return (
     <Box title="Music" color="orange">
-      <p className={styles.note}>MP3 only, up to 5 MB, 10 tracks max</p>
+      <p className={styles.note}>MP3 only, up to 5 MB, 5 tracks max</p>
       {tracks === undefined ? (
         <p className={styles.note}>Loading...</p>
       ) : tracks.length === 0 ? (

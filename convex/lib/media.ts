@@ -15,7 +15,7 @@ export function photoUrl(key?: string): string | null {
 const MB = 1024 * 1024;
 
 /** Upload limits shared by the server checks and the client hook. */
-export const MAX_TRACKS = 10;
+export const MAX_TRACKS = 5;
 export const TRACK_MAX_BYTES = 5 * MB;
 export const TRACK_TYPES: readonly string[] = ["audio/mpeg"];
 export const PHOTO_MAX_BYTES = 2 * MB;

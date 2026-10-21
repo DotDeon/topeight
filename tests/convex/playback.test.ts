@@ -1,3 +1,4 @@
+import { MAX_TRACKS } from "../../convex/lib/media";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -85,11 +86,11 @@ describe("media.playbackUrls", () => {
     spy.mockRestore();
   });
 
-  test("signs at most 10", async () => {
+  test("signs at most MAX_TRACKS", async () => {
     const t = setup();
     const band = await addProfile(t, "band", { kind: "artist" });
     await addTracks(t, band, 12);
-    expect(await t.action(api.media.playbackUrls, { username: "band" })).toHaveLength(10);
+    expect(await t.action(api.media.playbackUrls, { username: "band" })).toHaveLength(MAX_TRACKS);
   });
 
   test("returns [] when the audio bucket is not configured", async () => {
@@ -137,16 +138,16 @@ describe("media.playbackUrls profile song", () => {
     expect(await t.action(api.media.playbackUrls, { username: "mia" })).toEqual([]);
   });
 
-  test("an artist gets the picked song as an extra entry on top of 10 own tracks", async () => {
+  test("an artist gets the picked song as an extra entry on top of MAX_TRACKS own tracks", async () => {
     const t = setup();
     const other = await addProfile(t, "other", { kind: "artist" });
     const [picked] = await addTracks(t, other, 1);
     const band = await addProfile(t, "band", { kind: "artist", profileSong: picked });
     const own = await addTracks(t, band, 12);
     const urls = await t.action(api.media.playbackUrls, { username: "band" });
-    expect(urls).toHaveLength(11);
+    expect(urls).toHaveLength(MAX_TRACKS + 1);
     expect(urls[0]).toMatchObject({ id: picked, profileSong: true });
-    expect(urls.slice(1).map((u) => u.id)).toEqual(own.slice(0, 10));
+    expect(urls.slice(1).map((u) => u.id)).toEqual(own.slice(0, MAX_TRACKS));
     expect(urls.slice(1).every((u) => u.profileSong === undefined)).toBe(true);
   });
 

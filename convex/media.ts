@@ -135,7 +135,7 @@ export const beginUpload = mutation({
         tracksFor(ctx, profile._id),
         recentTrackUploads(ctx, profile._id),
       ]);
-      if (tracks.length + pending.length >= MAX_TRACKS) throw new ConvexError("Maximum 10 tracks");
+      if (tracks.length + pending.length >= MAX_TRACKS) throw new ConvexError(`Maximum ${MAX_TRACKS} tracks`);
       if (title !== undefined && trimTitle(title) !== "") cleanTitle = checkTitle(title);
     }
     if (!Number.isInteger(size) || size < 1) throw new ConvexError("That file is empty");
@@ -235,7 +235,7 @@ async function acceptTrack(ctx: MutationCtx, row: Doc<"uploads">, size: number, 
   if (size > TRACK_MAX_BYTES) return await reject(ctx, row, "track over 5 MB");
   if (!TRACK_TYPES.includes(contentType)) return await reject(ctx, row, `track type ${contentType}`);
   const tracks = await tracksFor(ctx, row.profileId);
-  if (tracks.length >= MAX_TRACKS) return await reject(ctx, row, "Maximum 10 tracks");
+  if (tracks.length >= MAX_TRACKS) return await reject(ctx, row, `Maximum ${MAX_TRACKS} tracks`);
   const last = tracks.at(-1);
   await ctx.db.insert("tracks", {
     profileId: row.profileId,

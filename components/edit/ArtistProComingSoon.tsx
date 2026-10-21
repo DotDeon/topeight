@@ -6,7 +6,7 @@ export function ArtistProComingSoon() {
     <Box title="Artist Pro" color="blue">
       <p className={styles.note}>Artist Pro is coming soon. $5 a month.</p>
       <ul className={styles.proList}>
-        <li>50 songs instead of 10</li>
+        <li>50 songs instead of 5</li>
         <li>Songs up to 15 MB at 192 kbps</li>
         <li>Play counts for each song</li>
         <li>A Pro star next to your name</li>
