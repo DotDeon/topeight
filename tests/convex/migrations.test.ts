@@ -268,3 +268,62 @@ describe("moveHouseTo", () => {
     );
   });
 });
+
+describe("deleteUnverifiedUser", () => {
+  async function stuckUser(t: T, email: string, verified = false) {
+    return await t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", {
+        email,
+        ...(verified ? { emailVerificationTime: NOW.getTime() } : {}),
+      });
+      const accountId = await ctx.db.insert("authAccounts", {
+        userId,
+        provider: "password",
+        providerAccountId: email,
+      });
+      await ctx.db.insert("authVerificationCodes", {
+        accountId,
+        provider: "password",
+        code: "hash",
+        expirationTime: NOW.getTime() + 60_000,
+      });
+      const sessionId = await ctx.db.insert("authSessions", { userId, expirationTime: NOW.getTime() + 60_000 });
+      await ctx.db.insert("authRefreshTokens", { sessionId, expirationTime: NOW.getTime() + 60_000 });
+      return userId;
+    });
+  }
+
+  const counts = (t: T) =>
+    t.run(async (ctx) => ({
+      users: (await ctx.db.query("users").collect()).length,
+      accounts: (await ctx.db.query("authAccounts").collect()).length,
+      codes: (await ctx.db.query("authVerificationCodes").collect()).length,
+      sessions: (await ctx.db.query("authSessions").collect()).length,
+      tokens: (await ctx.db.query("authRefreshTokens").collect()).length,
+    }));
+
+  test("deletes an unverified account with its login, codes and sessions", async () => {
+    const t = setup();
+    await stuckUser(t, "stuck@example.com");
+    await stuckUser(t, "keep@example.com");
+    await t.mutation(internal.migrations.deleteUnverifiedUser, { email: " Stuck@Example.com " });
+    expect(await counts(t)).toEqual({ users: 1, accounts: 1, codes: 1, sessions: 1, tokens: 1 });
+  });
+
+  test("refuses verified accounts, accounts with a profile and unknown emails", async () => {
+    const t = setup();
+    await stuckUser(t, "real@example.com", true);
+    const userId = await stuckUser(t, "joiner@example.com");
+    const profile = await addProfile(t, "member");
+    await t.run((ctx) => ctx.db.patch(profile, { userId }));
+    await expect(t.mutation(internal.migrations.deleteUnverifiedUser, { email: "real@example.com" })).rejects.toThrow(
+      "is verified",
+    );
+    await expect(t.mutation(internal.migrations.deleteUnverifiedUser, { email: "joiner@example.com" })).rejects.toThrow(
+      "has a profile",
+    );
+    await expect(t.mutation(internal.migrations.deleteUnverifiedUser, { email: "nobody@example.com" })).rejects.toThrow(
+      "No account",
+    );
+  });
+});
