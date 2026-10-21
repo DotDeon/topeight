@@ -1,12 +1,17 @@
-/** A song on the profile being viewed, as the server sent it to the parent page. */
-export type ProfileTrack = { id: string; title: string };
+/**
+ * A song the parent page knows about, as the server sent it. `owner` is the
+ * username of the profile the song belongs to, when that is not the profile
+ * being viewed (a profile song belongs to its artist).
+ */
+export type ProfileTrack = { id: string; title: string; owner?: string };
 
 /**
- * The server's own record of the track the frame asked to report, or null
- * when the id is not one of this profile's tracks. The frame only supplies
- * the id; the title in the dialog always comes from this list.
+ * The server's own record of the track the frame asked about, or null when the
+ * id is not in the list. The frame only supplies the id; the title in the
+ * dialog and the owner always come from this list.
  */
 export function findReportableTrack(tracks: readonly ProfileTrack[], trackId: string): ProfileTrack | null {
   const track = tracks.find((t) => t.id === trackId);
-  return track ? { id: track.id, title: track.title } : null;
+  if (!track) return null;
+  return { id: track.id, title: track.title, ...(track.owner !== undefined ? { owner: track.owner } : {}) };
 }

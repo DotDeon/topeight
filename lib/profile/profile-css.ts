@@ -11,6 +11,8 @@ a:hover { text-decoration: underline; }
 button.linkish { background: none; border: 0; padding: 0; font: inherit; color: #003399; cursor: pointer; }
 button.linkish:hover { text-decoration: underline; }
 .soon { color: #666; cursor: default; }
+.online-now { display: inline-flex; align-items: center; gap: 3px; margin: 2px 0; padding: 1px 5px; border: 1px solid #cc5200; border-radius: 4px; background: #ff6600; color: #fff; font-size: 9px; font-weight: bold; line-height: 12px; white-space: nowrap; }
+.online-now svg { display: block; }
 
 .profile { display: flex; gap: 10px; padding: 10px; width: 800px; box-sizing: border-box; }
 .profile-left { width: 300px; flex: none; }
@@ -18,6 +20,7 @@ button.linkish:hover { text-decoration: underline; }
 
 .name { font-size: 17px; font-weight: bold; margin: 0 0 4px; overflow-wrap: anywhere; }
 .basic { display: flex; gap: 8px; }
+.basic-photo { flex: none; width: 150px; }
 .basic-info { overflow-wrap: anywhere; }
 .photo-main { width: 150px; height: 170px; flex: none; }
 img.photo-main, .top8 img, .comment-who img { object-fit: cover; border: 1px solid #999; box-sizing: border-box; display: block; }
@@ -39,6 +42,10 @@ img.photo-main, .top8 img, .comment-who img { object-fit: cover; border: 1px sol
 .player-track.current .mark { visibility: visible; }
 .player-report { color: #999; font-size: 9px; text-decoration: none; }
 .player-report:hover { color: #ccc; text-decoration: underline; }
+.player-pick { color: #ff9900; font-size: 9px; text-decoration: none; }
+.player-pick:hover { text-decoration: underline; }
+.player-by { color: #aaa; white-space: nowrap; }
+.player-by a { color: #ff9900; }
 
 .contact { border: 1px solid #6698cb; margin-top: 8px; }
 .contact h5, .details h5 { margin: 0; background: #6698cb; color: #fff; font-size: 10px; padding: 3px 5px; }

@@ -277,7 +277,7 @@ describe("top 8", () => {
     await (await as(t, a)).mutation(api.social.setTop8, { ids: [b, c] });
     await t.run((ctx) => ctx.db.patch(b, { banned: true }));
     const p = await t.query(api.profiles.getPublicProfile, { username: "alice" });
-    expect(p && !("unavailable" in p) && p.top8.map((x) => x.username)).toEqual(["carol"]);
+    expect(p && !("unavailable" in p) && !("restricted" in p) && p.top8.map((x) => x.username)).toEqual(["carol"]);
   });
 });
 

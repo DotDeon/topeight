@@ -1,10 +1,9 @@
-import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v, type Infer } from "convex/values";
 import { validateUsername } from "../lib/validation";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
-import { isBlockedEitherWay, profileForUser, requireProfile } from "./lib/access";
+import { canSeeFull, isBlockedEitherWay, requireProfile, viewerProfile } from "./lib/access";
 import { toPublicCard, type PublicCard } from "./lib/cards";
 import { recentFriendIds } from "./lib/friendships";
 import { rateLimiter } from "./lib/limits";
@@ -103,14 +102,6 @@ export type BlogCommentView = {
   createdAt: number;
   canDelete: boolean;
 };
-
-/** The signed-in, unbanned viewer, or null. */
-async function viewerProfile(ctx: Ctx): Promise<Doc<"profiles"> | null> {
-  const userId = await getAuthUserId(ctx);
-  if (userId === null) return null;
-  const p = await profileForUser(ctx, userId);
-  return p === null || p.banned ? null : p;
-}
 
 /** The post and its author when the post is visible: not hidden, author not banned. */
 async function visiblePost(
@@ -286,7 +277,8 @@ export const cleanupComments = internalMutation({
 
 /**
  * One page (10) of a member's posts, newest first, without bodies. Hidden posts are dropped after paging.
- * Comment counts leave out banned commenters, as get does.
+ * Comment counts leave out banned commenters, as get does. Empty on a private
+ * profile the viewer can't see in full.
  */
 export const listByUser = query({
   args: { username: v.string(), cursor: v.union(v.string(), v.null()) },
@@ -301,6 +293,7 @@ export const listByUser = query({
       .unique();
     if (author === null || author.banned) return empty;
     const viewer = await viewerProfile(ctx);
+    if (!(await canSeeFull(ctx, viewer, author))) return empty;
     const result = await ctx.db
       .query("blogPosts")
       .withIndex("by_author", (q) => q.eq("authorId", author._id))
@@ -317,7 +310,8 @@ export const listByUser = query({
 
 /**
  * One post with its body, or null when the id is malformed, the post is gone
- * or hidden, or its author is banned. The comment count leaves out banned commenters.
+ * or hidden, its author is banned, or its author is private and the viewer can't
+ * see their full page. The comment count leaves out banned commenters.
  */
 export const get = query({
   args: { id: v.string() },
@@ -327,7 +321,9 @@ export const get = query({
     if (postId === null) return null;
     const found = await visiblePost(ctx, postId);
     if (found === null) return null;
-    const summary = await toSummary(ctx, found.post, found.author, await viewerProfile(ctx), new Map());
+    const viewer = await viewerProfile(ctx);
+    if (!(await canSeeFull(ctx, viewer, found.author))) return null;
+    const summary = await toSummary(ctx, found.post, found.author, viewer, new Map());
     return { ...summary, body: (await bodyRow(ctx, postId))?.body ?? "" };
   },
 });
@@ -368,7 +364,8 @@ export const friendsFeed = query({
 });
 
 /**
- * Comments on a visible post. A blocked pair (either way) cannot comment.
+ * Comments on a visible post. A blocked pair (either way) cannot comment, and
+ * neither can anyone who can't see a private author's full page.
  * Shares the hourly `comment` limit with profile comments, used only once the
  * comment passes every check.
  */
@@ -383,6 +380,8 @@ export const addComment = mutation({
     if (found.author._id !== me._id && (await isBlockedEitherWay(ctx, me._id, found.author._id))) {
       throw new ConvexError("Not allowed");
     }
+    // Only people who may see a private author's full page may comment on their posts.
+    if (!(await canSeeFull(ctx, me, found.author))) throw new ConvexError("Not allowed");
     checkLinks(me, text);
     const { ok } = await rateLimiter.limit(ctx, "comment", { key: me._id });
     if (!ok) throw new ConvexError("Slow down");
@@ -410,7 +409,8 @@ export const removeComment = mutation({
  * One page (50) of a visible post's comments, oldest first. Hidden comments,
  * banned commenters, commenters blocked either way by the post's author, and
  * commenters blocked either way by the viewer are dropped after paging, so a
- * page can come back short.
+ * page can come back short. Empty when the post's author is private and the
+ * viewer can't see their full page.
  */
 export const comments = query({
   args: { postId: v.string(), cursor: v.union(v.string(), v.null()) },
@@ -423,6 +423,7 @@ export const comments = query({
     if (found === null) return empty;
     const owner = found.author;
     const viewer = await viewerProfile(ctx);
+    if (!(await canSeeFull(ctx, viewer, owner))) return empty;
 
     const result = await ctx.db
       .query("blogComments")

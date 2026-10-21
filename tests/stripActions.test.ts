@@ -8,6 +8,15 @@ const pairs = (r: Parameters<typeof stripButtons>[0], house = false) =>
 const L = (a: keyof typeof PROFILE_ACTIONS) => PROFILE_ACTIONS[a].label;
 
 describe("stripButtons", () => {
+  test("a viewer who only gets the private card has no Add Comment", () => {
+    const actions = (b: ReturnType<typeof stripButtons>) => b.map((x) => x.action);
+    expect(actions(stripButtons({ ...base, signedIn: false }, false, { canComment: false }))).toEqual([
+      "addFriend", "message", "report", "block",
+    ]);
+    expect(actions(stripButtons(base, false, { canComment: false }))).toEqual(["addFriend", "message", "report", "block"]);
+    expect(actions(stripButtons(undefined, undefined, { canComment: false }))).toEqual(["report"]);
+    expect(actions(stripButtons(base, false, { canComment: true }))).toContain("addComment");
+  });
   test("signed out and unknown show the default strip", () => {
     const def = [["addFriend", "Add to Friends"], ["message", "Send Message"], ["addComment", "Add Comment"], ["report", "Report"], ["block", "Block"]];
     expect(pairs({ ...base, signedIn: false })).toEqual(def);
@@ -46,5 +55,13 @@ describe("stripButtons", () => {
   test("labels come from PROFILE_ACTIONS", () => {
     expect(L("removeFriend")).toBe("Remove from Friends");
     expect(L("unblock")).toBe("Unblock");
+  });
+});
+
+describe("pickSong dialog", () => {
+  test("asks with the server's title and the artist's name", () => {
+    const target = { username: "theband", displayName: "The Band", track: { id: "k1", title: "Red Dust" } };
+    expect(PROFILE_ACTIONS.pickSong.question("The Band", target)).toBe('Make "Red Dust" by The Band your profile song?');
+    expect(PROFILE_ACTIONS.pickSong.run).toBeDefined();
   });
 });

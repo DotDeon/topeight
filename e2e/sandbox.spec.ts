@@ -14,6 +14,7 @@ type Probes = {
   fetch?: string;
   form?: string;
   foreignReports?: number;
+  foreignPicks?: number;
   violations?: string[];
   done?: boolean;
 };
@@ -143,6 +144,24 @@ test.describe("artist sandbox", () => {
     await pastCooldown();
     await frame.locator("#probe-add-friend").click();
     await expect(dialog).toContainText("Add Sandbox Test to your friends?");
+  });
+
+  test("song picks only open a dialog for tracks on this profile", async ({ page }) => {
+    await page.goto("/sandboxtest");
+    await probes(page);
+    const frame = page.frameLocator("iframe[data-topeight-profile]");
+    const dialog = page.locator("[data-topeight-confirm]");
+
+    // Artist code asks to pick a real track from another profile: dropped silently.
+    await frame.locator("#probe-pick-foreign").click();
+    await expect.poll(async () => JSON.parse(await profileFrame(page)!.title()).foreignPicks).toBe(2);
+    await page.waitForTimeout(800);
+    await expect(dialog).toBeHidden();
+    await expect(page.locator("[data-topeight-strip]").getByText("too many requests")).toBeHidden();
+
+    // The real pick link on this profile's own track does open it.
+    await frame.locator(".player-tracks li").first().locator("[data-topeight-pick-track]").click();
+    await expect(dialog).toContainText('Make "Probe Song" by Sandbox Test your profile song?');
   });
 
   test("song reports use the server's track list and title", async ({ page }) => {

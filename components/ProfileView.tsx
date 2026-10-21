@@ -2,26 +2,40 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import { BRIDGE_RESET_MS, BridgeGate } from "@/lib/bridgeGate";
 import { findReportableTrack, type ProfileTrack } from "@/lib/reportableTrack";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
 import { PROFILE_ACTIONS, type DialogAction } from "./profileActions";
+import { PrivateCard, PrivateCardLoader, type PrivateCardData } from "./PrivateProfile";
 import { ProfileFrame } from "./ProfileFrame";
 import { stripButtons } from "./stripActions";
 import { TrustedStrip } from "./TrustedStrip";
 
-/** Trusted strip, sandboxed profile frame and the confirm dialog they share. */
+/**
+ * Trusted strip, sandboxed profile frame and the confirm dialog they share. On a
+ * private profile a viewer who isn't a friend gets the private card in place of
+ * the frame, and no Add Comment.
+ */
 export function ProfileView({
   username,
   displayName,
   tracks,
+  profileSong,
+  isPrivate = false,
+  card = null,
 }: {
   username: string;
   displayName: string;
   /** This profile's tracks from getPublicProfile, at most 10. */
   tracks: readonly ProfileTrack[];
+  /** The profile's own profile song, so its Report link works. Reports name its artist's username. */
+  profileSong: { id: string; title: string; artistUsername: string } | null;
+  /** The owner turned Private profile on, so the frame needs a frame pass. */
+  isPrivate?: boolean;
+  /** Set when this viewer only gets the private card (profileHeader.restricted). */
+  card?: PrivateCardData | null;
 }) {
   const router = useRouter();
   const [request, setRequest] = useState<ConfirmRequest | null>(null);
@@ -42,7 +56,10 @@ export function ProfileView({
 
   const rel = useQuery(api.social.relationship, { username });
   const isHouse = useQuery(api.social.isHouseProfile, { username });
-  const buttons = stripButtons(rel, isHouse);
+  const buttons = stripButtons(rel, isHouse, { canComment: card === null });
+  // null when signed out. Pick links are left off the visitor's own page.
+  const me = useQuery(api.profiles.me);
+  const ownPage = me === undefined ? undefined : me?.username === username;
 
   const show = useCallback((action: DialogAction, fromBridge: boolean, track?: ProfileTrack) => {
     open.current = { action, fromBridge };
@@ -94,10 +111,26 @@ export function ProfileView({
 
   // Only ids in the server's list for this profile open a dialog, with the
   // server's title. Anything else is dropped before the gate sees it.
+  const reportable = useMemo<ProfileTrack[]>(
+    () => [
+      ...tracks.map((t) => ({ ...t, owner: username })),
+      ...(profileSong ? [{ id: profileSong.id, title: profileSong.title, owner: profileSong.artistUsername }] : []),
+    ],
+    [tracks, profileSong, username],
+  );
   const onReportTrack = useCallback(
     (trackId: string) => {
-      const track = findReportableTrack(tracks, trackId);
+      const track = findReportableTrack(reportable, trackId);
       if (track) onBridgeAction("reportTrack", track);
+    },
+    [reportable, onBridgeAction],
+  );
+
+  // Only this profile's own songs can be picked. The profile song is already someone's pick.
+  const onPickSong = useCallback(
+    (trackId: string) => {
+      const track = findReportableTrack(tracks, trackId);
+      if (track) onBridgeAction("pickSong", track);
     },
     [tracks, onBridgeAction],
   );
@@ -122,13 +155,21 @@ export function ProfileView({
   return (
     <>
       <TrustedStrip displayName={displayName} buttons={buttons} onAction={onStripAction} throttled={throttled} />
-      <ProfileFrame
-        username={username}
-        displayName={displayName}
-        onAction={onBridgeAction}
-        onReportTrack={onReportTrack}
-        reloadKey={reloadKey}
-      />
+      {card ? (
+        <PrivateCard card={card} />
+      ) : (
+        <ProfileFrame
+          username={username}
+          displayName={displayName}
+          onAction={onBridgeAction}
+          onReportTrack={onReportTrack}
+          onPickSong={onPickSong}
+          hidePick={ownPage}
+          reloadKey={reloadKey}
+          needsPass={isPrivate}
+          noPass={<PrivateCardLoader username={username} />}
+        />
+      )}
       <ConfirmDialog
         request={request}
         target={target}

@@ -4,9 +4,11 @@ import { useQuery } from "convex/react";
 import { Box } from "@/components/Box";
 import { PhotoGrid } from "@/components/PhotoGrid";
 import { api } from "@/convex/_generated/api";
+import { useMinute } from "./useMinute";
 
 export function CoolNewPeople() {
-  const cards = useQuery(api.home.coolNewPeople);
+  const asOf = useMinute();
+  const cards = useQuery(api.home.coolNewPeople, { asOf });
   return (
     <Box title="Cool New People">
       <PhotoGrid cards={cards} empty="No new people yet" />

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { PublicCard } from "@/convex/lib/cards";
+import { OnlineNow } from "./OnlineNow";
 import styles from "./PhotoGrid.module.css";
 
 /** A profile photo, or a plain tile with the first letter when there is none. */
@@ -34,6 +35,7 @@ export function PhotoGrid({
             <Photo card={c} />
             {c.displayName}
           </Link>
+          {c.online && <OnlineNow />}
         </div>
       ))}
     </div>

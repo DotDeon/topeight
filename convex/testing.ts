@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { rateLimiter } from "./lib/limits";
+import { clearPick } from "./lib/profileSongs";
 import { countField } from "./lib/rsvps";
 import { friendshipPair } from "./lib/friendships";
 import { syncMediaFlags } from "./lib/media";
@@ -82,6 +83,13 @@ function probeJs(mainOrigin: string, foreignTrackId: string): string {
     r.foreignReports = (r.foreignReports || 0) + 2;
     write();
   });
+  // Picking a song that is not on this profile (or is not a track at all) must open no dialog.
+  document.getElementById("probe-pick-foreign").addEventListener("click", function () {
+    window.topeight.pickSong(FOREIGN_TRACK);
+    window.parent.postMessage({ type: "topeight:pickSong", trackId: FOREIGN_TRACK }, "*");
+    r.foreignPicks = (r.foreignPicks || 0) + 2;
+    write();
+  });
   // Artist code can rewrite the track title it shows; the parent dialog must not use it.
   document.addEventListener("DOMContentLoaded", function () {
     var title = document.querySelector(".player-track > span");
@@ -92,7 +100,8 @@ function probeJs(mainOrigin: string, foreignTrackId: string): string {
 
 const PROBE_HTML = `<p><button type="button" id="probe-add-friend">Probe: add friend</button>
 <button type="button" id="probe-navigate">Probe: navigate</button>
-<button type="button" id="probe-report-foreign">Probe: report foreign track</button></p>`;
+<button type="button" id="probe-report-foreign">Probe: report foreign track</button>
+<button type="button" id="probe-pick-foreign">Probe: pick foreign track</button></p>`;
 
 const FAN_CSS = `body { background: #fdf0ff; }
 .profile-left .name { color: #990066; }`;
@@ -588,6 +597,180 @@ export const resetGroupsFixture = internalMutation({
         await rateLimiter.reset(ctx, name, { key: profile._id });
       }
     }
+    return null;
+  },
+});
+
+/**
+ * Fixture for e2e/mood.spec.ts: clears the mood on e2eeditor and resets its
+ * mood rate limit so repeated runs never hit 30 an hour.
+ */
+export const resetMoodFixture = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    if (process.env.TOPEIGHT_TEST_FIXTURES !== "1") {
+      throw new ConvexError("Set TOPEIGHT_TEST_FIXTURES=1 on this deployment to seed test fixtures");
+    }
+    const profile = await ctx.db
+      .query("profiles")
+      .withIndex("by_username", (q) => q.eq("username", "e2eeditor"))
+      .unique();
+    const user = profile === null ? null : await ctx.db.get(profile.userId);
+    if (profile === null || user?.email !== "e2e-editor@fixture.invalid") {
+      throw new ConvexError('Fixture "e2eeditor" is not seeded');
+    }
+    await ctx.db.patch(profile._id, { mood: undefined });
+    await rateLimiter.reset(ctx, "mood", { key: profile._id });
+    return null;
+  },
+});
+
+/**
+ * Fixture for e2e/online.spec.ts: turns Online Now! back on for e2eeditor,
+ * drops any presence row and resets the heartbeat limit.
+ */
+export const resetOnlineFixture = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    if (process.env.TOPEIGHT_TEST_FIXTURES !== "1") {
+      throw new ConvexError("Set TOPEIGHT_TEST_FIXTURES=1 on this deployment to seed test fixtures");
+    }
+    const profile = await ctx.db
+      .query("profiles")
+      .withIndex("by_username", (q) => q.eq("username", "e2eeditor"))
+      .unique();
+    const user = profile === null ? null : await ctx.db.get(profile.userId);
+    if (profile === null || user?.email !== "e2e-editor@fixture.invalid") {
+      throw new ConvexError('Fixture "e2eeditor" is not seeded');
+    }
+    await ctx.db.patch(profile._id, { showOnline: undefined });
+    const row = await ctx.db
+      .query("presence")
+      .withIndex("by_profile", (q) => q.eq("profileId", profile._id))
+      .unique();
+    if (row !== null) await ctx.db.delete(row._id);
+    await rateLimiter.reset(ctx, "heartbeat", { key: profile._id });
+    await rateLimiter.reset(ctx, "showOnline", { key: profile._id });
+    return null;
+  },
+});
+
+/**
+ * Fixture for e2e/profile-song.spec.ts and the song tests in e2e/edit.spec.ts.
+ * Without `editor`: clears the commenter fan's profile song and pick row, turns
+ * sharing back on for sandboxtest and resets the pick limit. With `editor`: only
+ * the editor group is touched (never the fan or sandboxtest), so the two specs
+ * never race. It clears the admin fixture's pick, turns the editor's sharing back
+ * on, resets limits, and leaves the editor with one track ("withTrack") or none
+ * ("plain").
+ */
+export const resetProfileSongFixture = internalMutation({
+  args: { editor: v.optional(v.union(v.literal("plain"), v.literal("withTrack"))) },
+  returns: v.null(),
+  handler: async (ctx, { editor: editorMode }) => {
+    if (process.env.TOPEIGHT_TEST_FIXTURES !== "1") {
+      throw new ConvexError("Set TOPEIGHT_TEST_FIXTURES=1 on this deployment to seed test fixtures");
+    }
+    const fixture = async (username: string, email: string | null) => {
+      const profile = await ctx.db
+        .query("profiles")
+        .withIndex("by_username", (q) => q.eq("username", username))
+        .unique();
+      const user = profile === null ? null : await ctx.db.get(profile.userId);
+      if (profile === null || (email === null ? user?.email : user?.email !== email)) {
+        throw new ConvexError(`Fixture "${username}" is not seeded`);
+      }
+      return profile;
+    };
+    if (editorMode === undefined) {
+      const fan = await fixture("e2ecommenter", COMMENTER_EMAIL);
+      const sandbox = await fixture("sandboxtest", null);
+      await clearPick(ctx, fan);
+      await ctx.db.patch(fan._id, { profileSong: undefined });
+      await ctx.db.patch(sandbox._id, { shareSongs: undefined });
+      await rateLimiter.reset(ctx, "songPick", { key: fan._id });
+    } else {
+      const editor = await fixture("e2eeditor", EDITOR_EMAIL);
+      const admin = await fixture("e2eadmin", ADMIN_EMAIL);
+      await clearPick(ctx, admin);
+      await rateLimiter.reset(ctx, "songPick", { key: admin._id });
+      await ctx.db.patch(editor._id, { shareSongs: undefined });
+      await rateLimiter.reset(ctx, "shareSongs", { key: editor._id });
+      if (editorMode === "withTrack") {
+        await ensureFixtureTrack(ctx, editor._id, "Editor Song");
+      } else {
+        const rows = await ctx.db
+          .query("tracks")
+          .withIndex("by_profile_order", (q) => q.eq("profileId", editor._id))
+          .take(20);
+        for (const t of rows) await ctx.db.delete(t._id);
+        await syncMediaFlags(ctx, editor._id);
+      }
+    }
+    return null;
+  },
+});
+
+export const PRIVATE_EMAIL = "e2e-private@fixture.invalid";
+export const PAL_EMAIL = "e2e-pal@fixture.invalid";
+
+/**
+ * Fixtures for e2e/private.spec.ts: two fans only that spec touches, e2eprivate
+ * and its friend e2epal, both logging in with `password`. Two mutations, one
+ * password hash each, so neither runs near the 1 s mutation limit on a busy
+ * machine. Call seedPrivatePalFixture first. Same guards as the other login
+ * fixtures.
+ */
+export const seedPrivatePalFixture = internalMutation({
+  args: { password: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { password }) => {
+    await seedLoginFixture(ctx, { username: "e2epal", displayName: "E2E Pal", email: PAL_EMAIL, kind: "fan", password });
+    return null;
+  },
+});
+
+/**
+ * Seeds e2eprivate and turns Private profile off, gives it a mood and a fresh
+ * presence row (Online Now!), resets its privacy limit, and makes it friends with
+ * e2epal. The spec starts public and reruns stay under 30 an hour. Safe to call
+ * again; the spec calls it before and after.
+ */
+export const resetPrivateFixture = internalMutation({
+  args: { password: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { password }) => {
+    await seedLoginFixture(ctx, { username: "e2eprivate", displayName: "E2E Private", email: PRIVATE_EMAIL, kind: "fan", password });
+    const byName = (username: string) =>
+      ctx.db
+        .query("profiles")
+        .withIndex("by_username", (q) => q.eq("username", username))
+        .unique();
+    const owner = (await byName("e2eprivate"))!;
+    const pal = await byName("e2epal");
+    if (pal === null) throw new ConvexError("Run testing:seedPrivatePalFixture first");
+    await ctx.db.patch(owner._id, {
+      private: undefined,
+      location: "Pretoria, South Africa",
+      mood: { icon: "happy", text: "keeping it private" },
+      showOnline: undefined,
+    });
+    // Online Now! on the card without waiting for the owner's heartbeat.
+    const seen = await ctx.db
+      .query("presence")
+      .withIndex("by_profile", (q) => q.eq("profileId", owner._id))
+      .unique();
+    if (seen === null) await ctx.db.insert("presence", { profileId: owner._id, lastSeenAt: Date.now() });
+    else await ctx.db.patch(seen._id, { lastSeenAt: Date.now() });
+    await rateLimiter.reset(ctx, "privacy", { key: owner._id });
+    const pair = friendshipPair(owner._id, pal._id);
+    const row = await ctx.db
+      .query("friendships")
+      .withIndex("by_pair", (q) => q.eq("a", pair.a).eq("b", pair.b))
+      .first();
+    if (row === null) await ctx.db.insert("friendships", pair);
     return null;
   },
 });

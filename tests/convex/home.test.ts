@@ -83,6 +83,7 @@ describe("coolNewPeople", () => {
       displayName: "FAN7",
       photoUrl: "https://cdn.example.com/fan7.jpg",
       kind: "fan",
+      online: false,
     });
   });
 

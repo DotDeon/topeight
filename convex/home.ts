@@ -1,20 +1,26 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import { profileForUser } from "./lib/access";
 import { friendBulletins } from "./lib/bulletins";
-import { toPublicCard, type PublicCard } from "./lib/cards";
+import { toPublicCard, toPublicCardOnline, type PublicCard } from "./lib/cards";
+import { onlineAsOf } from "./lib/presence";
 
 const CARD_COUNT = 5;
 const DASHBOARD_BULLETINS = 5;
 /** Rows read per box: the cards plus room to skip banned and house accounts. */
 const SCAN_LIMIT = CARD_COUNT + 50;
 
-/** The 5 newest unbanned fans with a photo. The house account is left out. */
+/**
+ * The 5 newest unbanned fans with a photo. The house account is left out.
+ * `asOf` is the caller's current minute, for the online flags only.
+ */
 export const coolNewPeople = query({
-  args: {},
-  handler: async (ctx): Promise<PublicCard[]> => {
+  args: { asOf: v.optional(v.number()) },
+  handler: async (ctx, { asOf }): Promise<PublicCard[]> => {
     const cards: PublicCard[] = [];
+    const now = onlineAsOf(asOf);
     const fans = ctx.db
       .query("profiles")
       .withIndex("by_kind_photo", (q) => q.eq("kind", "fan").eq("hasPhoto", true))
@@ -23,7 +29,7 @@ export const coolNewPeople = query({
     for await (const p of fans) {
       if (++scanned > SCAN_LIMIT) break;
       if (p.banned || p.isHouse) continue;
-      cards.push(toPublicCard(p));
+      cards.push(await toPublicCardOnline(ctx, p, now));
       if (cards.length === CARD_COUNT) break;
     }
     return cards;

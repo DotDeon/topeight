@@ -11,7 +11,8 @@ import {
   query,
   type MutationCtx,
 } from "./_generated/server";
-import { profileForUser, requireProfile } from "./lib/access";
+import { canSeeFull, profileForUser, requireProfile, viewerProfile } from "./lib/access";
+import { framePassSecret, verifyFramePass } from "./lib/framePass";
 import { rateLimiter } from "./lib/limits";
 import {
   MAX_TRACKS,
@@ -23,6 +24,7 @@ import {
   syncMediaFlags,
   UPLOAD_TTL_MS,
 } from "./lib/media";
+import { profileSongFor } from "./lib/profileSongs";
 import { audioBucket, audioConfigured, r2, storage, UPLOAD_URL_TTL_S, type MediaPurpose } from "./lib/r2";
 import { profileByUsername } from "./profiles";
 import { validateUsername } from "../lib/validation";
@@ -360,18 +362,36 @@ export const confirmTrackUpload = action({
   },
 });
 
-/** Keys of an unbanned profile's tracks, in play order, at most 10. */
+type PlayableTrack = { id: Id<"tracks">; key: string; profileSong?: true };
+
+const playableTrack = v.object({ id: v.id("tracks"), key: v.string(), profileSong: v.optional(v.literal(true)) });
+
+/**
+ * Keys of an unbanned profile's tracks, in play order. First the profile song,
+ * if it is available (signed against its artist's track key), flagged
+ * profileSong; then the profile's own tracks, at most 10. Nothing for a private
+ * profile unless the signed-in caller may see it in full or `pass` is a valid
+ * frame pass for it at `now`.
+ */
 export const playableTracks = internalQuery({
-  args: { username: v.string() },
-  returns: v.array(v.object({ id: v.id("tracks"), key: v.string() })),
-  handler: async (ctx, { username }) => {
+  args: { username: v.string(), pass: v.optional(v.string()), now: v.number() },
+  returns: v.array(playableTrack),
+  handler: async (ctx, { username, pass, now }): Promise<PlayableTrack[]> => {
     const p = await profileByUsername(ctx, username);
     if (p === null || p.banned) return [];
+    const allowed =
+      (await canSeeFull(ctx, await viewerProfile(ctx), p)) ||
+      (await verifyFramePass(pass, p._id, now, framePassSecret()));
+    if (!allowed) return [];
+    const song = await profileSongFor(ctx, p);
     const rows = await ctx.db
       .query("tracks")
       .withIndex("by_profile_order", (q) => q.eq("profileId", p._id))
       .take(MAX_TRACKS);
-    return rows.map((t) => ({ id: t._id, key: t.key }));
+    return [
+      ...(song === null ? [] : [{ id: song.track._id, key: song.track.key, profileSong: true as const }]),
+      ...rows.map((t) => ({ id: t._id, key: t.key })),
+    ];
   },
 });
 
@@ -389,25 +409,39 @@ export const takePlaybackToken = internalMutation({
 });
 
 /**
- * Short-lived playback URLs (15 minutes) for a profile's tracks. Anyone may call
- * it: the usercontent route uses it to render the player and to refresh its URLs.
- * Signs nothing for banned or missing profiles. Limited to 120 calls a minute
+ * Short-lived playback URLs (15 minutes) for a profile's tracks, plus its profile
+ * song when available (flagged `profileSong: true`, an extra entry on top of the
+ * 10-track cap). Anyone may call it: the usercontent route uses it to render the
+ * player and for the `?format=tracks` refresh, passing on the frame's `pass`.
+ * Signs nothing for banned or missing profiles, or for a private profile the
+ * caller may not see (see playableTracks). Limited to 120 calls a minute
  * per username, past which it returns [] without an error.
  */
 export const playbackUrls = action({
-  args: { username: v.string() },
-  returns: v.array(v.object({ id: v.id("tracks"), url: v.string() })),
-  handler: async (ctx, { username }): Promise<Array<{ id: Id<"tracks">; url: string }>> => {
+  args: { username: v.string(), pass: v.optional(v.string()) },
+  returns: v.array(v.object({ id: v.id("tracks"), url: v.string(), profileSong: v.optional(v.literal(true)) })),
+  handler: async (
+    ctx,
+    { username, pass },
+  ): Promise<Array<{ id: Id<"tracks">; url: string; profileSong?: true }>> => {
     if (!(await ctx.runMutation(internal.media.takePlaybackToken, { username }))) return [];
     // Without an audio bucket (local dev) there is nothing to sign.
     if (!audioConfigured()) {
       console.warn("R2 audio bucket not configured");
       return [];
     }
-    const tracks: Array<{ id: Id<"tracks">; key: string }> = await ctx.runQuery(internal.media.playableTracks, {
+    const tracks: PlayableTrack[] = await ctx.runQuery(internal.media.playableTracks, {
       username,
+      pass,
+      now: Date.now(),
     });
-    return await Promise.all(tracks.map(async (t) => ({ id: t.id, url: await storage.playbackUrl(t.key) })));
+    return await Promise.all(
+      tracks.map(async (t) => ({
+        id: t.id,
+        url: await storage.playbackUrl(t.key),
+        ...(t.profileSong ? { profileSong: true as const } : {}),
+      })),
+    );
   },
 });
 
@@ -460,7 +494,11 @@ export const deleteTrack = mutation({
   },
 });
 
-/** Deletes a track and its R2 object, and passes autoplay on to the next track. No access check. */
+/**
+ * Deletes a track and its R2 object, and passes autoplay on to the next track. No access check.
+ * Profiles that picked it as their profile song keep the pick, which now reads as
+ * unavailable (see lib/profileSongs.ts).
+ */
 export async function removeTrack(ctx: MutationCtx, track: Doc<"tracks">): Promise<void> {
   await storage.remove(ctx, track.key, "track");
   // A track from before the audio bucket may still have a public copy. Remove it too.

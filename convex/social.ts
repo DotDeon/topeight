@@ -3,10 +3,12 @@ import { ConvexError, v } from "convex/values";
 import { validateUsername } from "../lib/validation";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx } from "./_generated/server";
-import { areFriends, isBlockedEitherWay, profileForUser, requireProfile } from "./lib/access";
-import { toPublicCard, type PublicCard } from "./lib/cards";
+import { areFriends, canSeeFull, isBlockedEitherWay, profileForUser, requireProfile, viewerProfile } from "./lib/access";
+import { toPublicCard, toPublicCardOnline, type PublicCard } from "./lib/cards";
 import { friendIds, friendshipPair } from "./lib/friendships";
 import { MAX_FRIENDS, rateLimiter } from "./lib/limits";
+import { onlineAsOf } from "./lib/presence";
+import { clearPick } from "./lib/profileSongs";
 
 const TOP8_MAX = 8;
 
@@ -179,6 +181,15 @@ export const block = mutation({
         .take(MAX_REQUEST_ROWS);
       for (const r of rows) await ctx.db.delete(r._id);
     }
+    // A block cuts the profile song tie both ways. Unblocking doesn't restore it.
+    for (const [picker, artist] of [
+      [me, them],
+      [them, me],
+    ] as const) {
+      if (picker.profileSong === undefined) continue;
+      const track = await ctx.db.get(picker.profileSong);
+      if (track !== null && track.profileId === artist._id) await clearPick(ctx, picker);
+    }
     return null;
   },
 });
@@ -197,10 +208,14 @@ export const unblock = mutation({
   },
 });
 
-/** A profile's friends as cards, at most 1000, banned profiles left out. Null for an unknown username. */
+/**
+ * A profile's friends as cards, at most 1000, banned profiles left out. Null for
+ * an unknown username, and no friends on a private profile the viewer can't see in full.
+ * `asOf` is the caller's current minute, for the online flags only.
+ */
 export const listFriends = query({
-  args: { username: v.string() },
-  handler: async (ctx, { username }): Promise<{ friends: PublicCard[]; total: number } | null> => {
+  args: { username: v.string(), asOf: v.optional(v.number()) },
+  handler: async (ctx, { username, asOf }): Promise<{ friends: PublicCard[]; total: number } | null> => {
     const checked = validateUsername(username);
     if (!checked.ok) return null;
     const p = await ctx.db
@@ -208,11 +223,13 @@ export const listFriends = query({
       .withIndex("by_username", (q) => q.eq("username", checked.username))
       .unique();
     if (p === null || p.banned) return null;
+    if (!(await canSeeFull(ctx, await viewerProfile(ctx), p))) return { friends: [], total: 0 };
     const ids = (await friendIds(ctx, p._id)).slice(0, MAX_FRIENDS);
     const friends: PublicCard[] = [];
+    const now = onlineAsOf(asOf);
     for (const id of ids) {
       const f = await ctx.db.get(id);
-      if (f !== null && !f.banned) friends.push(toPublicCard(f));
+      if (f !== null && !f.banned) friends.push(await toPublicCardOnline(ctx, f, now));
     }
     friends.sort((x, y) => x.displayName.localeCompare(y.displayName));
     return { friends, total: friends.length };

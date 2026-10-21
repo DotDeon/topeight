@@ -52,6 +52,25 @@ export default defineSchema({
     banned: v.boolean(),
     /** Who may send this member mail. Undefined means friends only. */
     mailFrom: v.optional(v.union(v.literal("friends"), v.literal("anyone"))),
+    /** The profile mood line: an icon and up to 40 characters of text. */
+    mood: v.optional(v.object({ icon: moodIcon, text: v.string() })),
+    /** Show the Online Now! badge. Undefined means yes; false means never show and never store presence. */
+    showOnline: v.optional(v.boolean()),
+    /**
+     * Fans only: only friends (and admins) see the full page. Strangers get the
+     * restricted card from lib/access.ts canSeeFull. Undefined means public.
+     * becomeArtist clears it.
+     */
+    private: v.optional(v.boolean()),
+    /**
+     * The member's profile song: another artist's track, or their own. Read through
+     * lib/profileSongs.ts profileSongFor, which hides it when the track is gone, the
+     * artist is banned or the artist turned sharing off. Never cleared when the track
+     * is deleted: the pick just reads as unavailable.
+     */
+    profileSong: v.optional(v.id("tracks")),
+    /** Artists: let other members pick these songs. Undefined means yes. */
+    shareSongs: v.optional(v.boolean()),
     /**
      * Test fixtures only: a creation time to use for the group-creation age check,
      * since _creationTime can't be patched. Written only by internal fixture mutations
@@ -64,10 +83,24 @@ export default defineSchema({
     .index("by_kind_creation", ["kind"])
     .index("by_kind_photo", ["kind", "hasPhoto"])
     .index("by_kind_tracks", ["kind", "hasTracks"])
+    .index("by_profile_song", ["profileSong"])
     .searchIndex("search_name", {
       searchField: "displayName",
       filterFields: ["kind", "banned"],
     }),
+
+  /**
+   * One row per member with a profile song, kept in step with profiles.profileSong
+   * by lib/profileSongs.ts setPick and clearPick. Lets usageCount count an artist's
+   * picks without loading whole profile docs. profiles.profileSong stays the render path.
+   */
+  songPicks: defineTable({
+    pickerId: v.id("profiles"),
+    artistId: v.id("profiles"),
+    trackId: v.id("tracks"),
+  })
+    .index("by_picker", ["pickerId"])
+    .index("by_artist", ["artistId"]),
 
   /** A member's saved profiles. One row per owner and profile. */
   favorites: defineTable({
@@ -97,6 +130,12 @@ export default defineSchema({
     .index("by_to_status", ["to", "status"])
     .index("by_pair", ["from", "to"])
     .index("by_pair_status", ["from", "to", "status"]),
+
+  /** One row per member who shares Online Now!, written only by presence.heartbeat. */
+  presence: defineTable({
+    profileId: v.id("profiles"),
+    lastSeenAt: v.number(),
+  }).index("by_profile", ["profileId"]),
 
   friendships: defineTable({
     a: v.id("profiles"),

@@ -35,4 +35,10 @@ export type BridgeMessage =
    * Report one song in the player. The parent only acts on ids in its own
    * server-loaded track list for this profile, and shows that list's title.
    */
-  | { type: "topeight:reportTrack"; trackId: string };
+  | { type: "topeight:reportTrack"; trackId: string }
+  /**
+   * Ask to make one of this profile's songs the visitor's own profile song.
+   * The parent only acts on ids in its own server-loaded track list for this
+   * profile, asks the visitor to confirm, and takes the title from that list.
+   */
+  | { type: "topeight:pickSong"; trackId: string };

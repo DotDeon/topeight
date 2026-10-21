@@ -9,6 +9,21 @@ export type PublicCard = {
   displayName: string;
   photoUrl: string | null;
   kind: "fan" | "artist";
+  online?: boolean;
+};
+
+/**
+ * What a visitor who isn't allowed the full page gets for a private profile:
+ * the left-column basics only. `age` is fans only, like PublicProfile.age.
+ */
+export type RestrictedProfile = {
+  restricted: true;
+  displayName: string;
+  photoUrl: string | null;
+  age?: number;
+  location: string;
+  mood: { icon: string; text: string } | null;
+  online: boolean;
 };
 
 export type PublicProfile = {
@@ -16,6 +31,10 @@ export type PublicProfile = {
   displayName: string;
   kind: "fan" | "artist";
   headline: string;
+  /** The mood line. `icon` is one of lib/moods.ts MOOD_ICONS. */
+  mood?: { icon: string; text: string } | null;
+  /** Whether the member is online now (shares presence and was seen in the last 5 minutes). */
+  online: boolean;
   location: string;
   gender?: string;
   /** Fans only, worked out on the server. The birth date itself is never sent. */
@@ -55,6 +74,14 @@ export type PublicProfile = {
    * short-lived signed playback URL, null until the usercontent route merges one in.
    */
   tracks: Array<{ id: string; title: string; url: string | null; autoplay: boolean }>;
+  /** Artists only: false when they have turned song sharing off, so no pick links show. */
+  shareSongs?: boolean;
+  /**
+   * The member's profile song, null when none is picked or it is unavailable (track
+   * deleted, artist banned or sharing off). `id` is the Convex track id; `url` is
+   * null until the usercontent route merges in a signed one.
+   */
+  profileSong?: { id: string; title: string; url: string | null; artist: PublicCard } | null;
   shows: Array<{ date: string; venue: string; city: string }>;
   custom: { css: string; html: string; js: string };
 };

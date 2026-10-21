@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Box } from "@/components/Box";
 import { LoginBox } from "@/components/LoginBox";
 import { Photo } from "@/components/PhotoGrid";
+import { MoodForm } from "@/components/edit/MoodForm";
 import { api } from "@/convex/_generated/api";
 import { useState } from "react";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -73,6 +74,10 @@ export function MemberPanel() {
         <div>
           View My: <Link href={`/${me.username}`}>Profile</Link> | <Link href="/edit">Edit Profile</Link>
         </div>
+      </div>
+      <div className={styles.moodBox}>
+        <b>Update your mood</b>
+        <MoodForm key={profile?._id} mood={profile?.mood} label="Update your mood" />
       </div>
       <div className={styles.reqs}>
         <b>Friend requests waiting: {pendingRequests.length}</b>

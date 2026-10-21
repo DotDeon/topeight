@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { getFunctionName } from "convex/server";
 import { buildUsercontentCsp } from "@/lib/profile/csp";
 import type { PublicProfile } from "@/lib/profile/render";
 
@@ -22,6 +23,7 @@ const profile: PublicProfile = {
   displayName: "Jess",
   kind: "fan",
   headline: "",
+  online: false,
   location: "",
   aboutMe: "",
   whoIdLikeToMeet: "",
@@ -74,6 +76,18 @@ describe("usercontent route", () => {
     expect(await res.text()).toContain("window.topeight");
   });
 
+  test("asks for the profile as of the current minute", async () => {
+    query.mockResolvedValue(profile);
+    const before = Math.floor(Date.now() / 60_000) * 60_000;
+    await get("jess");
+    const after = Math.floor(Date.now() / 60_000) * 60_000;
+    const args = query.mock.calls[0][1] as { username: string; asOf: number };
+    expect(args.username).toBe("jess");
+    expect(args.asOf % 60_000).toBe(0);
+    expect(args.asOf).toBeGreaterThanOrEqual(before);
+    expect(args.asOf).toBeLessThanOrEqual(after);
+  });
+
   test("404s on the main host without querying", async () => {
     const res = await get("jess", "localhost:3000");
     expect(res.status).toBe(404);
@@ -121,6 +135,24 @@ describe("usercontent route", () => {
     expect(html).toContain('data-tracks-url="http://127.0.0.1:3000/band?format=tracks"');
   });
 
+  test("merges the profile song's signed URL into a fan's player", async () => {
+    const mia: PublicProfile = {
+      ...profile,
+      username: "mia",
+      profileSong: {
+        id: "ps1",
+        title: "Red Dust",
+        url: null,
+        artist: { username: "band", displayName: "Band", photoUrl: null, kind: "artist" },
+      },
+    };
+    query.mockResolvedValue(mia);
+    action.mockResolvedValue([{ id: "ps1", url: "https://audio.example/ps1", profileSong: true }]);
+    const html = await (await get("mia")).text();
+    expect(html).toContain('data-src="https://audio.example/ps1"');
+    expect(html).toContain('data-topeight-navigate="band"');
+  });
+
   test("still serves the document when signing fails", async () => {
     query.mockResolvedValue(profile);
     action.mockRejectedValue(new Error("boom"));
@@ -141,6 +173,13 @@ describe("usercontent route ?format=tracks", () => {
     expect(await res.json()).toEqual({ tracks: [{ id: "t1", url: "https://audio.example/t1" }] });
   });
 
+  test("includes the profile song entry with its flag", async () => {
+    query.mockResolvedValue(profile);
+    action.mockResolvedValue([{ id: "ps1", url: "https://audio.example/ps1", profileSong: true }]);
+    const res = await get("jess", "127.0.0.1:3000", "?format=tracks");
+    expect(await res.json()).toEqual({ tracks: [{ id: "ps1", url: "https://audio.example/ps1", profileSong: true }] });
+  });
+
   test("404s on the main host, for bad usernames, and for missing or banned profiles", async () => {
     expect((await get("jess", "localhost:3000", "?format=tracks")).status).toBe(404);
     expect(query).not.toHaveBeenCalled();
@@ -156,5 +195,95 @@ describe("usercontent route ?format=tracks", () => {
     query.mockResolvedValue(profile);
     action.mockRejectedValue(new Error("boom"));
     expect((await get("jess", "127.0.0.1:3000", "?format=tracks")).status).toBe(503);
+  });
+});
+
+describe("usercontent route on private profiles", () => {
+  const restricted = {
+    restricted: true,
+    displayName: "Priv",
+    photoUrl: null,
+    location: "",
+    mood: null,
+    online: false,
+  };
+  const full: PublicProfile = { ...profile, username: "priv", aboutMe: "only friends" };
+  const header = { displayName: "Priv", kind: "fan", banned: false, private: true, restricted: true };
+
+  /** Answers each Convex call by function name, the way the deployment would for a signed-out caller. */
+  function privateDeployment({ validPass }: { validPass: string }) {
+    query.mockImplementation(async (ref: unknown) => {
+      const name = getFunctionName(ref as never);
+      if (name === "profiles:getPublicProfile") return restricted;
+      if (name === "profiles:profileHeader") return header;
+      throw new Error(`unexpected query ${name}`);
+    });
+    action.mockImplementation(async (ref: unknown, args: { pass?: string }) => {
+      const ok = args.pass === validPass;
+      const name = getFunctionName(ref as never);
+      if (name === "media:playbackUrls") return ok ? [{ id: "t1", url: "https://audio.example/t1" }] : [];
+      if (name === "profiles:getPublicProfileWithPass") return ok ? full : restricted;
+      if (name === "framePass:verify") return ok;
+      throw new Error(`unexpected action ${name}`);
+    });
+  }
+
+  test("404s without a pass, and never renders the restricted card", async () => {
+    privateDeployment({ validPass: "good" });
+    const res = await get("priv");
+    expect(res.status).toBe(404);
+    expectBaseHeaders(res);
+    expect(await res.text()).toBe("Not found");
+    expect((await get("priv", "127.0.0.1:3000", "?format=tracks")).status).toBe(404);
+  });
+
+  test("404s with a bad pass", async () => {
+    privateDeployment({ validPass: "good" });
+    expect((await get("priv", "127.0.0.1:3000", "?pass=bad")).status).toBe(404);
+    expect((await get("priv", "127.0.0.1:3000", "?format=tracks&pass=bad")).status).toBe(404);
+  });
+
+  test("renders the full page with a valid pass", async () => {
+    privateDeployment({ validPass: "good" });
+    const res = await get("priv", "127.0.0.1:3000", "?pass=good");
+    expect(res.status).toBe(200);
+    expectBaseHeaders(res);
+    expect(await res.text()).toContain("only friends");
+    expect(action).toHaveBeenCalledWith(expect.anything(), { username: "priv", pass: "good" });
+    expect(action).toHaveBeenCalledWith(expect.anything(), {
+      username: "priv",
+      pass: "good",
+      asOf: expect.any(Number),
+    });
+  });
+
+  test("answers ?format=tracks with a valid pass", async () => {
+    privateDeployment({ validPass: "good" });
+    const res = await get("priv", "127.0.0.1:3000", "?format=tracks&pass=good");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ tracks: [{ id: "t1", url: "https://audio.example/t1" }] });
+  });
+
+  test("503s when checking the pass fails", async () => {
+    privateDeployment({ validPass: "good" });
+    action.mockImplementation(async (ref: unknown) => {
+      if (getFunctionName(ref as never) === "media:playbackUrls") return [];
+      throw new Error("boom");
+    });
+    expect((await get("priv", "127.0.0.1:3000", "?pass=good")).status).toBe(503);
+    expect((await get("priv", "127.0.0.1:3000", "?format=tracks&pass=good")).status).toBe(503);
+  });
+
+  test("public profiles ignore the pass", async () => {
+    query.mockResolvedValue(profile);
+    const res = await get("jess", "127.0.0.1:3000", "?pass=anything");
+    expect(res.status).toBe(200);
+    // Only playbackUrls ran: no pass check for a public page.
+    expect(action).toHaveBeenCalledTimes(1);
+    query.mockResolvedValue({ ...header, private: false, restricted: false });
+    action.mockReset();
+    action.mockResolvedValue([]);
+    expect((await get("jess", "127.0.0.1:3000", "?format=tracks&pass=anything")).status).toBe(200);
+    expect(action).toHaveBeenCalledTimes(1);
   });
 });

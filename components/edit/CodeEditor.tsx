@@ -7,6 +7,7 @@ import type { Doc } from "@/convex/_generated/dataModel";
 import { buildUsercontentCsp } from "@/lib/profile/csp";
 import { renderProfileDocument } from "@/lib/profile/render";
 import { Box } from "../Box";
+import { useMinute } from "../useMinute";
 import styles from "./Edit.module.css";
 import { StatusLine, useSaver } from "./shared";
 
@@ -17,7 +18,8 @@ const bytes = (s: string) => encoder.encode(s).length;
 export function CodeEditor({ me }: { me: Doc<"profiles"> }) {
   const artist = me.kind === "artist";
   const save = useMutation(api.profiles.updateCustomCode);
-  const profile = useQuery(api.profiles.getPublicProfile, { username: me.username });
+  const asOf = useMinute();
+  const profile = useQuery(api.profiles.getPublicProfile, { username: me.username, asOf });
   const playbackUrls = useAction(api.media.playbackUrls);
   const { status, busy, run } = useSaver();
   const [css, setCss] = useState(me.customCss);
@@ -30,7 +32,7 @@ export function CodeEditor({ me }: { me: Doc<"profiles"> }) {
   const over = total > MAX_BYTES;
 
   async function preview() {
-    if (!profile || "unavailable" in profile) return;
+    if (!profile || "unavailable" in profile || "restricted" in profile) return;
     const mainOrigin = process.env.NEXT_PUBLIC_MAIN_ORIGIN ?? window.location.origin;
     const usercontentOrigin = process.env.NEXT_PUBLIC_USERCONTENT_ORIGIN ?? "";
     // The same policy the usercontent route sends, minus frame-ancestors, which a meta tag ignores.

@@ -1,0 +1,63 @@
+/* The private profile card: the profile document's left column (lib/profile/profile-css.ts), on the main site. */
+.card {
+  width: 300px;
+  padding: 10px 0;
+  font-family: Verdana, Arial, sans-serif;
+  font-size: 10px;
+}
+
+.name {
+  font-size: 17px;
+  font-weight: bold;
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.basic {
+  display: flex;
+  gap: 8px;
+}
+
+.photo {
+  flex: none;
+  width: 150px;
+}
+
+.photo img,
+.blank {
+  display: block;
+  width: 150px;
+  height: 170px;
+  object-fit: cover;
+  border: 1px solid #999;
+  box-sizing: border-box;
+}
+
+.blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ccc;
+  color: #666;
+}
+
+.online {
+  margin-top: 2px;
+}
+
+.info {
+  overflow-wrap: anywhere;
+}
+
+.info p {
+  margin: 0 0 10px;
+}
+
+.note {
+  border: 1px solid #6698cb;
+  background: #d5e8fb;
+  margin-top: 8px;
+  padding: 6px 5px;
+  font-weight: bold;
+  color: #336699;
+}

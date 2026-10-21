@@ -5,17 +5,23 @@ import type { Id } from "@/convex/_generated/dataModel";
 import type { BridgeAction } from "@/lib/bridge-protocol";
 
 /**
- * Who the action is about. `track` is set for reportTrack only, and always
- * comes from the parent's server-loaded track list, never from the frame.
+ * Who the action is about. `track` is set for reportTrack and pickSong only,
+ * and always comes from the parent's server-loaded track list, never from the
+ * frame. `track.owner` names the profile a song belongs to when that is not the
+ * profile being viewed (a profile song belongs to its artist).
  */
-export type ActionTarget = { username: string; displayName: string; track?: { id: string; title: string } };
+export type ActionTarget = {
+  username: string;
+  displayName: string;
+  track?: { id: string; title: string; owner?: string };
+};
 
 /**
  * Everything the confirm dialog can do: the bridge actions plus the ones only
  * the trusted strip or the parent page can start (reporting a song, removing a
  * friend, unblocking). Artist code can never request those.
  */
-export type DialogAction = BridgeAction | "reportTrack" | "removeFriend" | "unblock";
+export type DialogAction = BridgeAction | "reportTrack" | "pickSong" | "removeFriend" | "unblock";
 
 /** What an action did: `ok` is true only when it went through, `text` is what the dialog shows. */
 export type ActionResult = { ok: boolean; text: string };
@@ -110,12 +116,23 @@ async function reportTrack(target: ActionTarget, client: ConvexReactClient, text
     await client.mutation(api.moderation.report, {
       targetType: "track",
       targetId: target.track.id,
-      profileUsername: target.username,
+      profileUsername: target.track.owner ?? target.username,
       reason: text,
     });
     return { ok: true, text: "Thanks, a moderator will review it" };
   } catch (e) {
     return failure(e, "Log in to report");
+  }
+}
+
+/** The server checks the song exists, its artist shares it, and neither side has blocked the other. */
+async function pickSong(target: ActionTarget, client: ConvexReactClient): Promise<ActionResult> {
+  if (!target.track) return { ok: false, text: "Not found" };
+  try {
+    await client.mutation(api.profileSongs.pick, { trackId: target.track.id as Id<"tracks"> });
+    return { ok: true, text: "Your profile song is set" };
+  } catch (e) {
+    return failure(e, "Log in to pick a profile song");
   }
 }
 
@@ -146,5 +163,10 @@ export const PROFILE_ACTIONS: Record<DialogAction, ProfileAction> = {
     label: "Report", question: (_n, t) => `Report the song "${t.track?.title ?? ""}"?`,
     run: reportTrack,
     input: { label: "What's wrong?", maxLength: 500 },
+  },
+  pickSong: {
+    label: "Add to my profile",
+    question: (n, t) => `Make "${t.track?.title ?? ""}" by ${n} your profile song?`,
+    run: pickSong,
   },
 };

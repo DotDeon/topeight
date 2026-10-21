@@ -11,13 +11,24 @@ import { CodeEditor } from "./CodeEditor";
 import styles from "./Edit.module.css";
 import { FriendsAndBlocking } from "./FriendsAndBlocking";
 import { MailSetting } from "./MailSetting";
+import { MoodForm } from "./MoodForm";
+import { OnlineSetting } from "./OnlineSetting";
+import { PrivateSetting } from "./PrivateSetting";
 import { PhotoForm } from "./PhotoForm";
+import { ProfileSongForm } from "./ProfileSongForm";
 import { ShowsForm } from "./ShowsForm";
 import { StatusLine, useSaver } from "./shared";
 import { Top8Picker } from "./Top8Picker";
 import { TracksForm } from "./TracksForm";
 
-function BecomeArtist() {
+/** The confirm before switching to artist. A private fan is told the setting goes. */
+export function becomeArtistConfirm(isPrivate: boolean): string {
+  return isPrivate
+    ? "Artist pages are public. Switching turns off your private profile setting. Continue?"
+    : "Switch to an artist profile?";
+}
+
+function BecomeArtist({ isPrivate }: { isPrivate: boolean }) {
   const become = useMutation(api.profiles.becomeArtist);
   const { status, busy, run } = useSaver();
   return (
@@ -28,7 +39,7 @@ function BecomeArtist() {
           type="button"
           disabled={busy}
           onClick={() => {
-            if (confirm("Switch to an artist profile?")) void run(() => become({}), "You are now an artist");
+            if (confirm(becomeArtistConfirm(isPrivate))) void run(() => become({}), "You are now an artist");
           }}
         >
           Switch to an artist profile
@@ -43,7 +54,9 @@ export function EditProfile() {
   const router = useRouter();
   const { isLoading, isAuthenticated } = useConvexAuth();
   const me = useQuery(api.profiles.me, isAuthenticated ? {} : "skip");
-  const pub = useQuery(api.profiles.getPublicProfile, me ? { username: me.username } : "skip");
+  // Small reads instead of the whole public profile: only the song and photo are needed here.
+  const song = useQuery(api.profileSongs.mine, me ? {} : "skip");
+  const photoUrl = useQuery(api.profiles.myPhotoUrl, me ? {} : "skip");
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.replace("/login");
@@ -53,16 +66,27 @@ export function EditProfile() {
   if (isLoading || !isAuthenticated || !me) return <p className={styles.note}>Loading...</p>;
 
   const artist = me.kind === "artist";
-  const photoUrl = pub && !("unavailable" in pub) ? pub.photoUrl : null;
   return (
     <div className={styles.page}>
       <h1 className={styles.title}>Edit Profile</h1>
       {artist && <ArtistProComingSoon />}
       <DetailsForm key={me._id} me={me} />
-      <PhotoForm photoUrl={photoUrl} photoKey={me.photoKey} />
+      <Box title="Mood" color="orange">
+        <MoodForm key={me._id} mood={me.mood} label="Profile mood" />
+      </Box>
+      <PhotoForm photoUrl={photoUrl ?? null} photoKey={me.photoKey} />
+      <ProfileSongForm
+        song={song ?? null}
+        hasPick={me.profileSong !== undefined}
+        loading={song === undefined}
+        artist={artist}
+        shareSongs={me.shareSongs !== false}
+      />
       <Top8Picker top8={me.top8} />
       <FriendsAndBlocking />
       <MailSetting key={me._id} mailFrom={me.mailFrom} />
+      <OnlineSetting showOnline={me.showOnline} />
+      {!artist && <PrivateSetting isPrivate={me.private} />}
       {artist ? (
         <>
           <TracksForm />
@@ -70,7 +94,7 @@ export function EditProfile() {
           <BandForm me={me} />
         </>
       ) : (
-        <BecomeArtist />
+        <BecomeArtist isPrivate={me.private === true} />
       )}
       <CodeEditor key={`${me._id}-${me.kind}`} me={me} />
     </div>

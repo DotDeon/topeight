@@ -73,6 +73,7 @@ These go on Convex:
 | `R2_BUCKET` | From step 3, the public photo bucket |
 | `R2_AUDIO_BUCKET` | From step 3, the private track bucket |
 | `NEXT_PUBLIC_R2_PUBLIC_URL` | The public photo bucket URL, no trailing slash needed |
+| `FRAME_PASS_SECRET` | A long random string, for example from `openssl rand -base64 32`. Signs the 2-hour frame passes that let friends see a private profile. Without it, private profiles never render in the frame, even for friends. Changing it ends every pass in use |
 
 Then push the functions with `npx convex deploy`.
 
@@ -125,15 +126,19 @@ Follow these steps in order on an existing deployment.
 2. Add its CORS policy, the same one as in section 3.
 3. Give the API token Object Read & Write on both buckets.
 4. Set `R2_AUDIO_BUCKET` on Convex: `npx convex env set R2_AUDIO_BUCKET <bucket name>`.
-5. Deploy.
-6. Run `npx convex run migrations:moveTracksToAudioBucket`.
-7. Run `npx convex run migrations:backfillMediaFlags`.
-8. Smoke test: upload a song, play it, delete it.
+5. Set `FRAME_PASS_SECRET` on Convex (any long random string, for example from `openssl rand -base64 48`).
+6. Deploy.
+7. Run `npx convex run migrations:moveTracksToAudioBucket`.
+8. Run `npx convex run migrations:backfillMediaFlags`.
+9. Run `npx convex run migrations:backfillSongPicks`.
+10. Smoke test: upload a song, play it, delete it.
 
 Deletes fail until `R2_AUDIO_BUCKET` is set, so do not deploy before step 4.
 
-Step 6 copies songs uploaded before the audio bucket existed out of the public photo bucket, where anyone with the link can reach them and where they no longer play. It copies each one to `R2_AUDIO_BUCKET` unless it is already there, then deletes the public copy. It works through 50 songs at a time and schedules itself until done, logging moved, skipped and failed counts per page and at the end. Running it again is safe, and songs that already moved are skipped. If the token lacks access to either bucket, the run stops with an error that names the bucket. Fix the token and run it again.
+Step 7 copies songs uploaded before the audio bucket existed out of the public photo bucket, where anyone with the link can reach them and where they no longer play. It copies each one to `R2_AUDIO_BUCKET` unless it is already there, then deletes the public copy. It works through 50 songs at a time and schedules itself until done, logging moved, skipped and failed counts per page and at the end. Running it again is safe, and songs that already moved are skipped. If the token lacks access to either bucket, the run stops with an error that names the bucket. Fix the token and run it again.
 
-Step 7 sets the photo and track flags that Cool New People and Cool New Music read, on profiles made before those flags existed. It works through 100 profiles at a time and schedules itself until done. Running it again is safe.
+Step 8 sets the photo and track flags that Cool New People and Cool New Music read, on profiles made before those flags existed. It works through 100 profiles at a time and schedules itself until done. Running it again is safe.
 
-You can rerun both backfill migrations, steps 6 and 7, at any time. Each skips work that is already done, so a rerun after a failed or partial run is safe.
+Step 9 builds the song pick records that the "Your songs are on N profiles" count reads, from profile songs set before they existed. It works through 20 profiles at a time and schedules itself until done. Running it again is safe.
+
+You can rerun the backfill migrations, steps 7, 8 and 9, at any time. Each skips work that is already done, so a rerun after a failed or partial run is safe.

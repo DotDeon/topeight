@@ -1,3 +1,5 @@
+import { FRAME_PASS_FORMAT } from "@/convex/lib/framePass";
+
 export type HostKind = "main" | "usercontent" | "unknown";
 
 export type HostRoute =
@@ -23,15 +25,25 @@ export function classifyHost(host: string): HostKind {
 
 /**
  * Where a request goes. `to` may carry a query string. On the usercontent host
- * the only query kept is `?format=tracks` (the player's playback URL refresh);
- * anything else is dropped.
+ * the only query kept is `?format=tracks` (the player's playback URL refresh),
+ * `?own=1` (the parent hides the pick links on the visitor's own page) and
+ * `?pass=` (a private profile's frame pass, convex/lib/framePass.ts). Only those
+ * exact values, and only a pass in FRAME_PASS_FORMAT, are forwarded, and they are
+ * forwarded explicitly: the route does not rely on the original request's query
+ * surviving a rewrite. The route still verifies the pass.
  */
 export function routeForHost(kind: HostKind, pathname: string, search = ""): HostRoute {
   if (kind === "usercontent") {
     // Only single-segment profile paths are served on the usercontent host.
     if (/^\/[^/]+$/.test(pathname)) {
-      const tracks = new URLSearchParams(search).get("format") === "tracks";
-      return { action: "rewrite", to: `/usercontent${pathname}${tracks ? "?format=tracks" : ""}` };
+      const q = new URLSearchParams(search);
+      const kept = new URLSearchParams();
+      if (q.get("format") === "tracks") kept.set("format", "tracks");
+      if (q.get("own") === "1") kept.set("own", "1");
+      const pass = q.get("pass");
+      if (pass !== null && FRAME_PASS_FORMAT.test(pass)) kept.set("pass", pass);
+      const qs = kept.toString();
+      return { action: "rewrite", to: `/usercontent${pathname}${qs ? `?${qs}` : ""}` };
     }
     return { action: "notFound" };
   }

@@ -1,9 +1,8 @@
-import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import { validateUsername } from "../lib/validation";
 import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, query, type QueryCtx } from "./_generated/server";
-import { isBlockedEitherWay, profileForUser, requireProfile } from "./lib/access";
+import { mutation, query } from "./_generated/server";
+import { canSeeFull, isBlockedEitherWay, requireProfile, viewerProfile } from "./lib/access";
 import { toPublicCard, type PublicCard } from "./lib/cards";
 import { rateLimiter } from "./lib/limits";
 import { MAX_COMMENT, checkBody, checkLinks } from "./lib/posting";
@@ -21,6 +20,8 @@ export const add = mutation({
     if (owner._id !== me._id && (await isBlockedEitherWay(ctx, me._id, owner._id))) {
       throw new ConvexError("Not allowed");
     }
+    // Only people who may see a private profile in full may write on it.
+    if (!(await canSeeFull(ctx, me, owner))) throw new ConvexError("Not allowed");
     checkLinks(me, text);
     const { ok } = await rateLimiter.limit(ctx, "comment", { key: me._id });
     if (!ok) throw new ConvexError("Slow down");
@@ -51,17 +52,10 @@ export type CommentView = {
   canDelete: boolean;
 };
 
-async function viewerProfile(ctx: QueryCtx): Promise<Doc<"profiles"> | null> {
-  const userId = await getAuthUserId(ctx);
-  if (userId === null) return null;
-  const p = await profileForUser(ctx, userId);
-  return p === null || p.banned ? null : p;
-}
-
 /**
  * One page (50) of a profile's comments, newest first. Hidden comments, banned
  * authors and authors the owner blocked are dropped after paging, so a page can
- * come back short.
+ * come back short. Empty on a private profile the viewer can't see in full.
  */
 export const list = query({
   args: { username: v.string(), cursor: v.union(v.string(), v.null()) },
@@ -75,6 +69,7 @@ export const list = query({
       .unique();
     if (owner === null || owner.banned) return empty;
     const viewer = await viewerProfile(ctx);
+    if (!(await canSeeFull(ctx, viewer, owner))) return empty;
 
     const result = await ctx.db
       .query("comments")

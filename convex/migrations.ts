@@ -1,7 +1,9 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { syncMediaFlags } from "./lib/media";
+import { setPick } from "./lib/profileSongs";
 import { audioBucket, photoBucket, storage } from "./lib/r2";
 
 const BATCH = 100;
@@ -23,6 +25,36 @@ export const backfillMediaFlags = internalMutation({
       await ctx.scheduler.runAfter(0, internal.migrations.backfillMediaFlags, {
         cursor: page.continueCursor,
       });
+    }
+    return null;
+  },
+});
+
+const PICK_BATCH = 20;
+
+/**
+ * Writes a songPicks row for every profile that picked a song before the table
+ * existed. Pages only the profiles with a profileSong (the by_profile_song index
+ * from the first string, since every id is a string and unset sorts first), 20
+ * per run because each is a whole profile doc, then schedules itself with the
+ * continue cursor. Picks of deleted tracks get no row. Safe to run again.
+ * Run it once after upgrading: npx convex run migrations:backfillSongPicks
+ */
+export const backfillSongPicks = internalMutation({
+  args: { cursor: v.optional(v.string()) },
+  returns: v.null(),
+  handler: async (ctx, { cursor }) => {
+    const page = await ctx.db
+      .query("profiles")
+      .withIndex("by_profile_song", (q) => q.gte("profileSong", "" as Id<"tracks">))
+      .paginate({ numItems: PICK_BATCH, cursor: cursor ?? null });
+    for (const p of page.page) {
+      if (p.profileSong === undefined) continue;
+      const track = await ctx.db.get(p.profileSong);
+      if (track !== null) await setPick(ctx, p, track);
+    }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.migrations.backfillSongPicks, { cursor: page.continueCursor });
     }
     return null;
   },

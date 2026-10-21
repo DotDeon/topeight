@@ -1,7 +1,10 @@
 import { BRIDGE_ACTIONS, BRIDGE_PAGES, MAX_TRACK_ID_LENGTH, type BridgePage } from "@/lib/bridge-protocol";
 import { tokenizeComment } from "@/lib/validation";
+import { moodLabel, moodSvg } from "@/lib/moodSvg";
+import { MOOD_ICONS } from "@/lib/moods";
+import { onlineNowHtml } from "@/lib/onlineBadge";
 import { PROFILE_CSS } from "./profile-css";
-import type { PublicProfile } from "./types";
+import type { PublicCard, PublicProfile } from "./types";
 
 export type { PublicCard, PublicProfile } from "./types";
 
@@ -11,6 +14,8 @@ export type RenderOptions = {
   cspMeta?: string;
   /** The usercontent origin. When set, the player refreshes its signed URLs from `<origin>/<username>?format=tracks`. */
   usercontentOrigin?: string;
+  /** Leave the "Add to my profile" links off. Set when the viewer is looking at their own page. */
+  hidePick?: boolean;
 };
 
 /** How often the player fetches fresh playback URLs. They live 15 minutes. */
@@ -145,18 +150,46 @@ function detailsRows(rows: Array<[string, string | undefined]>): string {
     .join("");
 }
 
+type PlayerRow = { id: string; title: string; url: string; autoplay: boolean; by?: PublicCard };
+
+/**
+ * The rows the player shows. The profile song (if it has a playable URL) comes
+ * first, labelled with its artist. Fans get only that; artists follow it with
+ * their own tracks, skipping their own song if they picked it.
+ */
+function playerRows(p: PublicProfile): PlayerRow[] {
+  const song = p.profileSong && safeUrl(p.profileSong.url) !== null ? p.profileSong : null;
+  const rows: PlayerRow[] = song
+    ? [{ id: song.id, title: song.title, url: song.url!, autoplay: true, by: song.artist }]
+    : [];
+  if (p.kind !== "artist") return rows;
+  for (const t of p.tracks) {
+    if (safeUrl(t.url) === null || t.id === song?.id) continue;
+    rows.push({ id: t.id, title: t.title, url: t.url!, autoplay: song ? false : t.autoplay });
+  }
+  return rows;
+}
+
+function playerRow(t: PlayerRow, i: number, current: boolean, hidePick: boolean): string {
+  const report = `<a href="#" class="player-report" data-topeight-report-track="${escapeHtml(t.id)}">Report</a>`;
+  const button = `<button type="button" class="player-track${current ? " current" : ""}" data-index="${i}" data-track-id="${escapeHtml(t.id)}" data-src="${escapeHtml(t.url)}"><span><span class="mark">&#9654; </span>${escapeHtml(t.title)}</span><span class="dur"></span></button>`;
+  // Links sit outside the button, so clicking them never toggles playback.
+  if (t.by) {
+    // Reports the artist's track. No pick link: the visitor already sees it as this profile's song.
+    return `<li class="player-song">${button}<span class="player-by"> by ${navLink(t.by.username, escapeHtml(t.by.displayName))}</span>${report}</li>`;
+  }
+  const pick = hidePick
+    ? ""
+    : ` <a href="#" class="player-pick" data-topeight-pick-track="${escapeHtml(t.id)}">Add to my profile</a>`;
+  return `<li>${button}${report}${pick}</li>`;
+}
+
 function renderPlayer(p: PublicProfile, name: string, opts: RenderOptions): string {
-  const tracks = p.tracks.filter((t): t is typeof t & { url: string } => safeUrl(t.url) !== null);
-  if (p.kind !== "artist" || tracks.length === 0) return "";
+  const tracks = playerRows(p);
+  if (tracks.length === 0) return "";
   const autoplay = tracks.findIndex((t) => t.autoplay);
   const first = autoplay >= 0 ? autoplay : 0;
-  const items = tracks
-    .map(
-      (t, i) =>
-        // The Report link sits outside the button, so clicking it never toggles playback.
-        `<li><button type="button" class="player-track${i === first ? " current" : ""}" data-index="${i}" data-track-id="${escapeHtml(t.id)}" data-src="${escapeHtml(t.url)}"><span><span class="mark">&#9654; </span>${escapeHtml(t.title)}</span><span class="dur"></span></button><a href="#" class="player-report" data-topeight-report-track="${escapeHtml(t.id)}">Report</a></li>`,
-    )
-    .join("");
+  const items = tracks.map((t, i) => playerRow(t, i, i === first, opts.hidePick === true || p.shareSongs === false)).join("");
   const refresh = opts.usercontentOrigin
     ? ` data-tracks-url="${escapeHtml(`${opts.usercontentOrigin.replace(/\/+$/, "")}/${encodeURIComponent(p.username)}?format=tracks`)}"`
     : "";
@@ -167,6 +200,13 @@ function renderPlayer(p: PublicProfile, name: string, opts: RenderOptions): stri
 <div class="player-bar"><i></i></div>
 <ul class="player-tracks">${items}</ul>
 </div>`;
+}
+
+/** "Mood: <icon> text". The icon comes from fixed markup keyed by a known id; the text is escaped. */
+function moodLine(mood: PublicProfile["mood"]): string {
+  const icon = MOOD_ICONS.find((i) => i === mood?.icon);
+  if (!mood || !icon) return "";
+  return `<span class="mood">Mood: ${moodSvg(icon)} ${escapeHtml(mood.text || moodLabel(icon))}</span>`;
 }
 
 function renderLeft(p: PublicProfile, opts: RenderOptions): string {
@@ -186,6 +226,7 @@ function renderLeft(p: PublicProfile, opts: RenderOptions): string {
       ];
   const facts = [
     p.headline ? `"${escapeHtml(p.headline)}"` : "",
+    moodLine(p.mood),
     ...who,
     `Profile Views: ${formatCount(p.profileViews)}`,
     `Last Login: ${formatDay(p.lastLoginAt)}`,
@@ -219,7 +260,7 @@ function renderLeft(p: PublicProfile, opts: RenderOptions): string {
 
   return `<div class="profile-left">
 <h1 class="name">${name}</h1>
-<div class="basic">${photo(p.photoUrl, "photo-main")}<div class="basic-info">${facts.join("<br><br>")}</div></div>
+<div class="basic"><div class="basic-photo">${photo(p.photoUrl, "photo-main")}${p.online ? onlineNowHtml() : ""}</div><div class="basic-info">${facts.join("<br><br>")}</div></div>
 <div class="view-my">View My: <span class="soon" title="Coming soon">Pics</span> | <span class="soon" title="Coming soon">Videos</span></div>
 ${renderPlayer(p, name, opts)}
 <div class="contact"><h5>Contacting ${name}</h5><table>
@@ -272,7 +313,7 @@ function renderRight(p: PublicProfile): string {
     .slice(0, 8)
     .map(
       (f) =>
-        `<div class="top8-friend">${navLink(f.username, `${photo(f.photoUrl, "photo")}${escapeHtml(f.displayName)}`)}</div>`,
+        `<div class="top8-friend">${navLink(f.username, `${photo(f.photoUrl, "photo")}${escapeHtml(f.displayName)}`)}${f.online ? onlineNowHtml() : ""}</div>`,
     )
     .join("");
   parts.push(
@@ -321,17 +362,23 @@ export function bridgeScript(mainOrigin: string): string {
     if (typeof trackId !== "string" || !trackId || trackId.length > MAX_TRACK_ID) return;
     post({ type: "topeight:reportTrack", trackId: trackId });
   }
-  window.topeight = { request: request, navigate: navigate, reportTrack: reportTrack };
+  function pickSong(trackId) {
+    if (typeof trackId !== "string" || !trackId || trackId.length > MAX_TRACK_ID) return;
+    post({ type: "topeight:pickSong", trackId: trackId });
+  }
+  window.topeight = { request: request, navigate: navigate, reportTrack: reportTrack, pickSong: pickSong };
   document.addEventListener("click", function (e) {
     var t = e.target;
     if (!(t instanceof Element)) return;
-    var el = t.closest("[data-topeight-action],[data-topeight-navigate],[data-topeight-report-track]");
+    var el = t.closest("[data-topeight-action],[data-topeight-navigate],[data-topeight-report-track],[data-topeight-pick-track]");
     if (!el) return;
     e.preventDefault();
     var action = el.getAttribute("data-topeight-action");
     var track = el.getAttribute("data-topeight-report-track");
+    var pick = el.getAttribute("data-topeight-pick-track");
     if (action !== null) request(action);
     else if (track !== null) reportTrack(track);
+    else if (pick !== null) pickSong(pick);
     else navigate(el.getAttribute("data-topeight-navigate"), el.getAttribute("data-topeight-page"));
   });
 
@@ -381,7 +428,8 @@ export function bridgeScript(mainOrigin: string): string {
  * Player behaviour. Does nothing when the document has no player. Playback URLs
  * are signed for 15 minutes, so the player fetches fresh ones from
  * data-tracks-url every 12 minutes and when the audio fails to load (once per
- * failure, until playback works again). No download control, no context menu.
+ * failure, until playback works again), adding the frame pass from its own
+ * address when there is one. No download control, no context menu.
  */
 export const playerScript = `document.addEventListener("DOMContentLoaded", function () {
   var ui = document.getElementById("topeight-player-ui");
@@ -396,6 +444,14 @@ export const playerScript = `document.addEventListener("DOMContentLoaded", funct
   var autoplay = Number(ui.getAttribute("data-autoplay"));
   var current = Math.max(0, autoplay);
   var tracksUrl = ui.getAttribute("data-tracks-url");
+  // A private profile's frame carries ?pass=; the refresh must send it too, or it gets a 404.
+  // The pass isn't renewed here. On a visit longer than its 2 hours the refresh gets a
+  // 404, so playback stops once the last signed URLs expire, until the frame reloads.
+  if (tracksUrl) {
+    var pass = null;
+    try { pass = new URLSearchParams(location.search).get("pass"); } catch (e) { pass = null; }
+    if (pass) tracksUrl += "&pass=" + encodeURIComponent(pass);
+  }
   var pending = null;
   var retried = false;
   ui.addEventListener("contextmenu", function (e) { e.preventDefault(); });
