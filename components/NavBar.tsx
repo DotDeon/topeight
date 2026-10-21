@@ -11,11 +11,9 @@ export const NAV_LINKS: { label: string; href: string }[] = [
   { label: "Mail", href: "/mail" },
   { label: "Blog", href: "/blog" },
   { label: "Favorites", href: "/favorites" },
-  { label: "Forum", href: soon("Forum") },
   { label: "Groups", href: "/groups" },
   { label: "Events", href: "/events" },
   { label: "Music", href: "/browse?kind=artist" },
-  { label: "Bulletins", href: "/bulletins" },
 ];
 
 export function NavBar() {

@@ -94,25 +94,3 @@ export function MemberPanel() {
     </Box>
   );
 }
-
-/** Friends' bulletins, shown only when signed in. */
-export function HomeBulletins() {
-  const { isAuthenticated, dashboard } = useDashboard();
-  if (!isAuthenticated || !dashboard) return null;
-  const { bulletins } = dashboard;
-  return (
-    <Box title="Bulletins From Friends" color="blue">
-      {bulletins.length === 0 ? (
-        <span className={styles.muted}>No new bulletins from your friends</span>
-      ) : (
-        bulletins.map((b) => (
-          <div className={styles.bulletin} key={b.id}>
-            <Link href={`/${b.author.username}`}><b>{b.author.displayName}</b></Link>{" "}
-            <span className={styles.muted}>{new Date(b.createdAt).toLocaleDateString("en-GB")}</span>
-            <div className={styles.body}>{b.body}</div>
-          </div>
-        ))
-      )}
-    </Box>
-  );
-}
