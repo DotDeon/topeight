@@ -6,11 +6,11 @@ type Asset = { file: string; size: string; surface: "blue" | "white" | "checker"
 
 // Sizes match what scripts/build-brand.mjs writes. Run `npm run brand` to regenerate.
 const ASSETS: Asset[] = [
-  { file: "topeight-logo.svg", size: "239 x 34", surface: "blue" },
-  { file: "topeight-logo-on-blue.svg", size: "267 x 62", surface: "white" },
-  { file: "topeight-logo-dark.svg", size: "239 x 34", surface: "white" },
-  { file: "topeight-logo-slogan.svg", size: "239 x 46", surface: "blue" },
-  { file: "topeight-logo-slogan-on-blue.svg", size: "267 x 74", surface: "white" },
+  { file: "topeight-logo.svg", size: "179 x 34", surface: "blue" },
+  { file: "topeight-logo-on-blue.svg", size: "207 x 62", surface: "white" },
+  { file: "topeight-logo-dark.svg", size: "179 x 34", surface: "white" },
+  { file: "topeight-logo-slogan.svg", size: "232 x 46", surface: "blue" },
+  { file: "topeight-logo-slogan-on-blue.svg", size: "260 x 74", surface: "white" },
   { file: "topeight-icon.svg", size: "100 x 100", surface: "white" },
   { file: "topeight-icon-transparent.svg", size: "44 x 24", surface: "blue" },
   { file: "icon-16.png", size: "16 x 16", surface: "white" },
@@ -19,7 +19,7 @@ const ASSETS: Asset[] = [
   { file: "apple-touch-icon.png", size: "180 x 180", surface: "white" },
   { file: "icon-192.png", size: "192 x 192", surface: "white" },
   { file: "icon-512.png", size: "512 x 512", surface: "white" },
-  { file: "logo-on-blue@2x.png", size: "640 x 147", surface: "white" },
+  { file: "logo-on-blue@2x.png", size: "640 x 190", surface: "white" },
   { file: "og-image.png", size: "1200 x 630", surface: "white" },
   { file: "favicon.ico", size: "16, 32 and 48", surface: "white" },
 ];
@@ -27,9 +27,7 @@ const ASSETS: Asset[] = [
 const COLORS = [
   { name: "Brand blue", hex: "#003399" },
   { name: "Orange", hex: "#ff9933" },
-  { name: "Light blue", hex: "#a9c4ee" },
   { name: "Pale blue", hex: "#dbe6f7" },
-  { name: "Link blue", hex: "#6698cb" },
   { name: "White", hex: "#ffffff" },
 ];
 

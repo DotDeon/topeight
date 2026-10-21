@@ -3,9 +3,7 @@ TopEight brand kit
 Colors
   Brand blue     #003399
   Orange         #ff9933  (the first tile)
-  Light blue     #a9c4ee  (".app" on dark backgrounds)
   Pale blue      #dbe6f7  (slogan on dark backgrounds)
-  Link blue      #6698cb  (".app" on light backgrounds)
   White          #ffffff
 
 Font
