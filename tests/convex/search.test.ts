@@ -55,16 +55,22 @@ describe("search.people", () => {
     expect(r.isDone).toBe(true);
   });
 
-  test("banned and house profiles never appear, even by exact username", async () => {
+  test("banned profiles never appear, even by exact username", async () => {
     const t = setup();
     await addProfile(t, "badguy", { displayName: "Bad Guy", banned: true });
-    await addProfile(t, "houseacct", { displayName: "Bad House", isHouse: true });
     const r = await t.query(api.search.people, { q: "bad", cursor: null });
     expect(r.page).toEqual([]);
     const exact = await t.query(api.search.people, { q: "badguy", cursor: null });
     expect(exact.page).toEqual([]);
-    const exactHouse = await t.query(api.search.people, { q: "houseacct", cursor: null });
-    expect(exactHouse.page).toEqual([]);
+  });
+
+  test("the house profile appears like anyone else", async () => {
+    const t = setup();
+    await addProfile(t, "houseacct", { displayName: "House Tom", isHouse: true });
+    const r = await t.query(api.search.people, { q: "tom", cursor: null });
+    expect(r.page.map((c) => c.username)).toEqual(["houseacct"]);
+    const exact = await t.query(api.search.people, { q: "houseacct", cursor: null });
+    expect(exact.page.map((c) => c.username)).toEqual(["houseacct"]);
   });
 
   test("kind artist excludes fans, including the exact username match", async () => {
@@ -81,7 +87,7 @@ describe("search.people", () => {
 });
 
 describe("search.browse", () => {
-  test("lists newest first, hides banned and house, filters by kind", async () => {
+  test("lists newest first, hides banned, shows the house, filters by kind", async () => {
     const t = setup();
     await addProfile(t, "a1");
     await addProfile(t, "gone", { banned: true });
@@ -89,7 +95,7 @@ describe("search.browse", () => {
     await addProfile(t, "band", { kind: "artist" });
     await addProfile(t, "a2");
     const all = await t.query(api.search.browse, { cursor: null });
-    expect(all.page.map((c) => c.username)).toEqual(["a2", "band", "a1"]);
+    expect(all.page.map((c) => c.username)).toEqual(["a2", "band", "h", "a1"]);
     const artists = await t.query(api.search.browse, { kind: "artist", cursor: null });
     expect(artists.page.map((c) => c.username)).toEqual(["band"]);
   });

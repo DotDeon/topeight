@@ -93,12 +93,12 @@ async function profileByUsername(ctx: Ctx, username: string): Promise<Doc<"profi
 }
 
 /**
- * Why `me` may not mail `target`, or null when they may. Self, the house
- * account, banned targets and blocks either way are "Not allowed"; a
- * friends-only target refuses non-friends.
+ * Why `me` may not mail `target`, or null when they may. Self, banned
+ * targets and blocks either way are "Not allowed"; a friends-only target
+ * refuses non-friends. The house account takes mail like anyone else.
  */
 async function refusal(ctx: Ctx, me: Doc<"profiles">, target: Doc<"profiles">): Promise<string | null> {
-  if (target._id === me._id || target.isHouse || target.banned) return "Not allowed";
+  if (target._id === me._id || target.banned) return "Not allowed";
   if (await isBlockedEitherWay(ctx, me._id, target._id)) return "Not allowed";
   if ((target.mailFrom ?? "friends") === "friends" && !(await areFriends(ctx, me._id, target._id))) {
     return "This person only accepts messages from friends";

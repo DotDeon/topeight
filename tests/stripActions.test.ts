@@ -35,12 +35,12 @@ describe("stripButtons", () => {
     const [first, , , , last] = stripButtons({ ...base, friends: true }, false);
     expect(first).toMatchObject({ action: "removeFriend", label: "Remove from Friends" });
     expect(last).toMatchObject({ action: "block", label: "Block" });
-    expect(pairs({ ...base, friends: true }, true).map(([a]) => a)).toEqual(["addComment", "report", "block"]);
+    expect(pairs({ ...base, friends: true }, true).map(([a]) => a)).toEqual(["message", "addComment", "report", "block"]);
     expect(pairs({ ...base, friends: true }).map(([a]) => a)).toContain("message");
   });
-  test("Send Message sits after the friend slot, except on the house", () => {
+  test("Send Message sits after the friend slot, and the house gets it too", () => {
     expect(pairs({ ...base, friends: true }).slice(0, 2)).toEqual([["removeFriend", "Remove from Friends"], ["message", "Send Message"]]);
-    expect(pairs({ ...base }, true).map(([a]) => a)).not.toContain("message");
+    expect(pairs({ ...base, friends: true }, true).map(([a]) => a)).toContain("message");
   });
   test("a pending request shows a disabled Request sent", () => {
     expect(stripButtons({ ...base, pendingOut: true }, false)[0]).toMatchObject({
