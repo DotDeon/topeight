@@ -1,7 +1,10 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
+import { normalizeUsername } from "../lib/validation";
 import { internal } from "./_generated/api";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { areFriends } from "./lib/access";
+import { friendshipPair } from "./lib/friendships";
 import { syncMediaFlags } from "./lib/media";
 import { setPick } from "./lib/profileSongs";
 import { audioBucket, photoBucket, storage } from "./lib/r2";
@@ -143,5 +146,55 @@ export const moveTracksToAudioBucket = internalAction({
       );
     }
     return null;
+  },
+});
+
+/**
+ * Makes the member `to` the house account in place of the house account `from`.
+ * Every friend of `from` becomes a friend of `to`, Top 8 entries for `from` point
+ * at `to`, and the `from` profile, its user and its friendships are deleted.
+ * Afterwards set HOUSE_USERNAME and HOUSE_DISPLAY_NAME to the new account, or the
+ * next signup creates a fresh house. Reads every friendship of `from` in one run,
+ * so use it while the site is small.
+ * npx convex run migrations:moveHouseTo '{"from":"topeight","to":"deon"}'
+ */
+export const moveHouseTo = internalMutation({
+  args: { from: v.string(), to: v.string() },
+  returns: v.object({ friendsMoved: v.number() }),
+  handler: async (ctx, args) => {
+    const byUsername = (username: string) =>
+      ctx.db
+        .query("profiles")
+        .withIndex("by_username", (q) => q.eq("username", normalizeUsername(username)))
+        .unique();
+    const from = await byUsername(args.from);
+    const to = await byUsername(args.to);
+    if (from === null || !from.isHouse) throw new ConvexError(`"${args.from}" is not the house account`);
+    if (to === null || to.banned || to.isHouse) throw new ConvexError(`"${args.to}" can't become the house account`);
+
+    const rows = [
+      ...(await ctx.db.query("friendships").withIndex("by_a", (q) => q.eq("a", from._id)).collect()),
+      ...(await ctx.db.query("friendships").withIndex("by_b", (q) => q.eq("b", from._id)).collect()),
+    ];
+    let friendsMoved = 0;
+    for (const row of rows) {
+      await ctx.db.delete(row._id);
+      const otherId = row.a === from._id ? row.b : row.a;
+      if (otherId === to._id) continue;
+      if (!(await areFriends(ctx, otherId, to._id))) {
+        await ctx.db.insert("friendships", friendshipPair(otherId, to._id));
+      }
+      const other = await ctx.db.get(otherId);
+      if (other !== null && other.top8.includes(from._id)) {
+        const top8 = other.top8.map((id) => (id === from._id ? to._id : id));
+        await ctx.db.patch(otherId, { top8: top8.filter((id, i) => top8.indexOf(id) === i) });
+      }
+      friendsMoved++;
+    }
+
+    await ctx.db.patch(to._id, { isHouse: true, top8: to.top8.filter((id) => id !== from._id) });
+    await ctx.db.delete(from._id);
+    await ctx.db.delete(from.userId);
+    return { friendsMoved };
   },
 });

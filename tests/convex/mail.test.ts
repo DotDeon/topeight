@@ -89,15 +89,15 @@ describe("mail.send and canMessage", () => {
     expect(await (await as(t, bob)).query(api.mail.canMessage, { username: "alice" })).toBe(false);
   });
 
-  test("you cannot message yourself or the house account", async () => {
+  test("you cannot message yourself, but you can message the house account", async () => {
     const { t, alice } = await world();
-    const house = await addProfile(t, "tom", { isHouse: true, mailFrom: "anyone" });
+    const house = await addProfile(t, "tom", { isHouse: true });
     await befriend(t, alice, house);
     await expect(send(t, alice, "alice")).rejects.toThrow("Not allowed");
-    await expect(send(t, alice, "tom")).rejects.toThrow("Not allowed");
+    await expect(send(t, alice, "tom")).resolves.toBeTruthy();
     const a = await as(t, alice);
     expect(await a.query(api.mail.canMessage, { username: "alice" })).toBe(false);
-    expect(await a.query(api.mail.canMessage, { username: "tom" })).toBe(false);
+    expect(await a.query(api.mail.canMessage, { username: "tom" })).toBe(true);
   });
 
   test("unknown and banned recipients are not found, and canMessage is false for them and signed-out callers", async () => {

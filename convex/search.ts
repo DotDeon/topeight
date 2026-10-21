@@ -41,13 +41,13 @@ export const people = query({
         .query("profiles")
         .withIndex("by_username", (i) => i.eq("username", normalizeUsername(q)))
         .unique();
-      if (exact && !exact.banned && !exact.isHouse && (!args.kind || exact.kind === args.kind)) {
+      if (exact && !exact.banned && (!args.kind || exact.kind === args.kind)) {
         page.push(toPublicCard(exact));
         exactUsername = exact.username;
       }
     }
     for (const p of result.page) {
-      if (p.isHouse || p.username === exactUsername) continue;
+      if (p.username === exactUsername) continue;
       page.push(toPublicCard(p));
     }
     return { page, isDone: result.isDone, continueCursor: result.continueCursor };
@@ -79,7 +79,6 @@ export const browse = query({
       .filter(
         (p) =>
           !p.banned &&
-          !p.isHouse &&
           (location === "" || p.location.toLowerCase().includes(location)) &&
           (genre === "" || (p.genre ?? "").toLowerCase().includes(genre)),
       )

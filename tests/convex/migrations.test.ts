@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { internal } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { storage } from "../../convex/lib/r2";
-import { NOW, addProfile, setup, type T } from "./helpers";
+import { NOW, addProfile, befriend, setup, type T } from "./helpers";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -204,5 +204,67 @@ describe("backfillSongPicks", () => {
     expect(rows).toHaveLength(45);
     expect(rows.every((r) => r.artistId === band && r.trackId === track)).toBe(true);
     expect(new Set(rows.map((r) => r.pickerId)).size).toBe(45);
+  });
+});
+
+describe("moveHouseTo", () => {
+  async function houseWorld(t: T) {
+    const house = await addProfile(t, "topeight", { isHouse: true });
+    const deon = await addProfile(t, "deon");
+    const amy = await addProfile(t, "amy");
+    const ben = await addProfile(t, "ben");
+    for (const id of [deon, amy, ben]) await befriend(t, id, house);
+    await befriend(t, ben, deon);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(deon, { top8: [house] });
+      await ctx.db.patch(amy, { top8: [house, ben] });
+      await ctx.db.patch(ben, { top8: [house, deon] });
+    });
+    return { house, deon, amy, ben };
+  }
+
+  const friendCount = (t: T, id: Id<"profiles">) =>
+    t.run(async (ctx) => {
+      const rows = await ctx.db.query("friendships").collect();
+      return rows.filter((f) => f.a === id || f.b === id).length;
+    });
+
+  test("moves friends and Top 8 spots to the new house and deletes the old one", async () => {
+    const t = setup();
+    const { house, deon, amy, ben } = await houseWorld(t);
+    const userId = await t.run(async (ctx) => (await ctx.db.get(house))!.userId);
+
+    const r = await t.mutation(internal.migrations.moveHouseTo, { from: "topeight", to: "deon" });
+    expect(r).toEqual({ friendsMoved: 2 });
+
+    const after = await t.run(async (ctx) => ({
+      house: await ctx.db.get(house),
+      user: await ctx.db.get(userId),
+      deon: await ctx.db.get(deon),
+      amy: await ctx.db.get(amy),
+      ben: await ctx.db.get(ben),
+    }));
+    expect(after.house).toBeNull();
+    expect(after.user).toBeNull();
+    expect(after.deon).toMatchObject({ isHouse: true, top8: [] });
+    expect(after.amy!.top8).toEqual([deon, ben]);
+    expect(after.ben!.top8).toEqual([deon]);
+    expect(await friendCount(t, house)).toBe(0);
+    expect(await friendCount(t, deon)).toBe(2);
+  });
+
+  test("refuses when from is not the house or to is not a plain member", async () => {
+    const t = setup();
+    await houseWorld(t);
+    await addProfile(t, "gone", { banned: true });
+    await expect(t.mutation(internal.migrations.moveHouseTo, { from: "amy", to: "deon" })).rejects.toThrow(
+      "is not the house account",
+    );
+    await expect(t.mutation(internal.migrations.moveHouseTo, { from: "topeight", to: "gone" })).rejects.toThrow(
+      "can't become the house account",
+    );
+    await expect(t.mutation(internal.migrations.moveHouseTo, { from: "topeight", to: "nobody" })).rejects.toThrow(
+      "can't become the house account",
+    );
   });
 });
