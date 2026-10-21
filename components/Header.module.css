@@ -26,12 +26,12 @@
   height: 34px;
 }
 
-/* Aligns the slogan with the wordmark: 2px padding + 44px icon + 11px gap + 2px. */
+/* Starts the slogan under the icon, past the logo SVG's 2px padding, so it spans the whole logo. */
 .small {
   display: block;
   font-family: Arial, sans-serif;
   font-size: 10px;
-  margin: 2px 0 0 59px;
+  margin: 2px 0 0 2px;
   color: #dbe6f7;
 }
 

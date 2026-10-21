@@ -20,6 +20,7 @@ const PALE_BLUE = "#dbe6f7";
 
 const FONT_SIZE = 32;
 const SLOGAN_SIZE = 10;
+const SLOGAN_GAP = 4;
 const GAP = 11;
 const TRACKING = -0.04; // em
 const SLOGAN = "remember when the internet was fun?";
@@ -84,28 +85,19 @@ function grid(first, rest) {
 
 /** Icon + wordmark (+ optional slogan) in a local coordinate space where the icon sits at 0,0. */
 function logoGroup({ tiles, name, slogan }) {
-  // Wordmark block: name line, then slogan, centred on the icon's vertical middle (y = 12).
+  // The wordmark is centred on the icon's vertical middle (y = 12).
   const nameLine = textPath("topeight", 0, 0, FONT_SIZE, 800, TRACKING, name);
-  const x0 = 44 + GAP;
-  const nameTop = nameLine.box.y1;
-  let blockTop = nameTop;
-  let blockBottom = nameLine.box.y2;
-  let nameBase = 0;
-  let sloganBase = null;
-  if (slogan) {
-    sloganBase = nameBase + FONT_SIZE * 0.28 + SLOGAN_SIZE; // sits just below the descenders
-    blockBottom = sloganBase + SLOGAN_SIZE * 0.25;
-  }
-  const blockMid = (blockTop + blockBottom) / 2;
-  const shift = 12 - blockMid;
-  nameBase += shift;
-  if (sloganBase !== null) sloganBase += shift;
+  const nameBase = 12 - (nameLine.box.y1 + nameLine.box.y2) / 2;
 
-  const nm = textPath("topeight", x0, nameBase, FONT_SIZE, 800, TRACKING, name);
+  const nm = textPath("topeight", 44 + GAP, nameBase, FONT_SIZE, 800, TRACKING, name);
   let inner = grid(ORANGE, tiles) + nm.svg;
   const boxes = [{ x1: 0, y1: 0, x2: 44, y2: 24 }, nm.box];
   if (slogan) {
-    const sl = textPath(SLOGAN, x0 + 2, sloganBase, SLOGAN_SIZE, 400, 0, slogan);
+    // Starts under the icon and below everything above it, so the slogan spans the whole
+    // logo rather than overhanging the wordmark.
+    const top = Math.max(24, nm.box.y2) + SLOGAN_GAP;
+    const ascent = -textPath(SLOGAN, 0, 0, SLOGAN_SIZE, 400, 0, slogan).box.y1;
+    const sl = textPath(SLOGAN, 0, top + ascent, SLOGAN_SIZE, 400, 0, slogan);
     inner += sl.svg;
     boxes.push(sl.box);
   }
