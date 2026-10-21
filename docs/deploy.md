@@ -135,10 +135,10 @@ Follow these steps in order on an existing deployment.
 
 Deletes fail until `R2_AUDIO_BUCKET` is set, so do not deploy before step 4.
 
-Step 6 copies songs uploaded before the audio bucket existed out of the public photo bucket, where anyone with the link can reach them and where they no longer play. It copies each one to `R2_AUDIO_BUCKET` unless it is already there, then deletes the public copy. It works through 50 songs at a time and schedules itself until done, logging moved, skipped and failed counts per page and at the end. Running it again is safe, and songs that already moved are skipped. If the token lacks access to either bucket, the run stops with an error that names the bucket. Fix the token and run it again.
+Step 7 copies songs uploaded before the audio bucket existed out of the public photo bucket, where anyone with the link can reach them and where they no longer play. It copies each one to `R2_AUDIO_BUCKET` unless it is already there, then deletes the public copy. It works through 50 songs at a time and schedules itself until done, logging moved, skipped and failed counts per page and at the end. Running it again is safe, and songs that already moved are skipped. If the token lacks access to either bucket, the run stops with an error that names the bucket. Fix the token and run it again.
 
-Step 7 sets the photo and track flags that Cool New People and Cool New Music read, on profiles made before those flags existed. It works through 100 profiles at a time and schedules itself until done. Running it again is safe.
+Step 8 sets the photo and track flags that Cool New People and Cool New Music read, on profiles made before those flags existed. It works through 100 profiles at a time and schedules itself until done. Running it again is safe.
 
-Step 8 builds the song pick records that the "Your songs are on N profiles" count reads, from profile songs set before they existed. It works through 20 profiles at a time and schedules itself until done. Running it again is safe.
+Step 9 builds the song pick records that the "Your songs are on N profiles" count reads, from profile songs set before they existed. It works through 20 profiles at a time and schedules itself until done. Running it again is safe.
 
-You can rerun the backfill migrations, steps 6, 7 and 8, at any time. Each skips work that is already done, so a rerun after a failed or partial run is safe.
+You can rerun the backfill migrations, steps 7, 8 and 9, at any time. Each skips work that is already done, so a rerun after a failed or partial run is safe.
