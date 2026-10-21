@@ -63,8 +63,3 @@ export function CommentForm({ profileId }: { profileId: Id<"profiles"> }) {
     <PostForm label="Add a comment" button="Add Comment" maxLength={2000} submit={(body) => add({ profileId, body })} />
   );
 }
-
-export function BulletinForm() {
-  const post = useMutation(api.bulletins.post);
-  return <PostForm label="Post a Bulletin" button="Post" maxLength={5000} submit={(body) => post({ body })} />;
-}

@@ -6,7 +6,6 @@ const FEATURES: Record<string, string> = {
   mail: "Mail",
   blog: "Blog",
   favorites: "Favorites",
-  forum: "Forum",
   groups: "Groups",
   events: "Events",
   videos: "Videos",

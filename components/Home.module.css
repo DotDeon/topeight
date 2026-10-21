@@ -58,15 +58,6 @@
   margin-top: 4px;
 }
 
-.bulletin {
-  padding: 4px 0;
-  border-bottom: 1px solid #d5e8fb;
-}
-
-.bulletin:last-child {
-  border-bottom: 0;
-}
-
 .body {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

@@ -344,7 +344,7 @@ describe("renderProfileDocument (hardening)", () => {
     expect(html).toContain("Displaying 1 of 57 comments");
   });
 
-  test("latest blog entry box: escaped title navigates to the blog page, after the bulletin", () => {
+  test("latest blog entry box: escaped title navigates to the blog page, and bulletins never show", () => {
     const createdAt = Date.UTC(2026, 9, 19, 21, 14);
     const html = renderProfileDocument(
       fan({
@@ -359,11 +359,10 @@ describe("renderProfileDocument (hardening)", () => {
       'data-topeight-navigate="jess" data-topeight-page="blog">&lt;script&gt;x&lt;/script&gt; &amp; stuff</a>',
     );
     expect(html).toContain(`(${formatDate(createdAt)})`);
-    const bulletin = html.indexOf("Latest Bulletin</div>");
+    expect(html).not.toContain("Latest Bulletin");
     const blog = html.indexOf("Latest Blog Entry</div>");
     const blurbs = html.indexOf("Blurbs</div>");
-    expect(bulletin).toBeGreaterThan(-1);
-    expect(blog).toBeGreaterThan(bulletin);
+    expect(blog).toBeGreaterThan(-1);
     expect(blurbs).toBeGreaterThan(blog);
   });
 

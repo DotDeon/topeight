@@ -290,12 +290,6 @@ function renderRight(p: PublicProfile): string {
     );
   }
 
-  if (p.latestBulletin) {
-    parts.push(
-      `<div class="section-title">${name}'s Latest Bulletin</div><div class="blurb bulletin"><b>${formatDate(p.latestBulletin.createdAt)}</b><br>${richText(p.latestBulletin.body)}</div>`,
-    );
-  }
-
   if (p.latestBlog) {
     parts.push(
       `<div class="section-title">${name}'s Latest Blog Entry</div><div class="blurb blog"><b>${navLink(p.username, escapeHtml(p.latestBlog.title), "blog")}</b> (${formatDate(p.latestBlog.createdAt)})</div>`,

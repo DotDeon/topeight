@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Box } from "@/components/Box";
 import { CoolNewMusic, CoolNewPeople } from "@/components/HomeCool";
-import { HomeBulletins, MemberPanel } from "@/components/HomeMember";
+import { MemberPanel } from "@/components/HomeMember";
 import { UpcomingShows } from "@/components/HomeShows";
 import styles from "@/components/Home.module.css";
 
@@ -15,7 +15,6 @@ export default function Home() {
             <div className={styles.bannerAds}>Want this spot for your gig? Homepage ads are coming soon.</div>
           </div>
         </div>
-        <HomeBulletins />
         <CoolNewPeople />
         <CoolNewMusic />
         <Box title="TopEight Announcements" color="blue">
