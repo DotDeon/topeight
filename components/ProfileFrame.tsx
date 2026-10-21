@@ -20,6 +20,13 @@ export function frameSrc(origin: string | undefined, username: string, opts: { o
   return `${origin}/${username}${query ? `?${query}` : ""}`;
 }
 
+/** Loads `src`, handing focus back to the page so the next click into the frame registers as entering it. */
+function loadFrame(frame: HTMLIFrameElement, src: string, entered: { current: boolean }) {
+  entered.current = false;
+  if (document.activeElement === frame) frame.blur();
+  frame.src = src;
+}
+
 /**
  * The profile document from the usercontent origin. The sandbox has no
  * allow-same-origin, so artist code runs in an opaque origin with no cookies
@@ -36,6 +43,7 @@ export function ProfileFrame({
   onAction,
   onReportTrack,
   onPickSong,
+  onPlayVideo,
   hidePick,
   reloadKey = 0,
   needsPass = false,
@@ -48,6 +56,8 @@ export function ProfileFrame({
   onReportTrack: (trackId: string) => void;
   /** A track id the frame asked to use as the visitor's profile song. Unchecked, like onReportTrack. */
   onPickSong: (trackId: string) => void;
+  /** A YouTube id the frame asked to play. Checked against YOUTUBE_ID_PATTERN; the parent decides whether to open it. */
+  onPlayVideo: (videoId: string) => void;
   /** True when the visitor is on their own page, so the frame leaves the pick links off. Undefined until known. */
   hidePick: boolean | undefined;
   /** Bump this to load the profile document again, for example after a new comment. */
@@ -90,6 +100,21 @@ export function ProfileFrame({
   const passValue = needsPass ? (current === null || current === "error" ? undefined : current) : undefined;
   const src = frameSrc(process.env.NEXT_PUBLIC_USERCONTENT_ORIGIN, username, { own: hidePick, pass: passValue });
 
+  // Whether the visitor has moved focus into this frame (clicked or tabbed into it)
+  // since it last loaded. A video request needs that, so a profile can't open one
+  // on arrival off the back of the click that brought the visitor there.
+  const entered = useRef(false);
+  useEffect(() => {
+    function onBlur() {
+      // Focus moves to the iframe element after the window's blur event.
+      setTimeout(() => {
+        if (document.activeElement === ref.current) entered.current = true;
+      }, 0);
+    }
+    window.addEventListener("blur", onBlur);
+    return () => window.removeEventListener("blur", onBlur);
+  }, []);
+
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
       const msg = parseBridgeMessage(ev, ref.current?.contentWindow);
@@ -98,11 +123,14 @@ export function ProfileFrame({
       else if (msg.type === "topeight:navigate") router.push(navigatePath(msg));
       else if (msg.type === "topeight:reportTrack") onReportTrack(msg.trackId);
       else if (msg.type === "topeight:pickSong") onPickSong(msg.trackId);
+      else if (msg.type === "topeight:playVideo") {
+        if (entered.current && document.activeElement === ref.current) onPlayVideo(msg.videoId);
+      }
       else onAction(msg.action);
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [router, onAction, onReportTrack, onPickSong]);
+  }, [router, onAction, onReportTrack, onPickSong, onPlayVideo]);
 
   // The frame posts its height once on load and then only on change, so it
   // must not load before the listener above exists. The server markup has no
@@ -111,12 +139,12 @@ export function ProfileFrame({
     // Wait until we know whether the visitor is on their own page, so the frame loads once.
     if (hidePick === undefined && !gaveUp) return;
     if (needsPass && passValue === undefined) return;
-    if (ref.current && ref.current.src !== src) ref.current.src = src;
+    if (ref.current && ref.current.src !== src) loadFrame(ref.current, src, entered);
   }, [src, hidePick, gaveUp, needsPass, passValue]);
 
   // Private profiles reload through the fresh pass above, which changes src.
   useEffect(() => {
-    if (reloadKey > 0 && !needsPass && ref.current) ref.current.src = src;
+    if (reloadKey > 0 && !needsPass && ref.current) loadFrame(ref.current, src, entered);
   }, [reloadKey, src, needsPass]);
 
   if (needsPass && current === null) return <>{noPass}</>;

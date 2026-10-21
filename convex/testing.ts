@@ -43,6 +43,9 @@ function probeJs(mainOrigin: string, foreignTrackId: string): string {
   try { window.localStorage.setItem("probe", "1"); r.localStorage = "ok"; } catch (e) { r.localStorage = threw(e); }
   try { r.parentDocument = "read:" + window.parent.document.cookie; } catch (e) { r.parentDocument = threw(e); }
   try { window.top.location.href = MAIN + "/hijacked"; r.topNav = "no-throw"; } catch (e) { r.topNav = threw(e); }
+  // A video asked for with no click: the parent must not open it.
+  window.topeight.playVideo("dQw4w9WgXcQ");
+  r.autoVideo = "sent";
   write();
 
   // no-cors: an opaque response resolves, so only CSP connect-src can make this reject.
@@ -101,7 +104,8 @@ function probeJs(mainOrigin: string, foreignTrackId: string): string {
 const PROBE_HTML = `<p><button type="button" id="probe-add-friend">Probe: add friend</button>
 <button type="button" id="probe-navigate">Probe: navigate</button>
 <button type="button" id="probe-report-foreign">Probe: report foreign track</button>
-<button type="button" id="probe-pick-foreign">Probe: pick foreign track</button></p>`;
+<button type="button" id="probe-pick-foreign">Probe: pick foreign track</button>
+<a href="#" id="probe-video" data-topeight-youtube="h9NE3zDQ6pg">Probe: play video</a></p>`;
 
 const FAN_CSS = `body { background: #fdf0ff; }
 .profile-left .name { color: #990066; }`;

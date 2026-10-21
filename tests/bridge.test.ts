@@ -180,6 +180,37 @@ describe("parseBridgeMessage: pickSong", () => {
   });
 });
 
+describe("parseBridgeMessage: playVideo", () => {
+  test.each(["h9NE3zDQ6pg", "dQw4w9WgXcQ", "a-b_c-d_e-f"])("accepts YouTube id %j and drops extra fields", (videoId) => {
+    expect(parseBridgeMessage(ev({ type: "topeight:playVideo", videoId, url: "https://evil.example" }), frame)).toEqual({
+      type: "topeight:playVideo",
+      videoId,
+    });
+  });
+
+  test.each([
+    "",
+    "short",
+    "h9NE3zDQ6pgX",
+    "h9NE3zDQ6p!",
+    "h9NE3zDQ6p/",
+    "h9NE3zDQ6pg\n",
+    "javascript:",
+    42,
+    null,
+    undefined,
+    ["h9NE3zDQ6pg"],
+  ])("rejects video id %j", (videoId) => {
+    expect(parseBridgeMessage(ev({ type: "topeight:playVideo", videoId }), frame)).toBeNull();
+  });
+
+  test("rejects a playVideo from anywhere but the frame", () => {
+    const msg = { type: "topeight:playVideo", videoId: "h9NE3zDQ6pg" };
+    expect(parseBridgeMessage(ev(msg, { origin: "https://evil.example" }), frame)).toBeNull();
+    expect(parseBridgeMessage(ev(msg, { source: { name: "other" } }), frame)).toBeNull();
+  });
+});
+
 describe("clampFrameHeight", () => {
   test("clamps to 150..20000 and rounds up", () => {
     expect(clampFrameHeight(0)).toBe(150);
