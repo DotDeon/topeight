@@ -20,14 +20,14 @@ Keep TopEight from running at a loss without charging fans. Artists pay for feat
 - $5 a month, billed as about R89.
 - Artist accounts only. Fans see no upsell.
 - Includes:
-  - 50 songs instead of 10.
+  - 50 songs instead of 5.
   - Songs up to 15 MB, streamed at 192 kbps instead of 128.
   - Play counts per song, visible only to the artist on Edit Profile.
   - A "Pro" star beside the artist's name, separate from verification.
   - Priority in Cool New Music: Pro artists first, then everyone else.
 - Verification is free and separate. An artist requests it from Edit Profile; an admin approves it on `/admin`; the profile shows a "Verified" tick.
 - Paying: "Go Pro" sends the artist to Paystack checkout (a Paystack plan subscription). They cancel any time from Edit Profile.
-- When Pro lapses, nothing is deleted. Songs past the first 10 are hidden until the artist renews or removes some. Play counts stop showing.
+- When Pro lapses, nothing is deleted. Songs past the first 5 are hidden until the artist renews or removes some. Play counts stop showing.
 - `/admin` lists Pro members and their renewal dates.
 
 ## Homepage spots (draft, not yet confirmed by the owner)
