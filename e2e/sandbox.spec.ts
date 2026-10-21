@@ -15,6 +15,7 @@ type Probes = {
   form?: string;
   foreignReports?: number;
   foreignPicks?: number;
+  autoVideo?: string;
   violations?: string[];
   done?: boolean;
 };
@@ -162,6 +163,40 @@ test.describe("artist sandbox", () => {
     // The real pick link on this profile's own track does open it.
     await frame.locator(".player-tracks li").first().locator("[data-topeight-pick-track]").click();
     await expect(dialog).toContainText('Make "Probe Song" by Sandbox Test your profile song?');
+  });
+
+  test("videos play in the parent's dialog, and only after a click", async ({ page }) => {
+    await page.goto("/sandboxtest");
+    const r = await probes(page);
+    const video = page.locator("[data-topeight-video]");
+    // The probe asked for a video on load, with no click: ignored.
+    expect(r.autoVideo).toBe("sent");
+    await page.waitForTimeout(800);
+    await expect(video).toBeHidden();
+
+    await page.frameLocator("iframe[data-topeight-profile]").locator("#probe-video").click();
+    await expect(video).toBeVisible();
+    await expect(video.locator("iframe")).toHaveAttribute(
+      "src",
+      "https://www.youtube-nocookie.com/embed/h9NE3zDQ6pg?autoplay=1&rel=0",
+    );
+    await expect(page.locator("[data-topeight-confirm]")).toBeHidden();
+    await video.getByRole("button", { name: "Close" }).click();
+    await expect(video).toBeHidden();
+  });
+
+  test("a profile can't open a video off the click that brought the visitor there", async ({ page }) => {
+    // A click on the parent page still counts as user activation when the profile loads.
+    await page.goto("/sandboxtest/friends");
+    await page.getByRole("link", { name: "Back to the profile" }).click();
+    await expect(page).toHaveURL(`${MAIN}/sandboxtest`);
+    expect((await probes(page)).autoVideo).toBe("sent");
+    await page.waitForTimeout(800);
+    await expect(page.locator("[data-topeight-video]")).toBeHidden();
+
+    // A click in the frame after that does open one.
+    await page.frameLocator("iframe[data-topeight-profile]").locator("#probe-video").click();
+    await expect(page.locator("[data-topeight-video]")).toBeVisible();
   });
 
   test("song reports use the server's track list and title", async ({ page }) => {

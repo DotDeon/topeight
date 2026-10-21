@@ -27,6 +27,9 @@ export type BridgePage = (typeof BRIDGE_PAGES)[number];
 /** Longest track id a reportTrack message may carry. Convex ids are shorter. */
 export const MAX_TRACK_ID_LENGTH = 64;
 
+/** A YouTube video id: exactly 11 characters from YouTube's URL-safe alphabet. */
+export const YOUTUBE_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
+
 export type BridgeMessage =
   | { type: "topeight:action"; action: BridgeAction }
   | { type: "topeight:navigate"; username: string; page?: BridgePage }
@@ -41,4 +44,10 @@ export type BridgeMessage =
    * The parent only acts on ids in its own server-loaded track list for this
    * profile, asks the visitor to confirm, and takes the title from that list.
    */
-  | { type: "topeight:pickSong"; trackId: string };
+  | { type: "topeight:pickSong"; trackId: string }
+  /**
+   * Play a YouTube video. Embeds can't play inside the frame: its opaque origin
+   * sends no referrer and YouTube refuses with error 153. So the parent plays it
+   * in its own dialog, and only straight after a click.
+   */
+  | { type: "topeight:playVideo"; videoId: string };

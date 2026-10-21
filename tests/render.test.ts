@@ -514,6 +514,7 @@ function runBridge() {
       request: (a: unknown) => void;
       navigate: (u: unknown, p?: unknown) => void;
       reportTrack: (id: unknown) => void;
+      playVideo: (id: unknown) => void;
     },
   };
   const document = {
@@ -629,6 +630,30 @@ describe("bridge script", () => {
     expect(b.messages().slice(1)).toEqual([
       { type: "topeight:action", action: "block" },
       { type: "topeight:navigate", username: "tom", page: "friends" },
+    ]);
+  });
+
+  test("data-topeight-youtube posts playVideo for valid ids only", () => {
+    const b = runBridge();
+    expect(b.click({ "data-topeight-youtube": "h9NE3zDQ6pg" })).toBe(true);
+    b.click({ "data-topeight-youtube": "" });
+    b.click({ "data-topeight-youtube": "short" });
+    b.click({ "data-topeight-youtube": "h9NE3zDQ6pg&autoplay=1" });
+    b.click({ "data-topeight-youtube": "../../evil." });
+    expect(b.messages().slice(1)).toEqual([{ type: "topeight:playVideo", videoId: "h9NE3zDQ6pg" }]);
+  });
+
+  test("window.topeight.playVideo posts only 11-character YouTube ids", () => {
+    const b = runBridge();
+    b.window.topeight.playVideo("dQw4w9WgXcQ");
+    b.window.topeight.playVideo("a-b_c-d_e-f");
+    b.window.topeight.playVideo("dQw4w9WgXcQx");
+    b.window.topeight.playVideo("dQw4w9WgXc!");
+    b.window.topeight.playVideo(42);
+    b.window.topeight.playVideo({ toString: () => "dQw4w9WgXcQ" });
+    expect(b.messages().slice(1)).toEqual([
+      { type: "topeight:playVideo", videoId: "dQw4w9WgXcQ" },
+      { type: "topeight:playVideo", videoId: "a-b_c-d_e-f" },
     ]);
   });
 

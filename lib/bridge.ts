@@ -7,6 +7,7 @@ import {
   BRIDGE_ACTIONS,
   BRIDGE_PAGES,
   MAX_TRACK_ID_LENGTH,
+  YOUTUBE_ID_PATTERN,
   type BridgeMessage,
 } from "@/lib/bridge-protocol";
 import { validateUsername } from "@/lib/validation";
@@ -66,6 +67,12 @@ export function parseBridgeMessage(
       const id = msg.trackId;
       if (typeof id !== "string" || id.length === 0 || id.length > MAX_TRACK_ID_LENGTH) return null;
       return { type: "topeight:pickSong", trackId: id };
+    }
+
+    case "topeight:playVideo": {
+      const id = msg.videoId;
+      if (typeof id !== "string" || !YOUTUBE_ID_PATTERN.test(id)) return null;
+      return { type: "topeight:playVideo", videoId: id };
     }
 
     default:

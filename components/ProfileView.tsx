@@ -12,6 +12,7 @@ import { PrivateCard, PrivateCardLoader, type PrivateCardData } from "./PrivateP
 import { ProfileFrame } from "./ProfileFrame";
 import { stripButtons } from "./stripActions";
 import { TrustedStrip } from "./TrustedStrip";
+import { VideoDialog } from "./VideoDialog";
 
 /**
  * Trusted strip, sandboxed profile frame and the confirm dialog they share. On a
@@ -45,6 +46,8 @@ export function ProfileView({
   const open = useRef<{ action: DialogAction; fromBridge: boolean } | null>(null);
   const gate = useRef(new BridgeGate());
   const noteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [video, setVideo] = useState<string | null>(null);
+  const videoOpen = useRef(false);
 
   const recordView = useMutation(api.profiles.recordView);
   const viewed = useRef<string | null>(null);
@@ -87,7 +90,7 @@ export function ProfileView({
   // cannot swap what the visitor is about to confirm.
   const onBridgeAction = useCallback(
     (action: DialogAction, track?: ProfileTrack) => {
-      if (open.current) return;
+      if (open.current || videoOpen.current) return;
       const verdict = gate.current.check(Date.now());
       if (verdict === "cooldown") return;
       if (verdict === "throttled") {
@@ -135,6 +138,25 @@ export function ProfileView({
     [tracks, onBridgeAction],
   );
 
+  // Videos open only straight after a click in the frame (user activation reaches
+  // this page from the frame), so artist code can't pop one up on load or in a loop.
+  // Browsers without navigator.userActivation still get the gate's cooldown.
+  const onPlayVideo = useCallback((videoId: string) => {
+    if (open.current || videoOpen.current) return;
+    const activation = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation;
+    if (activation && !activation.isActive) return;
+    if (gate.current.check(Date.now()) !== "ok") return;
+    videoOpen.current = true;
+    setVideo(videoId);
+  }, []);
+
+  const onVideoClose = useCallback(() => {
+    videoOpen.current = false;
+    // Watching a video is not a cancelled dialog, so it never counts towards the throttle.
+    gate.current.closed(Date.now(), { fromBridge: true, counts: false, outcome: "done" });
+    setVideo(null);
+  }, []);
+
   const onClose = useCallback((outcome: "cancelled" | "done") => {
     const closing = open.current;
     open.current = null;
@@ -164,12 +186,14 @@ export function ProfileView({
           onAction={onBridgeAction}
           onReportTrack={onReportTrack}
           onPickSong={onPickSong}
+          onPlayVideo={onPlayVideo}
           hidePick={ownPage}
           reloadKey={reloadKey}
           needsPass={isPrivate}
           noPass={<PrivateCardLoader username={username} />}
         />
       )}
+      <VideoDialog videoId={video} onClose={onVideoClose} />
       <ConfirmDialog
         request={request}
         target={target}

@@ -1,4 +1,4 @@
-import { BRIDGE_ACTIONS, BRIDGE_PAGES, MAX_TRACK_ID_LENGTH, type BridgePage } from "@/lib/bridge-protocol";
+import { BRIDGE_ACTIONS, BRIDGE_PAGES, MAX_TRACK_ID_LENGTH, YOUTUBE_ID_PATTERN, type BridgePage } from "@/lib/bridge-protocol";
 import { tokenizeComment } from "@/lib/validation";
 import { moodLabel, moodSvg } from "@/lib/moodSvg";
 import { MOOD_ICONS } from "@/lib/moods";
@@ -341,6 +341,7 @@ export function bridgeScript(mainOrigin: string): string {
   var ACTIONS = ${scriptJson(BRIDGE_ACTIONS)};
   var PAGES = ${scriptJson(BRIDGE_PAGES)};
   var MAX_TRACK_ID = ${MAX_TRACK_ID_LENGTH};
+  var YOUTUBE_ID = new RegExp(${scriptJson(YOUTUBE_ID_PATTERN.source)});
   function post(msg) { try { window.parent.postMessage(msg, ORIGIN); } catch (e) {} }
   function request(action) {
     if (ACTIONS.indexOf(action) === -1) return;
@@ -360,19 +361,27 @@ export function bridgeScript(mainOrigin: string): string {
     if (typeof trackId !== "string" || !trackId || trackId.length > MAX_TRACK_ID) return;
     post({ type: "topeight:pickSong", trackId: trackId });
   }
-  window.topeight = { request: request, navigate: navigate, reportTrack: reportTrack, pickSong: pickSong };
+  // YouTube refuses to play inside this frame (no referrer from an opaque origin),
+  // so the parent page plays the video in its own dialog.
+  function playVideo(videoId) {
+    if (typeof videoId !== "string" || !YOUTUBE_ID.test(videoId)) return;
+    post({ type: "topeight:playVideo", videoId: videoId });
+  }
+  window.topeight = { request: request, navigate: navigate, reportTrack: reportTrack, pickSong: pickSong, playVideo: playVideo };
   document.addEventListener("click", function (e) {
     var t = e.target;
     if (!(t instanceof Element)) return;
-    var el = t.closest("[data-topeight-action],[data-topeight-navigate],[data-topeight-report-track],[data-topeight-pick-track]");
+    var el = t.closest("[data-topeight-action],[data-topeight-navigate],[data-topeight-report-track],[data-topeight-pick-track],[data-topeight-youtube]");
     if (!el) return;
     e.preventDefault();
     var action = el.getAttribute("data-topeight-action");
     var track = el.getAttribute("data-topeight-report-track");
     var pick = el.getAttribute("data-topeight-pick-track");
+    var video = el.getAttribute("data-topeight-youtube");
     if (action !== null) request(action);
     else if (track !== null) reportTrack(track);
     else if (pick !== null) pickSong(pick);
+    else if (video !== null) playVideo(video);
     else navigate(el.getAttribute("data-topeight-navigate"), el.getAttribute("data-topeight-page"));
   });
 
