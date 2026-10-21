@@ -16,9 +16,7 @@ const FONT_URL = "https://github.com/google/fonts/raw/main/ofl/nunito/Nunito%5Bw
 
 const BLUE = "#003399";
 const ORANGE = "#ff9933";
-const LIGHT_BLUE = "#a9c4ee";
 const PALE_BLUE = "#dbe6f7";
-const DARK_APP = "#6698cb";
 
 const FONT_SIZE = 32;
 const SLOGAN_SIZE = 10;
@@ -85,7 +83,7 @@ function grid(first, rest) {
 }
 
 /** Icon + wordmark (+ optional slogan) in a local coordinate space where the icon sits at 0,0. */
-function logoGroup({ tiles, name, app, slogan }) {
+function logoGroup({ tiles, name, slogan }) {
   // Wordmark block: name line, then slogan, centred on the icon's vertical middle (y = 12).
   const nameLine = textPath("topeight", 0, 0, FONT_SIZE, 800, TRACKING, name);
   const x0 = 44 + GAP;
@@ -104,9 +102,8 @@ function logoGroup({ tiles, name, app, slogan }) {
   if (sloganBase !== null) sloganBase += shift;
 
   const nm = textPath("topeight", x0, nameBase, FONT_SIZE, 800, TRACKING, name);
-  const ap = textPath(".app", nm.end, nameBase, FONT_SIZE, 800, TRACKING, app);
-  let inner = grid(ORANGE, tiles) + nm.svg + ap.svg;
-  const boxes = [{ x1: 0, y1: 0, x2: 44, y2: 24 }, nm.box, ap.box];
+  let inner = grid(ORANGE, tiles) + nm.svg;
+  const boxes = [{ x1: 0, y1: 0, x2: 44, y2: 24 }, nm.box];
   if (slogan) {
     const sl = textPath(SLOGAN, x0 + 2, sloganBase, SLOGAN_SIZE, 400, 0, slogan);
     inner += sl.svg;
@@ -137,8 +134,8 @@ const add = (name, content, w, h) => {
   if (w) dims[name] = [Math.round(w), Math.round(h)];
 };
 
-const white = { tiles: "#fff", name: "#fff", app: LIGHT_BLUE };
-const dark = { tiles: BLUE, name: BLUE, app: DARK_APP };
+const white = { tiles: "#fff", name: "#fff" };
+const dark = { tiles: BLUE, name: BLUE };
 
 let r;
 r = logoSvg(white); add("topeight-logo.svg", r.svg, r.w, r.h);
@@ -205,9 +202,7 @@ add("README.txt", `TopEight brand kit
 Colors
   Brand blue     #003399
   Orange         #ff9933  (the first tile)
-  Light blue     #a9c4ee  (".app" on dark backgrounds)
   Pale blue      #dbe6f7  (slogan on dark backgrounds)
-  Link blue      #6698cb  (".app" on light backgrounds)
   White          #ffffff
 
 Font

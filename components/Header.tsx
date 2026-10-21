@@ -8,7 +8,7 @@ export function Header() {
     <header className={styles.header}>
       <div className={styles.brand}>
       <Link href="/" className={styles.logo}>
-        <Image src="/brand/topeight-logo.svg" alt="TopEight" width={239} height={34} unoptimized priority className={styles.mark} />
+        <Image src="/brand/topeight-logo.svg" alt="TopEight" width={179} height={34} unoptimized priority className={styles.mark} />
       </Link>
       <span className={styles.small}>remember when the internet was fun?</span>
       </div>
