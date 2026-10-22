@@ -23,6 +23,7 @@ import type * as lib_bulletins from "../lib/bulletins.js";
 import type * as lib_cards from "../lib/cards.js";
 import type * as lib_framePass from "../lib/framePass.js";
 import type * as lib_friendships from "../lib/friendships.js";
+import type * as lib_kinds from "../lib/kinds.js";
 import type * as lib_limits from "../lib/limits.js";
 import type * as lib_media from "../lib/media.js";
 import type * as lib_moods from "../lib/moods.js";
@@ -68,6 +69,7 @@ declare const fullApi: ApiFromModules<{
   "lib/cards": typeof lib_cards;
   "lib/framePass": typeof lib_framePass;
   "lib/friendships": typeof lib_friendships;
+  "lib/kinds": typeof lib_kinds;
   "lib/limits": typeof lib_limits;
   "lib/media": typeof lib_media;
   "lib/moods": typeof lib_moods;
