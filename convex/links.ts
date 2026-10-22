@@ -5,7 +5,7 @@ import { mutation, query } from "./_generated/server";
 import { isBlockedEitherWay, profileForUser, requireProfile, viewerProfile } from "./lib/access";
 import { toPublicCard, type PublicCard } from "./lib/cards";
 import { rateLimiter } from "./lib/limits";
-import { acceptedLinks, LINK_DECLINE_COOLDOWN_MS, linkBetween, MAX_LINKS } from "./lib/links";
+import { acceptedLinks, dropFromFutureGigs, LINK_DECLINE_COOLDOWN_MS, linkBetween, MAX_LINKS } from "./lib/links";
 import { profileByUsername } from "./profiles";
 
 type LinkType = "venue" | "label";
@@ -81,6 +81,9 @@ export const remove = mutation({
     const link = (await linkBetween(ctx, me._id, other)) ?? (await linkBetween(ctx, other, me._id));
     if (link === null || link.status === "declined") return null;
     await ctx.db.delete(link._id);
+    if (link.type === "venue" && link.status === "accepted") {
+      await dropFromFutureGigs(ctx, link.fromId, link.artistId);
+    }
     return null;
   },
 });

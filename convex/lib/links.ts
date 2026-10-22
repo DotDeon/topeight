@@ -62,3 +62,21 @@ export async function deleteLinksBetween(ctx: MutationCtx, a: Id<"profiles">, b:
     if (row !== null) await ctx.db.delete(row._id);
   }
 }
+
+/** Most future gigs one roster removal takes a band off. */
+const MAX_DROPPED_GIGS = MAX_SCAN;
+
+/** Takes a band off a venue's gigs that haven't started. Past gigs keep it. */
+export async function dropFromFutureGigs(
+  ctx: MutationCtx,
+  venueId: Id<"profiles">,
+  artistId: Id<"profiles">,
+): Promise<void> {
+  const rows = await ctx.db
+    .query("gigArtists")
+    .withIndex("by_host_artist", (q) =>
+      q.eq("hostId", venueId).eq("artistId", artistId).gt("startsAt", Date.now()),
+    )
+    .take(MAX_DROPPED_GIGS);
+  for (const row of rows) await ctx.db.delete(row._id);
+}

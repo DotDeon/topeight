@@ -474,6 +474,7 @@ describe("events.upcoming", () => {
       },
       going: 0,
       cancelled: false,
+      lineup: [],
     });
 
     const joburg = await t.query(api.events.upcoming, {

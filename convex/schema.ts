@@ -263,10 +263,28 @@ export default defineSchema({
     hidden: v.boolean(),
     goingCount: v.number(),
     maybeCount: v.number(),
+    /** Venue gigs: bands that took themselves off this lineup. The venue can't add them back. */
+    optedOut: v.optional(v.array(v.id("profiles"))),
   })
     .index("by_start", ["startsAt"])
     .index("by_city_start", ["cityKey", "startsAt"])
     .index("by_host", ["hostId", "startsAt"]),
+
+  /**
+   * A venue gig's lineup, one row per band, in position order. startsAt and
+   * hostId copy the event's, so a band's gigs and a venue's future gigs with a
+   * band are one index read. events.create and events.update rewrite the rows.
+   */
+  gigArtists: defineTable({
+    eventId: v.id("events"),
+    hostId: v.id("profiles"),
+    artistId: v.id("profiles"),
+    position: v.number(),
+    startsAt: v.number(),
+  })
+    .index("by_event", ["eventId", "position"])
+    .index("by_artist_start", ["artistId", "startsAt"])
+    .index("by_host_artist", ["hostId", "artistId", "startsAt"]),
 
   /** One row per member and event they answered. Clearing an answer deletes the row. */
   rsvps: defineTable({
