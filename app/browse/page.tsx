@@ -8,7 +8,7 @@ function first(v: string | string[] | undefined): string {
 export default async function BrowsePage({ searchParams }: PageProps<"/browse">) {
   const sp = await searchParams;
   const k = first(sp.kind);
-  const kind = k === "fan" || k === "artist" ? k : undefined;
+  const kind = k === "fan" || k === "artist" || k === "venue" || k === "label" ? k : undefined;
   const location = first(sp.location).trim().slice(0, 100);
   const genre = first(sp.genre).trim().slice(0, 100);
   return (
@@ -20,6 +20,8 @@ export default async function BrowsePage({ searchParams }: PageProps<"/browse">)
             <option value="">Everyone</option>
             <option value="fan">People</option>
             <option value="artist">Music</option>
+            <option value="venue">Venues</option>
+            <option value="label">Labels</option>
           </select>
         </label>{" "}
         <label>

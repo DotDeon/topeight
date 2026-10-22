@@ -2,12 +2,13 @@ import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { toPublicCard, type PublicCard } from "./lib/cards";
 import { normalizeUsername } from "../lib/validation";
+import { profileKind } from "./lib/kinds";
 
 const PAGE_SIZE = 40;
 const MAX_FILTER_LENGTH = 100;
 const MAX_QUERY_LENGTH = 100;
 
-const kindValidator = v.union(v.literal("fan"), v.literal("artist"));
+const kindValidator = profileKind;
 
 type Page = { page: PublicCard[]; isDone: boolean; continueCursor: string };
 

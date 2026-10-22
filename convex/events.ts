@@ -9,6 +9,7 @@ import { toPublicCard, type PublicCard } from "./lib/cards";
 import { rateLimiter } from "./lib/limits";
 import { checkBody, checkLinks } from "./lib/posting";
 import { countField } from "./lib/rsvps";
+import { profileKind } from "./lib/kinds";
 
 const MAX_TITLE = 100;
 const MAX_PLACE = 100;
@@ -32,7 +33,7 @@ const cardValidator = v.object({
   username: v.string(),
   displayName: v.string(),
   photoUrl: v.union(v.string(), v.null()),
-  kind: v.union(v.literal("fan"), v.literal("artist")),
+  kind: profileKind,
 });
 const statusValidator = v.union(v.literal("going"), v.literal("maybe"));
 

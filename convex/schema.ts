@@ -2,6 +2,7 @@ import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { moodIcon } from "./lib/moods";
+import { profileKind } from "./lib/kinds";
 
 export default defineSchema({
   ...authTables,
@@ -10,7 +11,7 @@ export default defineSchema({
     userId: v.id("users"),
     username: v.string(),
     displayName: v.string(),
-    kind: v.union(v.literal("fan"), v.literal("artist")),
+    kind: profileKind,
     birthDate: v.string(),
     headline: v.string(),
     location: v.string(),
@@ -37,6 +38,10 @@ export default defineSchema({
         labelType: v.string(),
       }),
     ),
+    /** Venues only: the street address. */
+    address: v.optional(v.string()),
+    /** Labels only: an http(s) link to the label's own site. */
+    website: v.optional(v.string()),
     photoKey: v.optional(v.string()),
     /** Kept in step with photoKey and the tracks table by syncMediaFlags. Rows from before the flags exist get them from migrations:backfillMediaFlags. */
     hasPhoto: v.optional(v.boolean()),

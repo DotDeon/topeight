@@ -86,16 +86,15 @@ export function EditProfile() {
       <FriendsAndBlocking />
       <MailSetting key={me._id} mailFrom={me.mailFrom} />
       <OnlineSetting showOnline={me.showOnline} />
-      {!artist && <PrivateSetting isPrivate={me.private} />}
-      {artist ? (
+      {me.kind === "fan" && <PrivateSetting isPrivate={me.private} />}
+      {artist && (
         <>
           <TracksForm />
           <ShowsForm />
           <BandForm me={me} />
         </>
-      ) : (
-        <BecomeArtist isPrivate={me.private === true} />
       )}
+      {me.kind === "fan" && <BecomeArtist isPrivate={me.private === true} />}
       <CodeEditor key={`${me._id}-${me.kind}`} me={me} />
     </div>
   );

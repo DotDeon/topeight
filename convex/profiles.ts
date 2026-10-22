@@ -23,9 +23,12 @@ import { isOnline, onlineAsOf } from "./lib/presence";
 import { moodIcon } from "./lib/moods";
 import { MAX_TRACKS, photoUrl, syncMediaFlags } from "./lib/media";
 import { profileSongFor } from "./lib/profileSongs";
+import { canUseCode, profileKind } from "./lib/kinds";
 
 const MIN_AGE = 13;
 const MAX_DISPLAY_NAME = 50;
+const MAX_ADDRESS = 500;
+const MAX_WEBSITE = 200;
 
 function blankProfileFields() {
   return {
@@ -81,7 +84,7 @@ export const createMyProfile = mutation({
   args: {
     username: v.string(),
     displayName: v.string(),
-    kind: v.union(v.literal("fan"), v.literal("artist")),
+    kind: profileKind,
     birthDate: v.string(),
   },
   returns: v.id("profiles"),
@@ -199,9 +202,18 @@ const bandValidator = v.object({
   labelType: v.string(),
 });
 
+function cleanWebsite(raw: string): string {
+  const value = clean(raw, "Website", MAX_WEBSITE);
+  if (value !== "" && !/^https?:\/\/\S+$/i.test(value)) {
+    throw new ConvexError("Website must start with http:// or https://");
+  }
+  return value;
+}
+
 /**
  * Saves the editable profile fields, trimmed and length checked. Fans keep
- * gender and interests, artists keep genre and band; the other group is ignored.
+ * gender and interests, artists keep genre and band, venues keep an address
+ * and labels keep genre and website. Fields for other kinds are ignored.
  */
 export const updateDetails = mutation({
   args: {
@@ -214,6 +226,8 @@ export const updateDetails = mutation({
     genre: v.optional(v.string()),
     interests: v.optional(interestsValidator),
     band: v.optional(bandValidator),
+    address: v.optional(v.string()),
+    website: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -240,6 +254,11 @@ export const updateDetails = mutation({
               recordLabel: clean(b.recordLabel, "Record label", 500),
               labelType: clean(b.labelType, "Label type", 500),
             };
+    } else if (me.kind === "venue") {
+      patch.address = args.address === undefined ? undefined : clean(args.address, "Address", MAX_ADDRESS);
+    } else if (me.kind === "label") {
+      patch.genre = args.genre === undefined ? undefined : clean(args.genre, "Genre", 50);
+      patch.website = args.website === undefined ? undefined : cleanWebsite(args.website);
     } else {
       patch.gender = args.gender === undefined ? undefined : clean(args.gender, "Gender", 50);
       const i = args.interests;
@@ -266,7 +285,7 @@ export const updateCustomCode = mutation({
   returns: v.null(),
   handler: async (ctx, { css, html, js }) => {
     const me = await requireProfile(ctx);
-    if (me.kind !== "artist" && (html !== "" || js !== "")) {
+    if (!canUseCode(me.kind) && (html !== "" || js !== "")) {
       throw new ConvexError("Fans can use CSS only");
     }
     const encoder = new TextEncoder();
@@ -307,14 +326,14 @@ export const setMood = mutation({
 
 /**
  * Fans only: "Private profile: only my friends see my full page". 30 an hour.
- * Artists can't, because an artist page exists to be heard.
+ * Artists, venues and labels can't: their pages exist to be found.
  */
 export const setPrivate = mutation({
   args: { value: v.boolean() },
   returns: v.null(),
   handler: async (ctx, { value }) => {
     const me = await requireProfile(ctx);
-    if (me.kind === "artist") throw new ConvexError("Artists can't make their page private");
+    if (me.kind !== "fan") throw new ConvexError("Only fans can make their page private");
     const { ok } = await rateLimiter.limit(ctx, "privacy", { key: me._id });
     if (!ok) throw new ConvexError("Slow down");
     await ctx.db.patch(me._id, { private: value });
@@ -322,12 +341,13 @@ export const setPrivate = mutation({
   },
 });
 
-/** Switches a fan to an artist profile, which also makes it public. Does nothing else for artists. */
+/** Switches a fan to an artist profile, which also makes it public. Does nothing else for artists. Venues and labels can't switch. */
 export const becomeArtist = mutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
     const me = await requireProfile(ctx);
+    if (me.kind === "venue" || me.kind === "label") throw new ConvexError("Only fans can switch to artist");
     if (me.kind !== "artist" || me.private !== undefined) {
       await ctx.db.patch(me._id, { kind: "artist", private: undefined });
     }
@@ -383,7 +403,7 @@ async function profileComments(ctx: QueryCtx, owner: Doc<"profiles">): Promise<P
 
 export type ProfileHeader = {
   displayName: string;
-  kind: "fan" | "artist";
+  kind: Doc<"profiles">["kind"];
   banned: boolean;
   /** The owner turned Private profile on. */
   private: boolean;
@@ -446,7 +466,7 @@ export const profileSongForReport = query({
 type ProfileResult = PublicProfile | RestrictedProfile | { unavailable: true } | null;
 
 function ageOf(p: Doc<"profiles">): { age?: number } {
-  return p.kind === "artist" || !isCalendarDate(p.birthDate) ? {} : { age: ageOn(p.birthDate, new Date()) };
+  return p.kind !== "fan" || !isCalendarDate(p.birthDate) ? {} : { age: ageOn(p.birthDate, new Date()) };
 }
 
 /**
@@ -531,6 +551,7 @@ async function fullProfile(ctx: QueryCtx, p: Doc<"profiles">, asOf: number | und
     .take(MAX_SHOWS);
 
   const isArtist = p.kind === "artist";
+  const code = canUseCode(p.kind);
   return {
     username: p.username,
     displayName: p.displayName,
@@ -546,6 +567,8 @@ async function fullProfile(ctx: QueryCtx, p: Doc<"profiles">, asOf: number | und
     whoIdLikeToMeet: p.whoIdLikeToMeet,
     interests: p.interests,
     band: p.band,
+    ...(p.kind === "venue" ? { address: p.address ?? "" } : {}),
+    ...(p.kind === "label" ? { website: p.website ?? "" } : {}),
     photoUrl: photoUrl(p.photoKey),
     profileViews: (await statsFor(ctx, p._id))?.views ?? 0,
     lastLoginAt: p.lastLoginAt,
@@ -567,8 +590,8 @@ async function fullProfile(ctx: QueryCtx, p: Doc<"profiles">, asOf: number | und
     // Fans get CSS only. The renderer drops fan html and js too.
     custom: {
       css: p.customCss,
-      html: isArtist ? p.customHtml : "",
-      js: isArtist ? p.customJs : "",
+      html: code ? p.customHtml : "",
+      js: code ? p.customJs : "",
     },
   };
 }

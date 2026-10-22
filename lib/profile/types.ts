@@ -3,12 +3,15 @@
  * of imports so convex/ can use the same types (convex/ has no "@/" alias).
  */
 
+/** Same values as convex/lib/kinds.ts profileKind. */
+export type ProfileKind = "fan" | "artist" | "venue" | "label";
+
 /** Same shape as convex/lib/cards.ts PublicCard, re-declared to keep lib/ free of convex/. */
 export type PublicCard = {
   username: string;
   displayName: string;
   photoUrl: string | null;
-  kind: "fan" | "artist";
+  kind: ProfileKind;
   online?: boolean;
 };
 
@@ -29,7 +32,7 @@ export type RestrictedProfile = {
 export type PublicProfile = {
   username: string;
   displayName: string;
-  kind: "fan" | "artist";
+  kind: ProfileKind;
   headline: string;
   /** The mood line. `icon` is one of lib/moods.ts MOOD_ICONS. */
   mood?: { icon: string; text: string } | null;
@@ -57,6 +60,10 @@ export type PublicProfile = {
     recordLabel: string;
     labelType: string;
   };
+  /** Venues only. */
+  address?: string;
+  /** Labels only. Checked as http(s) again before it becomes a link. */
+  website?: string;
   photoUrl: string | null;
   profileViews: number;
   lastLoginAt: number;

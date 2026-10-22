@@ -14,14 +14,14 @@ import {
 
 const opts = { mainOrigin: "http://localhost:3000" };
 
-const card = (username: string, kind: "fan" | "artist" = "fan"): PublicCard => ({
+const card = (username: string, kind: PublicCard["kind"] = "fan"): PublicCard => ({
   username,
   displayName: username[0].toUpperCase() + username.slice(1),
   photoUrl: null,
   kind,
 });
 
-const base = (kind: "fan" | "artist"): PublicProfile => ({
+const base = (kind: PublicProfile["kind"]): PublicProfile => ({
   username: "jess",
   displayName: "Jess",
   kind,
@@ -959,5 +959,43 @@ describe("profile song in the player", () => {
       usercontentOrigin: "http://127.0.0.1:3000",
     });
     expect(html).toContain('data-tracks-url="http://127.0.0.1:3000/jess?format=tracks"');
+  });
+});
+
+describe("venue and label profiles", () => {
+  const venue = (over: Partial<PublicProfile> = {}): PublicProfile => ({
+    ...base("venue"),
+    username: "mercury",
+    displayName: "The Mercury",
+    address: "43 De Villiers St",
+    age: 30,
+    custom: { css: "", html: "<i id=vh>hi</i>", js: "window.vj = 1;" },
+    ...over,
+  });
+
+  test("a venue gets custom html and js, an address and no age", () => {
+    const html = renderProfileDocument(venue(), opts);
+    expect(html).toContain("<i id=vh>hi</i>");
+    expect(html).toContain("window.vj = 1;");
+    expect(html).toContain(">Address<");
+    expect(html).toContain("43 De Villiers St");
+    expect(html).not.toContain("years old");
+  });
+
+  test("a label shows its website as an outside link", () => {
+    const html = renderProfileDocument(
+      { ...base("label"), username: "rhythm", displayName: "Rhythm", website: "https://rhythm.example" },
+      opts,
+    );
+    expect(html).toContain(">Website<");
+    expect(html).toContain('<a href="https://rhythm.example" target="_blank" rel="noopener noreferrer">');
+  });
+
+  test("a label website that isn't http(s) is shown as text", () => {
+    const html = renderProfileDocument(
+      { ...base("label"), username: "rhythm", displayName: "Rhythm", website: "javascript:alert(1)" },
+      opts,
+    );
+    expect(html).not.toContain('href="javascript');
   });
 });

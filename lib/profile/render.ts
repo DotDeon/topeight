@@ -143,6 +143,20 @@ function richText(body: string): string {
     .join("");
 }
 
+/** Artists, venues and labels get custom HTML and JS. Fans get CSS only. */
+function canUseCode(kind: PublicProfile["kind"]): boolean {
+  return kind !== "fan";
+}
+
+/** An http(s) link that opens outside the frame, or the text alone when it isn't one. */
+function outsideLink(url: string | undefined): string {
+  const value = url?.trim() ?? "";
+  if (!value) return "";
+  const href = /^https?:\/\/\S+$/i.test(value) ? safeUrl(value) : null;
+  if (!href) return escapeHtml(value);
+  return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(value)}</a>`;
+}
+
 function detailsRows(rows: Array<[string, string | undefined]>): string {
   return rows
     .filter(([, v]) => v && v.trim())
@@ -213,9 +227,11 @@ function renderLeft(p: PublicProfile, opts: RenderOptions): string {
   const name = escapeHtml(p.displayName);
   const isArtist = p.kind === "artist";
   // Fans: gender, age and location on their own lines in one block, as in 2006.
-  const who = isArtist
+  const who = isArtist || p.kind === "label"
     ? [escapeHtml(p.genre ?? ""), textHtml(p.location)]
-    : [
+    : p.kind === "venue"
+      ? [textHtml(p.location)]
+      : [
         [
           escapeHtml(p.gender?.trim() ?? ""),
           p.age !== undefined ? `${formatCount(p.age)} years old` : "",
@@ -248,6 +264,16 @@ function renderLeft(p: PublicProfile, opts: RenderOptions): string {
         ["Record Label", p.band?.recordLabel],
         ["Type of Label", p.band?.labelType],
       ])}</table></div>`
+    : p.kind === "venue"
+      ? `<div class="details"><h5>${name}'s General Info</h5><table>${detailsRows([
+          ["Member Since", formatDay(p.memberSince)],
+          ["Address", p.address],
+        ])}</table></div>`
+    : p.kind === "label"
+      ? `<div class="details"><h5>${name}'s General Info</h5><table>${detailsRows([
+          ["Member Since", formatDay(p.memberSince)],
+          ["Genres", p.genre],
+        ])}${p.website?.trim() ? `<tr><td class="k">Website</td><td class="v">${outsideLink(p.website)}</td></tr>` : ""}</table></div>`
     : `<div class="details"><h5>${name}'s Interests</h5><table>${detailsRows([
         ["Member Since", formatDay(p.memberSince)],
         ["General", p.interests?.general],
@@ -296,9 +322,9 @@ function renderRight(p: PublicProfile): string {
     );
   }
 
-  const customHtml = isArtist ? p.custom.html : "";
+  const customHtml = canUseCode(p.kind) ? p.custom.html : "";
   let blurbs = `<b>About me:</b><br>${textHtml(p.aboutMe)}${customHtml}`;
-  if (!isArtist || p.whoIdLikeToMeet.trim()) {
+  if (p.kind === "fan" || p.whoIdLikeToMeet.trim()) {
     blurbs += `<br><br><b>Who I'd like to meet:</b><br>${textHtml(p.whoIdLikeToMeet)}`;
   }
   parts.push(`<div class="section-title">${name}'s Blurbs</div><div class="blurb about">${blurbs}</div>`);
@@ -556,8 +582,7 @@ export const playerScript = `document.addEventListener("DOMContentLoaded", funct
  * body cannot swallow them. Fans get custom CSS only.
  */
 export function renderProfileDocument(p: PublicProfile, opts: RenderOptions): string {
-  const isArtist = p.kind === "artist";
-  const customJs = isArtist ? p.custom.js : "";
+  const customJs = canUseCode(p.kind) ? p.custom.js : "";
   // custom is left out: it is already in the document and can be 100 KB.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { custom, ...data } = p;

@@ -4,6 +4,7 @@ import { validateUsername } from "../lib/validation";
 import { mutation, query } from "./_generated/server";
 import { profileForUser, requireProfile } from "./lib/access";
 import { toPublicCard, type PublicCard } from "./lib/cards";
+import { profileKind } from "./lib/kinds";
 
 /** Most profiles a member can save. */
 export const MAX_FAVORITES = 500;
@@ -12,7 +13,7 @@ const cardValidator = v.object({
   username: v.string(),
   displayName: v.string(),
   photoUrl: v.union(v.string(), v.null()),
-  kind: v.union(v.literal("fan"), v.literal("artist")),
+  kind: profileKind,
 });
 
 /** Saves a profile. Saving one already saved does nothing and returns "exists". */

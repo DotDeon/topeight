@@ -11,6 +11,13 @@ import { api } from "@/convex/_generated/api";
 
 type Step = "account" | "verify";
 
+const KINDS = ["fan", "artist", "venue", "label"] as const;
+
+/** The picked "I am a" radio, fan when it is missing or unknown. */
+function signupKind(value: FormDataEntryValue | null): (typeof KINDS)[number] {
+  return KINDS.find((k) => k === value) ?? "fan";
+}
+
 export default function SignupPage() {
   const router = useRouter();
   const { signIn } = useAuthActions();
@@ -76,7 +83,7 @@ export default function SignupPage() {
       await createMyProfile({
         username: String(form.get("username")),
         displayName: String(form.get("displayName")),
-        kind: form.get("kind") === "artist" ? "artist" : "fan",
+        kind: signupKind(form.get("kind")),
         birthDate: String(form.get("birthDate")),
       });
       router.replace("/");
@@ -111,6 +118,8 @@ export default function SignupPage() {
             <div className={s.radios}>
               <label><input type="radio" name="kind" value="fan" defaultChecked /> Fan</label>
               <label><input type="radio" name="kind" value="artist" /> Artist</label>
+              <label><input type="radio" name="kind" value="venue" /> Venue</label>
+              <label><input type="radio" name="kind" value="label" /> Label</label>
             </div>
           </div>
           <div className={s.row}>

@@ -24,6 +24,12 @@ export function Header() {
             </label>{" "}
             <label>
               <input type="radio" name="type" value="music" /> Music
+            </label>{" "}
+            <label>
+              <input type="radio" name="type" value="venues" /> Venues
+            </label>{" "}
+            <label>
+              <input type="radio" name="type" value="labels" /> Labels
             </label>
           </div>
           <input type="text" name="q" aria-label="Search terms" />{" "}
