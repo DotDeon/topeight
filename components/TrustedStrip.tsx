@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { DialogAction } from "./profileActions";
 import type { StripButton } from "./stripActions";
 import styles from "./TrustedStrip.module.css";
@@ -13,12 +14,15 @@ export function TrustedStrip({
   buttons,
   onAction,
   throttled,
+  extra,
 }: {
   displayName: string;
   buttons: readonly StripButton[];
   onAction: (action: DialogAction) => void;
   /** The frame hit the bridge throttle; its requests are being ignored. */
   throttled: boolean;
+  /** More trusted controls after the buttons, such as the roster request. */
+  extra?: ReactNode;
 }) {
   return (
     <div className={styles.strip} data-topeight-strip="" role="toolbar" aria-label={`TopEight controls for ${displayName}`}>
@@ -40,6 +44,7 @@ export function TrustedStrip({
             {b.label}
           </button>
         ))}
+        {extra}
       </span>
     </div>
   );

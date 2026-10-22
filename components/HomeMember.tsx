@@ -12,14 +12,13 @@ import { useState } from "react";
 import type { Id } from "@/convex/_generated/dataModel";
 import styles from "./Home.module.css";
 
-function RequestButtons({ requestId }: { requestId: Id<"friendRequests"> }) {
-  const respond = useMutation(api.social.respondFriendRequest);
+function RequestButtons({ respond }: { respond: (accept: boolean) => Promise<unknown> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const answer = (accept: boolean) => {
     setBusy(true);
     setError("");
-    void respond({ requestId, accept })
+    void respond(accept)
       .catch((e) => setError(e instanceof ConvexError && typeof e.data === "string" ? e.data : "Something went wrong."))
       .finally(() => setBusy(false));
   };
@@ -38,6 +37,16 @@ function RequestButtons({ requestId }: { requestId: Id<"friendRequests"> }) {
       )}
     </span>
   );
+}
+
+function FriendRequestButtons({ requestId }: { requestId: Id<"friendRequests"> }) {
+  const respond = useMutation(api.social.respondFriendRequest);
+  return <RequestButtons respond={(accept) => respond({ requestId, accept })} />;
+}
+
+function LinkRequestButtons({ linkId }: { linkId: Id<"links"> }) {
+  const respond = useMutation(api.links.respond);
+  return <RequestButtons respond={(accept) => respond({ linkId, accept })} />;
 }
 
 function useDashboard() {
@@ -65,7 +74,7 @@ export function MemberPanel() {
     );
   }
   if (dashboard === undefined) return <Box title="Welcome">Loading...</Box>;
-  const { me, pendingRequests } = dashboard;
+  const { me, pendingRequests, linkRequests } = dashboard;
   return (
     <Box title="Member Login">
       <p className={styles.hello}>Hello, {me.displayName}!</p>
@@ -87,10 +96,27 @@ export function MemberPanel() {
               <Photo card={c} size={40} />
             </Link>
             <Link href={`/${c.username}`}>{c.displayName}</Link>
-            <RequestButtons requestId={c.requestId} />
+            <FriendRequestButtons requestId={c.requestId} />
           </div>
         ))}
       </div>
+      {linkRequests.length > 0 && (
+        <div className={styles.reqs} data-topeight-link-requests="">
+          <b>Roster and label requests waiting: {linkRequests.length}</b>
+          {linkRequests.map((c) => (
+            <div className={styles.reqRow} key={c.linkId}>
+              <Link href={`/${c.username}`}>
+                <Photo card={c} size={40} />
+              </Link>
+              <span>
+                <Link href={`/${c.username}`}>{c.displayName}</Link>{" "}
+                {c.type === "venue" ? "wants you on their roster" : "wants to be your label"}
+              </span>
+              <LinkRequestButtons linkId={c.linkId} />
+            </div>
+          ))}
+        </div>
+      )}
     </Box>
   );
 }

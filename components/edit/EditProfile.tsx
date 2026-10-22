@@ -10,6 +10,7 @@ import { ArtistProComingSoon } from "./ArtistProComingSoon";
 import { CodeEditor } from "./CodeEditor";
 import styles from "./Edit.module.css";
 import { FriendsAndBlocking } from "./FriendsAndBlocking";
+import { LinksForm } from "./LinksForm";
 import { MailSetting } from "./MailSetting";
 import { MoodForm } from "./MoodForm";
 import { OnlineSetting } from "./OnlineSetting";
@@ -84,6 +85,7 @@ export function EditProfile() {
       />
       <Top8Picker top8={me.top8} />
       <FriendsAndBlocking />
+      <LinksForm kind={me.kind} />
       <MailSetting key={me._id} mailFrom={me.mailFrom} />
       <OnlineSetting showOnline={me.showOnline} />
       {me.kind === "fan" && <PrivateSetting isPrivate={me.private} />}

@@ -7,6 +7,7 @@ import { api } from "@/convex/_generated/api";
 import { BRIDGE_RESET_MS, BridgeGate } from "@/lib/bridgeGate";
 import { findReportableTrack, type ProfileTrack } from "@/lib/reportableTrack";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
+import { LinkRequestButton } from "./LinkRequestButton";
 import { PROFILE_ACTIONS, type DialogAction } from "./profileActions";
 import { PrivateCard, PrivateCardLoader, type PrivateCardData } from "./PrivateProfile";
 import { ProfileFrame } from "./ProfileFrame";
@@ -176,7 +177,13 @@ export function ProfileView({
   const target = { username, displayName };
   return (
     <>
-      <TrustedStrip displayName={displayName} buttons={buttons} onAction={onStripAction} throttled={throttled} />
+      <TrustedStrip
+        displayName={displayName}
+        buttons={buttons}
+        onAction={onStripAction}
+        throttled={throttled}
+        extra={<LinkRequestButton username={username} />}
+      />
       {card ? (
         <PrivateCard card={card} />
       ) : (
