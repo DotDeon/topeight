@@ -22,7 +22,9 @@ import { MAX_SCAN, rateLimiter } from "./lib/limits";
 import { isOnline, onlineAsOf } from "./lib/presence";
 import { moodIcon } from "./lib/moods";
 import { MAX_TRACKS, photoUrl, syncMediaFlags } from "./lib/media";
+import { acceptedLinks } from "./lib/links";
 import { profileSongFor } from "./lib/profileSongs";
+import { lineupCards } from "./events";
 import { canUseCode, profileKind } from "./lib/kinds";
 
 const MIN_AGE = 13;
@@ -496,6 +498,71 @@ async function profileResult(
   return await fullProfile(ctx, p, asOf);
 }
 
+/**
+ * What venue and label links put on a page. Venues: upcoming gigs and the
+ * roster. Labels: the roster. Artists: their labels, and upcoming gigs venues
+ * put them on, as shows. Hidden and cancelled gigs and banned venues are left out
+ * of a band's shows; the venue's own gig guide flags cancelled ones.
+ */
+async function profileLinks(
+  ctx: QueryCtx,
+  p: Doc<"profiles">,
+): Promise<{
+  gigShows: PublicProfile["shows"];
+  gigs?: NonNullable<PublicProfile["gigs"]>;
+  roster?: PublicCard[];
+  labels?: PublicCard[];
+}> {
+  const now = Date.now();
+  if (p.kind === "venue") {
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_host", (q) => q.eq("hostId", p._id).gte("startsAt", now))
+      .take(MAX_SHOWS);
+    const gigs: NonNullable<PublicProfile["gigs"]> = [];
+    for (const e of events) {
+      if (e.hidden) continue;
+      gigs.push({
+        eventId: e._id,
+        title: e.title,
+        date: e.localDate,
+        time: e.localTime,
+        cancelled: e.cancelled,
+        lineup: await lineupCards(ctx, e._id),
+      });
+    }
+    const roster = (await acceptedLinks(ctx, p, "from")).map(({ other }) => toPublicCard(other));
+    return { gigShows: [], gigs, roster };
+  }
+  if (p.kind === "label") {
+    return { gigShows: [], roster: (await acceptedLinks(ctx, p, "from")).map(({ other }) => toPublicCard(other)) };
+  }
+  if (p.kind !== "artist") return { gigShows: [] };
+
+  const labels = (await acceptedLinks(ctx, p, "artist"))
+    .filter(({ link }) => link.type === "label")
+    .map(({ other }) => toPublicCard(other));
+  const rows = await ctx.db
+    .query("gigArtists")
+    .withIndex("by_artist_start", (q) => q.eq("artistId", p._id).gte("startsAt", now))
+    .take(MAX_SHOWS);
+  const gigShows: PublicProfile["shows"] = [];
+  for (const row of rows) {
+    const event = await ctx.db.get(row.eventId);
+    if (event === null || event.hidden || event.cancelled) continue;
+    const venue = await ctx.db.get(event.hostId);
+    if (venue === null || venue.banned) continue;
+    gigShows.push({
+      date: event.localDate,
+      venue: event.venue,
+      city: event.city,
+      eventId: event._id,
+      venueUser: toPublicCard(venue),
+    });
+  }
+  return { gigShows, labels };
+}
+
 async function fullProfile(ctx: QueryCtx, p: Doc<"profiles">, asOf: number | undefined): Promise<PublicProfile> {
   // Only the online checks use asOf; everything else reads the real clock.
   const onlineAt = onlineAsOf(asOf);
@@ -549,6 +616,7 @@ async function fullProfile(ctx: QueryCtx, p: Doc<"profiles">, asOf: number | und
     .query("shows")
     .withIndex("by_profile_date", (q) => q.eq("profileId", p._id).gte("date", today))
     .take(MAX_SHOWS);
+  const links = await profileLinks(ctx, p);
 
   const isArtist = p.kind === "artist";
   const code = canUseCode(p.kind);
@@ -586,7 +654,13 @@ async function fullProfile(ctx: QueryCtx, p: Doc<"profiles">, asOf: number | und
       song === null
         ? null
         : { id: song.track._id, title: song.track.title, url: null, artist: toPublicCard(song.artist) },
-    shows: shows.map((s) => ({ date: s.date, venue: s.venue, city: s.city })),
+    shows: [...shows.map((s) => ({ date: s.date, venue: s.venue, city: s.city })), ...links.gigShows]
+      // Stable, so a typed show stays ahead of a gig on the same date.
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, MAX_SHOWS),
+    ...(links.gigs ? { gigs: links.gigs } : {}),
+    ...(links.roster ? { roster: links.roster } : {}),
+    ...(links.labels ? { labels: links.labels } : {}),
     // Fans get CSS only. The renderer drops fan html and js too.
     custom: {
       css: p.customCss,

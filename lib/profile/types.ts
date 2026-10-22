@@ -89,6 +89,16 @@ export type PublicProfile = {
    * null until the usercontent route merges in a signed one.
    */
   profileSong?: { id: string; title: string; url: string | null; artist: PublicCard } | null;
-  shows: Array<{ date: string; venue: string; city: string }>;
+  /**
+   * Artists: upcoming shows, soonest first. Typed shows have only date, venue
+   * and city. Gigs a venue put the band on also carry the event id and the venue.
+   */
+  shows: Array<{ date: string; venue: string; city: string; eventId?: string; venueUser?: PublicCard }>;
+  /** Venues: upcoming gigs, soonest first. `date` and `time` are the venue's local ones. */
+  gigs?: Array<{ eventId: string; title: string; date: string; time: string; cancelled: boolean; lineup: PublicCard[] }>;
+  /** Venues and labels: the bands that accepted their request. */
+  roster?: PublicCard[];
+  /** Artists: the labels they accepted. */
+  labels?: PublicCard[];
   custom: { css: string; html: string; js: string };
 };

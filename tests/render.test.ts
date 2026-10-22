@@ -999,3 +999,65 @@ describe("venue and label profiles", () => {
     expect(html).not.toContain('href="javascript');
   });
 });
+
+describe("gig guides, rosters and labels", () => {
+  const gigCard = (u: string) => card(u, "artist");
+
+  test("a venue renders its gig guide with event links, and its roster", () => {
+    const html = renderProfileDocument(
+      {
+        ...base("venue"),
+        username: "mercury",
+        displayName: "The Mercury",
+        gigs: [
+          {
+            eventId: "k57abc",
+            title: "Friday <night>",
+            date: "2026-10-24",
+            time: "20:00",
+            cancelled: false,
+            lineup: [gigCard("gvv"), gigCard("lowveld")],
+          },
+        ],
+        roster: [gigCard("gvv")],
+      },
+      opts,
+    );
+    expect(html).toContain("Gig Guide");
+    expect(html).toContain('data-topeight-event="k57abc"');
+    expect(html).toContain("Friday &lt;night&gt;");
+    expect(html).toContain("24 Oct 2026");
+    expect(html).toContain('data-topeight-navigate="lowveld"');
+    expect(html).toContain("The Mercury's Bands");
+    const data = JSON.parse(/window\.TOPEIGHT = (.*);\n/.exec(html)![1]);
+    expect(data.gigs[0].eventId).toBe("k57abc");
+  });
+
+  test("a label renders its bands", () => {
+    const html = renderProfileDocument(
+      { ...base("label"), username: "rhythm", displayName: "Rhythm", roster: [gigCard("gvv")] },
+      opts,
+    );
+    expect(html).toContain("Rhythm's Bands");
+    expect(html).toContain('data-topeight-navigate="gvv"');
+  });
+
+  test("a band's gig show links the event and the venue, and labels sit by the band fields", () => {
+    const html = renderProfileDocument(
+      artist({
+        shows: [
+          { date: "2026-10-22", venue: "Club", city: "Durban" },
+          { date: "2026-10-24", venue: "The Mercury", city: "Cape Town", eventId: "k57abc", venueUser: card("mercury", "venue") },
+        ],
+        labels: [card("rhythm", "label")],
+        band: { members: "", influences: "", soundsLike: "", recordLabel: "Self-released", labelType: "" },
+      }),
+      opts,
+    );
+    expect(html).toContain('data-topeight-event="k57abc"');
+    expect(html).toContain('data-topeight-navigate="mercury"');
+    expect(html).toContain(">Labels<");
+    expect(html).toContain('data-topeight-navigate="rhythm"');
+    expect(html).toContain("Self-released");
+  });
+});
