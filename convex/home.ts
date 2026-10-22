@@ -76,9 +76,20 @@ export const dashboard = query({
       const from = await ctx.db.get(r.from);
       if (from !== null && !from.banned) pendingRequests.push({ ...toPublicCard(from), requestId: r._id });
     }
+    const pendingLinks = await ctx.db
+      .query("links")
+      .withIndex("by_artist_status", (q) => q.eq("artistId", me._id).eq("status", "pending"))
+      .order("desc")
+      .take(20);
+    const linkRequests: (PublicCard & { linkId: Id<"links">; type: "venue" | "label" })[] = [];
+    for (const r of pendingLinks) {
+      const from = await ctx.db.get(r.fromId);
+      if (from !== null && !from.banned) linkRequests.push({ ...toPublicCard(from), linkId: r._id, type: r.type });
+    }
     return {
       me: toPublicCard(me),
       pendingRequests,
+      linkRequests,
       bulletins: await friendBulletins(ctx, me._id, { limit: DASHBOARD_BULLETINS }),
     };
   },

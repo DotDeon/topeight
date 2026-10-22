@@ -21,6 +21,8 @@ export const ANON_VIEW_SHARDS = 10;
 /** Per-account limits keyed by profile id, plus the shared anonymous view bucket. */
 export const rateLimiter = new RateLimiter(components.rateLimiter, {
   friendRequest: { kind: "fixed window", rate: 50, period: HOUR },
+  // Roster and label requests from venues and labels.
+  linkRequest: { kind: "fixed window", rate: 50, period: HOUR },
   comment: { kind: "fixed window", rate: 30, period: HOUR },
   bulletin: { kind: "fixed window", rate: 10, period: HOUR },
   blogCreate: { kind: "fixed window", rate: 10, period: DAY },

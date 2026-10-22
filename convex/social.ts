@@ -8,6 +8,7 @@ import { toPublicCard, toPublicCardOnline, type PublicCard } from "./lib/cards";
 import { friendIds, friendshipPair } from "./lib/friendships";
 import { MAX_FRIENDS, rateLimiter } from "./lib/limits";
 import { onlineAsOf } from "./lib/presence";
+import { deleteLinksBetween } from "./lib/links";
 import { clearPick } from "./lib/profileSongs";
 
 const TOP8_MAX = 8;
@@ -181,6 +182,8 @@ export const block = mutation({
         .take(MAX_REQUEST_ROWS);
       for (const r of rows) await ctx.db.delete(r._id);
     }
+    // Roster and label links end too, so a blocked venue drops off the band's page.
+    await deleteLinksBetween(ctx, me._id, other);
     // A block cuts the profile song tie both ways. Unblocking doesn't restore it.
     for (const [picker, artist] of [
       [me, them],

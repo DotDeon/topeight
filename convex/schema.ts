@@ -136,6 +136,23 @@ export default defineSchema({
     .index("by_pair", ["from", "to"])
     .index("by_pair_status", ["from", "to", "status"]),
 
+  /**
+   * A venue's roster or a label's band. The venue or label (fromId) asks, the
+   * artist answers. Accepted links show on both profiles. A decline is kept,
+   * with respondedAt, so the sender waits 7 days before asking again. Removing
+   * an accepted link deletes the row. type matches the sender's kind.
+   */
+  links: defineTable({
+    fromId: v.id("profiles"),
+    artistId: v.id("profiles"),
+    type: v.union(v.literal("venue"), v.literal("label")),
+    status: v.union(v.literal("pending"), v.literal("accepted"), v.literal("declined")),
+    respondedAt: v.optional(v.number()),
+  })
+    .index("by_pair", ["fromId", "artistId"])
+    .index("by_artist_status", ["artistId", "status"])
+    .index("by_from_status", ["fromId", "status"]),
+
   /** One row per member who shares Online Now!, written only by presence.heartbeat. */
   presence: defineTable({
     profileId: v.id("profiles"),
