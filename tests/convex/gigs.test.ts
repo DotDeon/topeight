@@ -149,3 +149,16 @@ describe("venue gigs", () => {
     expect(event).toMatchObject({ venue: "typed venue", city: "typed city", lineup: [] });
   });
 });
+
+describe("blocks and gigs", () => {
+  test.each(["band blocks venue", "venue blocks band"] as const)(
+    "a block (%s) takes the band off the venue's future gigs",
+    async (who) => {
+      const { t, venue, a } = await world();
+      const id = await (await as(t, venue)).mutation(api.events.create, { ...gig, lineup: [a] });
+      const [blocker, other] = who === "band blocks venue" ? [a, venue] : [venue, a];
+      await (await as(t, blocker)).mutation(api.social.block, { other });
+      expect(await lineupRows(t, id)).toEqual([]);
+    },
+  );
+});

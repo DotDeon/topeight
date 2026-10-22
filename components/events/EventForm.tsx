@@ -22,6 +22,24 @@ export type EventFields = {
   lineup?: string[];
 };
 
+/**
+ * Whether the form can be sent. `venueCity` is the venue's profile city, null for
+ * anyone else. A venue also waits for its roster, or an edit saved early would
+ * send an empty lineup and take every band off the gig.
+ */
+export function eventFormReady(f: {
+  title: string;
+  localDate: string;
+  localTime: string;
+  venue: string;
+  city: string;
+  venueCity: string | null;
+  rosterLoaded: boolean;
+}): boolean {
+  const placed = f.venueCity !== null ? f.venueCity.trim() !== "" && f.rosterLoaded : f.venue.trim() !== "" && f.city.trim() !== "";
+  return f.title.trim() !== "" && f.localDate !== "" && f.localTime !== "" && placed;
+}
+
 type RosterBand = { id: Id<"profiles">; username: string; displayName: string };
 
 /** Picks bands from the venue's roster and sets their playing order. */
@@ -138,8 +156,18 @@ export function EventForm({ eventId, initial }: { eventId?: Id<"events">; initia
     }
   }
 
-  const placed = isVenue ? me.location.trim() !== "" : venue.trim() !== "" && city.trim() !== "";
-  const ready = title.trim() !== "" && localDate !== "" && localTime !== "" && placed;
+  // Wait for the profile too, so nobody posts before we know whether they're a venue.
+  const ready =
+    me !== undefined &&
+    eventFormReady({
+      title,
+      localDate,
+      localTime,
+      venue,
+      city,
+      venueCity: isVenue ? me.location : null,
+      rosterLoaded: links !== undefined,
+    });
   return (
     <Box title={eventId ? "Edit event" : "Post an event"}>
       <form className={styles.form} onSubmit={onSubmit}>

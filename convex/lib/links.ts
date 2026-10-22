@@ -52,14 +52,19 @@ export async function acceptedLinks(
   return out;
 }
 
-/** Deletes every link row between two profiles, in either direction. For blocks. */
+/**
+ * Deletes every link row between two profiles, in either direction, and takes
+ * the band off the venue's gigs that haven't started, as leaving the roster does. For blocks.
+ */
 export async function deleteLinksBetween(ctx: MutationCtx, a: Id<"profiles">, b: Id<"profiles">): Promise<void> {
   for (const [from, artist] of [
     [a, b],
     [b, a],
   ] as const) {
     const row = await linkBetween(ctx, from, artist);
-    if (row !== null) await ctx.db.delete(row._id);
+    if (row === null) continue;
+    await ctx.db.delete(row._id);
+    if (row.type === "venue") await dropFromFutureGigs(ctx, from, artist);
   }
 }
 
