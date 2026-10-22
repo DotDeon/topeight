@@ -205,6 +205,11 @@ async function ownEvent(ctx: MutationCtx, me: Doc<"profiles">, id: Id<"events">)
   return event;
 }
 
+/** The lineup for an event, read only when a venue hosts it. Other hosts can't have one. */
+async function hostLineup(ctx: Ctx, event: Doc<"events">, host: Doc<"profiles">): Promise<PublicCard[]> {
+  return host.kind === "venue" ? await lineupCards(ctx, event._id) : [];
+}
+
 /** A gig's unbanned bands in lineup order. Empty for events that aren't venue gigs. */
 export async function lineupCards(ctx: Ctx, eventId: Id<"events">): Promise<PublicCard[]> {
   const rows = await ctx.db
@@ -352,6 +357,7 @@ export const cancel = mutation({
 /**
  * A band takes itself off one gig's lineup. It stays on the venue's roster,
  * and the venue can't add it back to this gig. Does nothing if it isn't on it.
+ * Throws once the gig has started.
  */
 export const leaveLineup = mutation({
   args: { eventId: v.id("events") },
@@ -360,6 +366,7 @@ export const leaveLineup = mutation({
     const me = await requireProfile(ctx);
     const event = await ctx.db.get(eventId);
     if (event === null) throw new ConvexError("Not found");
+    if (event.startsAt <= Date.now()) throw new ConvexError("Event has already started");
     const rows = await ctx.db
       .query("gigArtists")
       .withIndex("by_event", (q) => q.eq("eventId", eventId))
@@ -576,7 +583,8 @@ export const upcoming = query({
       if (e.hidden) continue;
       const host = await profile(e.hostId);
       if (host === null) continue;
-      merged.push(toEventItem(e, host, await lineupCards(ctx, e._id)));
+      // The lineup is read below, only for events that make the page.
+      merged.push(toEventItem(e, host, []));
     }
     for (const s of showRows) {
       if (cityKey && cityKeyOf(s.city) !== cityKey) continue;
@@ -608,6 +616,9 @@ export const upcoming = query({
     });
 
     const items = ready.slice(0, PAGE_SIZE);
+    for (const item of items) {
+      if (item.kind === "event" && item.host.kind === "venue") item.lineup = await lineupCards(ctx, item.id);
+    }
     if (ready.length <= PAGE_SIZE) {
       if (limit === Infinity) return { items, nextCursor: null };
       // Everything before the cut is shown. An inclusive page moves past its instant.
@@ -643,7 +654,7 @@ export const myEvents = query({
       .withIndex("by_host", (q) => q.eq("hostId", me._id).gte("startsAt", now))
       .take(MY_HOSTED);
     for (const e of hosted) {
-      if (!e.hidden) out.set(e._id, { ...toEventItem(e, me, await lineupCards(ctx, e._id)), role: "host" });
+      if (!e.hidden) out.set(e._id, { ...toEventItem(e, me, await hostLineup(ctx, e, me)), role: "host" });
     }
     const answered = await ctx.db
       .query("rsvps")
@@ -655,7 +666,7 @@ export const myEvents = query({
       const found = await visibleEvent(ctx, r.eventId);
       if (found === null || found.event.startsAt < now) continue;
       out.set(r.eventId, {
-        ...toEventItem(found.event, found.host, await lineupCards(ctx, r.eventId)),
+        ...toEventItem(found.event, found.host, await hostLineup(ctx, found.event, found.host)),
         role: r.status,
       });
     }

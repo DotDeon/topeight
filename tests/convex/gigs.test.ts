@@ -94,6 +94,16 @@ describe("venue gigs", () => {
     await expect((await as(t, a)).mutation(api.events.leaveLineup, { eventId: id })).resolves.toBeNull();
   });
 
+  test("a band can't leave a gig that has started", async () => {
+    const { t, venue, a } = await world();
+    const id = await (await as(t, venue)).mutation(api.events.create, { ...gig, lineup: [a] });
+    const event = await t.run((ctx) => ctx.db.get(id));
+    vi.setSystemTime(event!.startsAt);
+    await expect((await as(t, a)).mutation(api.events.leaveLineup, { eventId: id })).rejects.toThrow(
+      "Event has already started",
+    );
+  });
+
   test("editing the date moves the lineup rows, and editing the lineup replaces them", async () => {
     const { t, venue, a, b } = await world();
     const v = await as(t, venue);
