@@ -33,6 +33,8 @@ export function EventPage({ id }: { id: string }) {
   const now = useNow();
   const rsvp = useMutation(api.events.rsvp);
   const cancel = useMutation(api.events.cancel);
+  const leave = useMutation(api.events.leaveLineup);
+  const me = useQuery(api.profiles.me, isAuthenticated ? {} : "skip");
   const [error, setError] = useState("");
 
   if (event === undefined) {
@@ -73,6 +75,17 @@ export function EventPage({ id }: { id: string }) {
     }
   }
 
+  const onLineup = me != null && event.lineup.some((b) => b.username === me.username);
+  async function onLeave() {
+    if (!window.confirm("Take your band off this lineup? The venue can't add you back to this gig.")) return;
+    setError("");
+    try {
+      await leave({ eventId: event!.id });
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+
   return (
     <Box title={event.title}>
       {event.cancelled && (
@@ -87,6 +100,25 @@ export function EventPage({ id }: { id: string }) {
         <br />
         Hosted by <Link href={`/${event.host.username}`}>{event.host.displayName}</Link>
       </p>
+      {event.lineup.length > 0 && (
+        <p data-event-lineup="">
+          <b>Lineup:</b>{" "}
+          {event.lineup.map((band, i) => (
+            <span key={band.username}>
+              {i > 0 && ", "}
+              <Link href={`/${band.username}`}>{band.displayName}</Link>
+            </span>
+          ))}
+          {onLineup && !started && (
+            <>
+              {" "}
+              <button type="button" onClick={() => void onLeave()}>
+                Take us off this lineup
+              </button>
+            </>
+          )}
+        </p>
+      )}
       {event.imageUrl && (
         // eslint-disable-next-line @next/next/no-img-element -- arbitrary external image URLs
         <img className={styles.flyer} src={event.imageUrl} alt="" referrerPolicy="no-referrer" loading="lazy" />

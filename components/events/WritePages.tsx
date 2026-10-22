@@ -59,6 +59,7 @@ export function EditEvent({ id }: { id: string }) {
             city: event.city,
             description: event.description,
             imageUrl: event.imageUrl,
+            lineup: event.lineup.map((b) => b.username),
           }}
         />
       )}
