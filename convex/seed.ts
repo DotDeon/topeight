@@ -3,6 +3,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import rosterUsernames from "../scripts/seed-roster.json";
 import { friendshipPair } from "./lib/friendships";
+import { toUtc } from "../lib/eventTime";
 import { syncMediaFlags } from "./lib/media";
 
 /**
@@ -24,7 +25,7 @@ type SeedShow = { inDays: number; venue: string; city: string };
 type SeedProfile = {
   username: string;
   displayName: string;
-  kind: "fan" | "artist";
+  kind: Doc<"profiles">["kind"];
   birthDate: string;
   headline: string;
   location: string;
@@ -36,6 +37,8 @@ type SeedProfile = {
   band?: NonNullable<Doc<"profiles">["band"]>;
   tracks?: SeedTrack[];
   shows?: SeedShow[];
+  address?: string;
+  website?: string;
 };
 
 const NONE = "";
@@ -260,7 +263,43 @@ const FANS: SeedProfile[] = [
   },
 ];
 
-const ROSTER = [...ARTISTS, ...FANS];
+const VENUE: SeedProfile = {
+  username: "lanternroom",
+  displayName: "The Lantern Room",
+  kind: "venue",
+  birthDate: "1990-01-01",
+  headline: "Live music five nights a week",
+  location: "Cape Town",
+  address: "12 Lower Main Road, Observatory",
+  aboutMe: "A small room with a big PA. Doors at 8, bands at 9.",
+  whoIdLikeToMeet: "Bands who want a Friday slot.",
+};
+
+const LABEL: SeedProfile = {
+  username: "saltriver",
+  displayName: "Salt River Records",
+  kind: "label",
+  birthDate: "1990-01-01",
+  headline: "Independent since 2019",
+  location: "Cape Town, South Africa",
+  genre: "Indie, dream pop",
+  website: "https://example.com/saltriver",
+  aboutMe: "We press small runs of vinyl for bands we love.",
+  whoIdLikeToMeet: "Bands with songs and no label.",
+};
+
+/** [from, band]: the venue's roster and the label's bands, all accepted. */
+const LINKS: Array<[SeedProfile, string]> = [
+  [VENUE, "lowveld"],
+  [VENUE, "nightjar"],
+  [LABEL, "papermoons"],
+  [LABEL, "lowveld"],
+];
+
+/** One venue gig, `inDays` from the run, with bands in playing order. */
+const GIG = { title: "Friday at the Lantern", inDays: 9, time: "21:00", lineup: ["nightjar", "lowveld"] };
+
+const ROSTER = [...ARTISTS, ...FANS, VENUE, LABEL];
 
 /** Usernames shared with scripts/seed-media.mjs, which uploads each one's avatar. */
 export const ROSTER_USERNAMES: string[] = rosterUsernames;
@@ -338,6 +377,8 @@ export const run = internalMutation({
         whoIdLikeToMeet: p.whoIdLikeToMeet,
         interests: p.interests,
         band: p.band,
+        address: p.address,
+        website: p.website,
         photoKey: `seed/avatar-${p.username}.png`,
         hasPhoto: true,
       };
@@ -410,7 +451,7 @@ export const run = internalMutation({
     for (const profileId of ids.values()) await syncMediaFlags(ctx, profileId);
 
     // Friendships: every artist with every other artist, every fan with every
-    // artist, and every fan with every other fan.
+    // artist, every fan with every other fan, and the venue and label with every artist.
     const pairs = new Set<string>();
     const wanted: Array<[string, string]> = [];
     const add = (x: string, y: string) => {
@@ -423,6 +464,8 @@ export const run = internalMutation({
     for (const a of ARTISTS) for (const b of ARTISTS) add(a.username, b.username);
     for (const f of FANS) for (const a of ARTISTS) add(f.username, a.username);
     for (const a of FANS) for (const b of FANS) add(a.username, b.username);
+    // The venue and the label know every band.
+    for (const v of [VENUE, LABEL]) for (const a of ARTISTS) add(v.username, a.username);
     for (const [x, y] of wanted) {
       const pair = friendshipPair(id(x), id(y));
       const exists = await ctx.db
@@ -461,6 +504,70 @@ export const run = internalMutation({
       // Bulletins expire after 10 days, so a rerun replaces them to keep them fresh.
       for (const b of rows) if (b.body === body) await ctx.db.delete(b._id);
       await ctx.db.insert("bulletins", { authorId, body, hidden: false });
+    }
+
+    // Venue and label links, then the venue's gig, replaced each run so its date stays ahead.
+    for (const [from, band] of LINKS) {
+      if (!seeded(from.username) || !seeded(band)) continue;
+      const fromId = id(from.username);
+      const artistId = id(band);
+      const old = await ctx.db
+        .query("links")
+        .withIndex("by_pair", (q) => q.eq("fromId", fromId).eq("artistId", artistId))
+        .first();
+      if (old === null) {
+        await ctx.db.insert("links", {
+          fromId,
+          artistId,
+          type: from.kind === "venue" ? "venue" : "label",
+          status: "accepted",
+          respondedAt: now,
+        });
+      } else if (old.status !== "accepted") {
+        await ctx.db.patch(old._id, { status: "accepted", respondedAt: now });
+      }
+    }
+    if (seeded(VENUE.username)) {
+      const hostId = id(VENUE.username);
+      const oldGigs = await ctx.db
+        .query("events")
+        .withIndex("by_host", (q) => q.eq("hostId", hostId))
+        .collect();
+      for (const e of oldGigs) {
+        const rows = await ctx.db
+          .query("gigArtists")
+          .withIndex("by_event", (q) => q.eq("eventId", e._id))
+          .collect();
+        for (const r of rows) await ctx.db.delete(r._id);
+        const rsvps = await ctx.db
+          .query("rsvps")
+          .withIndex("by_event_status", (q) => q.eq("eventId", e._id))
+          .collect();
+        for (const r of rsvps) await ctx.db.delete(r._id);
+        await ctx.db.delete(e._id);
+      }
+      const timeZone = "Africa/Johannesburg";
+      const localDate = new Date(now + GIG.inDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const startsAt = toUtc(localDate, GIG.time, timeZone);
+      const eventId = await ctx.db.insert("events", {
+        hostId,
+        title: GIG.title,
+        localDate,
+        localTime: GIG.time,
+        timeZone,
+        startsAt,
+        venue: VENUE.displayName,
+        city: VENUE.location,
+        cityKey: VENUE.location.trim().toLowerCase(),
+        description: "Two bands, one room. R80 at the door.",
+        cancelled: false,
+        hidden: false,
+        goingCount: 0,
+        maybeCount: 0,
+      });
+      for (const [position, band] of GIG.lineup.filter(seeded).entries()) {
+        await ctx.db.insert("gigArtists", { eventId, hostId, artistId: id(band), position, startsAt });
+      }
     }
 
     return null;

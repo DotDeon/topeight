@@ -83,6 +83,10 @@ export default function globalSetup() {
   process.env.E2E_ADMIN_PASSWORD = adminPassword;
   const bannedPassword = randomBytes(18).toString("base64url");
   process.env.E2E_BANNED_PASSWORD = bannedPassword;
+  const venuePassword = randomBytes(18).toString("base64url");
+  process.env.E2E_VENUE_PASSWORD = venuePassword;
+  const bandPassword = randomBytes(18).toString("base64url");
+  process.env.E2E_BAND_PASSWORD = bandPassword;
   const convex = (...args: string[]) => execFileSync("npx", ["convex", ...args], { stdio: "inherit" });
   convex("env", "set", ...envFile, "TOPEIGHT_TEST_FIXTURES", "1");
 
@@ -135,4 +139,5 @@ export default function globalSetup() {
   convex("run", ...envFile, "testing:seedCommenterFriendship");
   convex("run", ...envFile, "testing:seedEditorBlock");
   convex("run", ...envFile, "testing:seedMailFixture");
+  convex("run", ...envFile, "testing:seedVenueFixture", JSON.stringify({ venuePassword, bandPassword }));
 }

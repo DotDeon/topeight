@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { rateLimiter } from "./lib/limits";
 import { clearPick } from "./lib/profileSongs";
@@ -259,6 +259,8 @@ export const COMMENTER_EMAIL = "e2e-commenter@fixture.invalid";
 export const EDITOR_EMAIL = "e2e-editor@fixture.invalid";
 export const ADMIN_EMAIL = "e2e-admin@fixture.invalid";
 export const BANNED_EMAIL = "e2e-banned@fixture.invalid";
+export const VENUE_EMAIL = "e2e-venue@fixture.invalid";
+export const BAND_EMAIL = "e2e-band@fixture.invalid";
 
 /**
  * Creates or resets a password-login fixture. Refuses to touch any user whose
@@ -266,7 +268,7 @@ export const BANNED_EMAIL = "e2e-banned@fixture.invalid";
  */
 async function seedLoginFixture(
   ctx: MutationCtx,
-  f: { username: string; displayName: string; email: string; kind: "fan" | "artist"; password: string; banned?: boolean },
+  f: { username: string; displayName: string; email: string; kind: Doc<"profiles">["kind"]; password: string; banned?: boolean },
 ) {
   if (process.env.TOPEIGHT_TEST_FIXTURES !== "1") {
     throw new ConvexError("Set TOPEIGHT_TEST_FIXTURES=1 on this deployment to seed test fixtures");
@@ -775,6 +777,68 @@ export const resetPrivateFixture = internalMutation({
       .withIndex("by_pair", (q) => q.eq("a", pair.a).eq("b", pair.b))
       .first();
     if (row === null) await ctx.db.insert("friendships", pair);
+    return null;
+  },
+});
+
+/**
+ * Fixture for e2e/venues.spec.ts: a venue (e2evenue, in Cape Town) and a band
+ * (e2eband) who can log in, with no link between them, no venue events and
+ * fresh request and event limits. Safe to call again.
+ */
+export const seedVenueFixture = internalMutation({
+  args: { venuePassword: v.string(), bandPassword: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { venuePassword, bandPassword }) => {
+    await seedLoginFixture(ctx, {
+      username: "e2evenue",
+      displayName: "E2E Venue",
+      email: VENUE_EMAIL,
+      kind: "venue",
+      password: venuePassword,
+    });
+    await seedLoginFixture(ctx, {
+      username: "e2eband",
+      displayName: "E2E Band",
+      email: BAND_EMAIL,
+      kind: "artist",
+      password: bandPassword,
+    });
+    // seedLoginFixture just checked both are fixtures.
+    const byName = async (username: string) =>
+      (await ctx.db
+        .query("profiles")
+        .withIndex("by_username", (q) => q.eq("username", username))
+        .unique())!;
+    const venue = await byName("e2evenue");
+    const band = await byName("e2eband");
+    await ctx.db.patch(venue._id, { location: "Cape Town" });
+    for (const [from, artist] of [
+      [venue._id, band._id],
+      [band._id, venue._id],
+    ] as const) {
+      const rows = await ctx.db
+        .query("links")
+        .withIndex("by_pair", (q) => q.eq("fromId", from).eq("artistId", artist))
+        .take(10);
+      for (const r of rows) await ctx.db.delete(r._id);
+    }
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_host", (q) => q.eq("hostId", venue._id))
+      .take(100);
+    for (const e of events) {
+      const rows = await ctx.db
+        .query("gigArtists")
+        .withIndex("by_event", (q) => q.eq("eventId", e._id))
+        .take(20);
+      for (const r of rows) await ctx.db.delete(r._id);
+      await ctx.db.delete(e._id);
+    }
+    await rateLimiter.reset(ctx, "linkRequest", { key: venue._id });
+    for (const name of ["eventCreate", "eventEdit"] as const) {
+      await rateLimiter.reset(ctx, name, { key: venue._id });
+    }
     return null;
   },
 });
