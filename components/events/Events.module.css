@@ -73,3 +73,12 @@
   background: #ff9933;
   color: #fff;
 }
+
+.lineupPick {
+  display: block;
+}
+
+.lineupOrder {
+  margin: 4px 0 0;
+  padding-left: 20px;
+}

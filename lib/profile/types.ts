@@ -3,12 +3,15 @@
  * of imports so convex/ can use the same types (convex/ has no "@/" alias).
  */
 
+/** Same values as convex/lib/kinds.ts profileKind. */
+export type ProfileKind = "fan" | "artist" | "venue" | "label";
+
 /** Same shape as convex/lib/cards.ts PublicCard, re-declared to keep lib/ free of convex/. */
 export type PublicCard = {
   username: string;
   displayName: string;
   photoUrl: string | null;
-  kind: "fan" | "artist";
+  kind: ProfileKind;
   online?: boolean;
 };
 
@@ -29,7 +32,7 @@ export type RestrictedProfile = {
 export type PublicProfile = {
   username: string;
   displayName: string;
-  kind: "fan" | "artist";
+  kind: ProfileKind;
   headline: string;
   /** The mood line. `icon` is one of lib/moods.ts MOOD_ICONS. */
   mood?: { icon: string; text: string } | null;
@@ -57,6 +60,10 @@ export type PublicProfile = {
     recordLabel: string;
     labelType: string;
   };
+  /** Venues only. */
+  address?: string;
+  /** Labels only. Checked as http(s) again before it becomes a link. */
+  website?: string;
   photoUrl: string | null;
   profileViews: number;
   lastLoginAt: number;
@@ -82,6 +89,16 @@ export type PublicProfile = {
    * null until the usercontent route merges in a signed one.
    */
   profileSong?: { id: string; title: string; url: string | null; artist: PublicCard } | null;
-  shows: Array<{ date: string; venue: string; city: string }>;
+  /**
+   * Artists: upcoming shows, soonest first. Typed shows have only date, venue
+   * and city. Gigs a venue put the band on also carry the event id and the venue.
+   */
+  shows: Array<{ date: string; venue: string; city: string; eventId?: string; venueUser?: PublicCard }>;
+  /** Venues: upcoming gigs, soonest first. `date` and `time` are the venue's local ones. */
+  gigs?: Array<{ eventId: string; title: string; date: string; time: string; cancelled: boolean; lineup: PublicCard[] }>;
+  /** Venues and labels: the bands that accepted their request. */
+  roster?: PublicCard[];
+  /** Artists: the labels they accepted. */
+  labels?: PublicCard[];
   custom: { css: string; html: string; js: string };
 };

@@ -4,7 +4,7 @@ import { useAction, useConvexAuth } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "@/convex/_generated/api";
-import { clampFrameHeight, navigatePath, parseBridgeMessage } from "@/lib/bridge";
+import { clampFrameHeight, eventPath, navigatePath, parseBridgeMessage } from "@/lib/bridge";
 import type { BridgeAction } from "@/lib/bridge-protocol";
 
 const INITIAL_HEIGHT = 900;
@@ -121,6 +121,7 @@ export function ProfileFrame({
       if (!msg) return;
       if (msg.type === "topeight:resize") setHeight(clampFrameHeight(msg.height));
       else if (msg.type === "topeight:navigate") router.push(navigatePath(msg));
+      else if (msg.type === "topeight:openEvent") router.push(eventPath(msg.eventId));
       else if (msg.type === "topeight:reportTrack") onReportTrack(msg.trackId);
       else if (msg.type === "topeight:pickSong") onPickSong(msg.trackId);
       else if (msg.type === "topeight:playVideo") {

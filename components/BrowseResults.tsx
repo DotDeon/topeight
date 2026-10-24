@@ -2,13 +2,14 @@
 
 import { api } from "@/convex/_generated/api";
 import { PagedGrid } from "./PagedGrid";
+import type { ProfileKind } from "@/lib/profile/types";
 
 export function BrowseResults({
   kind,
   location,
   genre,
 }: {
-  kind?: "fan" | "artist";
+  kind?: ProfileKind;
   location: string;
   genre: string;
 }) {

@@ -22,10 +22,15 @@ import { MAX_SCAN, rateLimiter } from "./lib/limits";
 import { isOnline, onlineAsOf } from "./lib/presence";
 import { moodIcon } from "./lib/moods";
 import { MAX_TRACKS, photoUrl, syncMediaFlags } from "./lib/media";
+import { acceptedLinks } from "./lib/links";
 import { profileSongFor } from "./lib/profileSongs";
+import { lineupCards } from "./events";
+import { canUseCode, profileKind } from "./lib/kinds";
 
 const MIN_AGE = 13;
 const MAX_DISPLAY_NAME = 50;
+const MAX_ADDRESS = 500;
+const MAX_WEBSITE = 200;
 
 function blankProfileFields() {
   return {
@@ -81,7 +86,7 @@ export const createMyProfile = mutation({
   args: {
     username: v.string(),
     displayName: v.string(),
-    kind: v.union(v.literal("fan"), v.literal("artist")),
+    kind: profileKind,
     birthDate: v.string(),
   },
   returns: v.id("profiles"),
@@ -199,9 +204,18 @@ const bandValidator = v.object({
   labelType: v.string(),
 });
 
+function cleanWebsite(raw: string): string {
+  const value = clean(raw, "Website", MAX_WEBSITE);
+  if (value !== "" && !/^https?:\/\/\S+$/i.test(value)) {
+    throw new ConvexError("Website must start with http:// or https://");
+  }
+  return value;
+}
+
 /**
  * Saves the editable profile fields, trimmed and length checked. Fans keep
- * gender and interests, artists keep genre and band; the other group is ignored.
+ * gender and interests, artists keep genre and band, venues keep an address
+ * and labels keep genre and website. Fields for other kinds are ignored.
  */
 export const updateDetails = mutation({
   args: {
@@ -214,6 +228,8 @@ export const updateDetails = mutation({
     genre: v.optional(v.string()),
     interests: v.optional(interestsValidator),
     band: v.optional(bandValidator),
+    address: v.optional(v.string()),
+    website: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -240,6 +256,11 @@ export const updateDetails = mutation({
               recordLabel: clean(b.recordLabel, "Record label", 500),
               labelType: clean(b.labelType, "Label type", 500),
             };
+    } else if (me.kind === "venue") {
+      patch.address = args.address === undefined ? undefined : clean(args.address, "Address", MAX_ADDRESS);
+    } else if (me.kind === "label") {
+      patch.genre = args.genre === undefined ? undefined : clean(args.genre, "Genre", 50);
+      patch.website = args.website === undefined ? undefined : cleanWebsite(args.website);
     } else {
       patch.gender = args.gender === undefined ? undefined : clean(args.gender, "Gender", 50);
       const i = args.interests;
@@ -266,7 +287,7 @@ export const updateCustomCode = mutation({
   returns: v.null(),
   handler: async (ctx, { css, html, js }) => {
     const me = await requireProfile(ctx);
-    if (me.kind !== "artist" && (html !== "" || js !== "")) {
+    if (!canUseCode(me.kind) && (html !== "" || js !== "")) {
       throw new ConvexError("Fans can use CSS only");
     }
     const encoder = new TextEncoder();
@@ -307,14 +328,14 @@ export const setMood = mutation({
 
 /**
  * Fans only: "Private profile: only my friends see my full page". 30 an hour.
- * Artists can't, because an artist page exists to be heard.
+ * Artists, venues and labels can't: their pages exist to be found.
  */
 export const setPrivate = mutation({
   args: { value: v.boolean() },
   returns: v.null(),
   handler: async (ctx, { value }) => {
     const me = await requireProfile(ctx);
-    if (me.kind === "artist") throw new ConvexError("Artists can't make their page private");
+    if (me.kind !== "fan") throw new ConvexError("Only fans can make their page private");
     const { ok } = await rateLimiter.limit(ctx, "privacy", { key: me._id });
     if (!ok) throw new ConvexError("Slow down");
     await ctx.db.patch(me._id, { private: value });
@@ -322,12 +343,13 @@ export const setPrivate = mutation({
   },
 });
 
-/** Switches a fan to an artist profile, which also makes it public. Does nothing else for artists. */
+/** Switches a fan to an artist profile, which also makes it public. Does nothing else for artists. Venues and labels can't switch. */
 export const becomeArtist = mutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
     const me = await requireProfile(ctx);
+    if (me.kind === "venue" || me.kind === "label") throw new ConvexError("Only fans can switch to artist");
     if (me.kind !== "artist" || me.private !== undefined) {
       await ctx.db.patch(me._id, { kind: "artist", private: undefined });
     }
@@ -383,7 +405,7 @@ async function profileComments(ctx: QueryCtx, owner: Doc<"profiles">): Promise<P
 
 export type ProfileHeader = {
   displayName: string;
-  kind: "fan" | "artist";
+  kind: Doc<"profiles">["kind"];
   banned: boolean;
   /** The owner turned Private profile on. */
   private: boolean;
@@ -446,7 +468,7 @@ export const profileSongForReport = query({
 type ProfileResult = PublicProfile | RestrictedProfile | { unavailable: true } | null;
 
 function ageOf(p: Doc<"profiles">): { age?: number } {
-  return p.kind === "artist" || !isCalendarDate(p.birthDate) ? {} : { age: ageOn(p.birthDate, new Date()) };
+  return p.kind !== "fan" || !isCalendarDate(p.birthDate) ? {} : { age: ageOn(p.birthDate, new Date()) };
 }
 
 /**
@@ -474,6 +496,71 @@ async function profileResult(
     };
   }
   return await fullProfile(ctx, p, asOf);
+}
+
+/**
+ * What venue and label links put on a page. Venues: upcoming gigs and the
+ * roster. Labels: the roster. Artists: their labels, and upcoming gigs venues
+ * put them on, as shows. Hidden and cancelled gigs and banned venues are left out
+ * of a band's shows; the venue's own gig guide flags cancelled ones.
+ */
+async function profileLinks(
+  ctx: QueryCtx,
+  p: Doc<"profiles">,
+): Promise<{
+  gigShows: PublicProfile["shows"];
+  gigs?: NonNullable<PublicProfile["gigs"]>;
+  roster?: PublicCard[];
+  labels?: PublicCard[];
+}> {
+  const now = Date.now();
+  if (p.kind === "venue") {
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_host", (q) => q.eq("hostId", p._id).gte("startsAt", now))
+      .take(MAX_SHOWS);
+    const gigs: NonNullable<PublicProfile["gigs"]> = [];
+    for (const e of events) {
+      if (e.hidden) continue;
+      gigs.push({
+        eventId: e._id,
+        title: e.title,
+        date: e.localDate,
+        time: e.localTime,
+        cancelled: e.cancelled,
+        lineup: await lineupCards(ctx, e._id),
+      });
+    }
+    const roster = (await acceptedLinks(ctx, p, "from")).map(({ other }) => toPublicCard(other));
+    return { gigShows: [], gigs, roster };
+  }
+  if (p.kind === "label") {
+    return { gigShows: [], roster: (await acceptedLinks(ctx, p, "from")).map(({ other }) => toPublicCard(other)) };
+  }
+  if (p.kind !== "artist") return { gigShows: [] };
+
+  const labels = (await acceptedLinks(ctx, p, "artist"))
+    .filter(({ link }) => link.type === "label")
+    .map(({ other }) => toPublicCard(other));
+  const rows = await ctx.db
+    .query("gigArtists")
+    .withIndex("by_artist_start", (q) => q.eq("artistId", p._id).gte("startsAt", now))
+    .take(MAX_SHOWS);
+  const gigShows: PublicProfile["shows"] = [];
+  for (const row of rows) {
+    const event = await ctx.db.get(row.eventId);
+    if (event === null || event.hidden || event.cancelled) continue;
+    const venue = await ctx.db.get(event.hostId);
+    if (venue === null || venue.banned) continue;
+    gigShows.push({
+      date: event.localDate,
+      venue: event.venue,
+      city: event.city,
+      eventId: event._id,
+      venueUser: toPublicCard(venue),
+    });
+  }
+  return { gigShows, labels };
 }
 
 async function fullProfile(ctx: QueryCtx, p: Doc<"profiles">, asOf: number | undefined): Promise<PublicProfile> {
@@ -529,8 +616,10 @@ async function fullProfile(ctx: QueryCtx, p: Doc<"profiles">, asOf: number | und
     .query("shows")
     .withIndex("by_profile_date", (q) => q.eq("profileId", p._id).gte("date", today))
     .take(MAX_SHOWS);
+  const links = await profileLinks(ctx, p);
 
   const isArtist = p.kind === "artist";
+  const code = canUseCode(p.kind);
   return {
     username: p.username,
     displayName: p.displayName,
@@ -546,6 +635,8 @@ async function fullProfile(ctx: QueryCtx, p: Doc<"profiles">, asOf: number | und
     whoIdLikeToMeet: p.whoIdLikeToMeet,
     interests: p.interests,
     band: p.band,
+    ...(p.kind === "venue" ? { address: p.address ?? "" } : {}),
+    ...(p.kind === "label" ? { website: p.website ?? "" } : {}),
     photoUrl: photoUrl(p.photoKey),
     profileViews: (await statsFor(ctx, p._id))?.views ?? 0,
     lastLoginAt: p.lastLoginAt,
@@ -563,12 +654,18 @@ async function fullProfile(ctx: QueryCtx, p: Doc<"profiles">, asOf: number | und
       song === null
         ? null
         : { id: song.track._id, title: song.track.title, url: null, artist: toPublicCard(song.artist) },
-    shows: shows.map((s) => ({ date: s.date, venue: s.venue, city: s.city })),
+    shows: [...shows.map((s) => ({ date: s.date, venue: s.venue, city: s.city })), ...links.gigShows]
+      // Stable, so a typed show stays ahead of a gig on the same date.
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, MAX_SHOWS),
+    ...(links.gigs ? { gigs: links.gigs } : {}),
+    ...(links.roster ? { roster: links.roster } : {}),
+    ...(links.labels ? { labels: links.labels } : {}),
     // Fans get CSS only. The renderer drops fan html and js too.
     custom: {
       css: p.customCss,
-      html: isArtist ? p.customHtml : "",
-      js: isArtist ? p.customJs : "",
+      html: code ? p.customHtml : "",
+      js: code ? p.customJs : "",
     },
   };
 }

@@ -204,3 +204,13 @@ describe("me and touchLogin", () => {
     expect(profile!.lastLoginAt).toBe(NOW.getTime() + 60_000);
   });
 });
+
+describe("createMyProfile kinds", () => {
+  test.each(["venue", "label"] as const)("stores a %s profile", async (kind) => {
+    const t = setup();
+    const user = await signedInUser(t);
+    const id = await user.mutation(api.profiles.createMyProfile, { ...base, kind });
+    const p = await t.run((ctx) => ctx.db.get(id));
+    expect(p!.kind).toBe(kind);
+  });
+});

@@ -7,6 +7,7 @@ import { areFriends, isBlockedEitherWay, profileForUser, requireProfile } from "
 import { toPublicCard, type PublicCard } from "./lib/cards";
 import { rateLimiter } from "./lib/limits";
 import { MAX_MESSAGE, MAX_SUBJECT, checkBody, checkLinks } from "./lib/posting";
+import { profileKind } from "./lib/kinds";
 
 const PAGE_SIZE = 25;
 /** Most inbox rows one page reads while skipping hidden ones: three pages' worth. */
@@ -44,7 +45,7 @@ const cardValidator = v.object({
   username: v.string(),
   displayName: v.string(),
   photoUrl: v.union(v.string(), v.null()),
-  kind: v.union(v.literal("fan"), v.literal("artist")),
+  kind: profileKind,
 });
 const pageValidator = v.object({
   page: v.array(

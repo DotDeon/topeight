@@ -16,7 +16,8 @@ const encoder = new TextEncoder();
 const bytes = (s: string) => encoder.encode(s).length;
 
 export function CodeEditor({ me }: { me: Doc<"profiles"> }) {
-  const artist = me.kind === "artist";
+  // Artists, venues and labels get HTML and JS. Fans get CSS only.
+  const artist = me.kind !== "fan";
   const save = useMutation(api.profiles.updateCustomCode);
   const asOf = useMinute();
   const profile = useQuery(api.profiles.getPublicProfile, { username: me.username, asOf });

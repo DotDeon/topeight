@@ -8,9 +8,9 @@ import { Box } from "../Box";
 import styles from "./Edit.module.css";
 import { errorOrMessage } from "./shared";
 
-type Person = { id: Id<"profiles">; card: { displayName: string; username: string; photoUrl: string | null } };
+export type Person = { id: Id<"profiles">; card: { displayName: string; username: string; photoUrl: string | null } };
 
-function PersonList({
+export function PersonList({
   people,
   empty,
   action,

@@ -8,6 +8,7 @@ import { rateLimiter } from "./lib/limits";
 import { photoUrl } from "./lib/media";
 import { checkBody, checkLinks } from "./lib/posting";
 import { profileByUsername } from "./profiles";
+import { profileKind } from "./lib/kinds";
 
 const MIN_NAME = 3;
 const MAX_NAME = 60;
@@ -43,7 +44,7 @@ const cardValidator = v.object({
   username: v.string(),
   displayName: v.string(),
   photoUrl: v.union(v.string(), v.null()),
-  kind: v.union(v.literal("fan"), v.literal("artist")),
+  kind: profileKind,
 });
 
 const summaryFields = {

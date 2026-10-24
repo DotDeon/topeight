@@ -36,6 +36,18 @@ function Row({ item }: { item: Item }) {
       <br />
       {formatEventTime(item.startsAt, item.timeZone)}
       <br />
+      {item.lineup.length > 0 && (
+        <>
+          With{" "}
+          {item.lineup.map((band, i) => (
+            <span key={band.username}>
+              {i > 0 && ", "}
+              <Link href={`/${band.username}`}>{band.displayName}</Link>
+            </span>
+          ))}
+          <br />
+        </>
+      )}
       {item.venue}, {item.city}. Hosted by <Link href={`/${item.host.username}`}>{item.host.displayName}</Link>,{" "}
       {item.going} going
     </div>

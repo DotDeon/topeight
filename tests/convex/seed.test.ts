@@ -59,6 +59,41 @@ describe("seed.run", () => {
     expect(snapshot.trackKeys.every((k) => /^seed\/silence-[123]\.mp3$/.test(k))).toBe(true);
   });
 
+  test("adds a venue and a label, linked to bands, and one upcoming venue gig with a lineup", async () => {
+    const t = setup();
+    await t.mutation(internal.profiles.ensureHouse, {});
+    await t.mutation(internal.seed.run, {});
+    await t.mutation(internal.seed.run, {});
+    const snap = await t.run(async (ctx) => {
+      const all = await ctx.db.query("profiles").collect();
+      const venue = all.find((p) => p.kind === "venue")!;
+      const label = all.find((p) => p.kind === "label")!;
+      const links = await ctx.db.query("links").collect();
+      const events = (await ctx.db.query("events").collect()).filter((e) => e.hostId === venue._id);
+      const lineup = await ctx.db.query("gigArtists").collect();
+      return {
+        venues: all.filter((p) => p.kind === "venue").length,
+        labels: all.filter((p) => p.kind === "label").length,
+        venueLinks: links.filter((l) => l.fromId === venue._id && l.status === "accepted").length,
+        labelLinks: links.filter((l) => l.fromId === label._id && l.status === "accepted").length,
+        events: events.length,
+        upcoming: events.every((e) => e.startsAt > Date.now()),
+        venueName: events[0]?.venue === venue.displayName,
+        lineup: lineup.filter((r) => r.eventId === events[0]?._id).length,
+      };
+    });
+    expect(snap).toEqual({
+      venues: 1,
+      labels: 1,
+      venueLinks: 2,
+      labelLinks: 2,
+      events: 1,
+      upcoming: true,
+      venueName: true,
+      lineup: 2,
+    });
+  });
+
   test("friendships are unique pairs", async () => {
     const t = setup();
     await t.mutation(internal.seed.run, {});
@@ -81,7 +116,8 @@ describe("seed.run", () => {
       return { fans: fans.length, rows: (await ctx.db.query("friendships").collect()).length };
     });
     // 8 fans choose 2 = 28, 5 artists choose 2 = 10, 8 x 5 fan-artist = 40.
-    expect(n.rows).toBe(28 + 10 + 40);
+    // Plus the venue and the label with each of the 5 artists.
+    expect(n.rows).toBe(28 + 10 + 40 + 10);
   });
 
   test("track size and roster match the files", async () => {

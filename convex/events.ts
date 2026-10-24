@@ -8,7 +8,9 @@ import { isBlockedEitherWay, profileForUser, requireProfile } from "./lib/access
 import { toPublicCard, type PublicCard } from "./lib/cards";
 import { rateLimiter } from "./lib/limits";
 import { checkBody, checkLinks } from "./lib/posting";
+import { isLinked } from "./lib/links";
 import { countField } from "./lib/rsvps";
+import { profileKind } from "./lib/kinds";
 
 const MAX_TITLE = 100;
 const MAX_PLACE = 100;
@@ -24,6 +26,8 @@ const GRID_READ = 100;
 /** Upcoming hosted events and RSVPs myEvents reads. */
 const MY_HOSTED = 50;
 const MY_RSVPS = 200;
+/** Most bands on one venue gig. */
+export const MAX_LINEUP = 10;
 
 type Ctx = QueryCtx | MutationCtx;
 type Status = "going" | "maybe";
@@ -32,7 +36,7 @@ const cardValidator = v.object({
   username: v.string(),
   displayName: v.string(),
   photoUrl: v.union(v.string(), v.null()),
-  kind: v.union(v.literal("fan"), v.literal("artist")),
+  kind: profileKind,
 });
 const statusValidator = v.union(v.literal("going"), v.literal("maybe"));
 
@@ -47,6 +51,8 @@ const eventItem = v.object({
   host: cardValidator,
   going: v.number(),
   cancelled: v.boolean(),
+  /** Venue gigs: the bands playing, in order. Empty for other events. */
+  lineup: v.array(cardValidator),
 });
 const showItem = v.object({
   kind: v.literal("show"),
@@ -71,6 +77,7 @@ export type EventItem = {
   host: PublicCard;
   going: number;
   cancelled: boolean;
+  lineup: PublicCard[];
 };
 export type ShowItem = {
   kind: "show";
@@ -101,6 +108,7 @@ export type EventView = {
   imageUrl?: string;
   cancelled: boolean;
   host: PublicCard;
+  lineup: PublicCard[];
   going: number;
   maybe: number;
   /** Up to 24 members going. */
@@ -197,7 +205,75 @@ async function ownEvent(ctx: MutationCtx, me: Doc<"profiles">, id: Id<"events">)
   return event;
 }
 
-function toEventItem(event: Doc<"events">, host: Doc<"profiles">): EventItem {
+/** The lineup for an event, read only when a venue hosts it. Other hosts can't have one. */
+async function hostLineup(ctx: Ctx, event: Doc<"events">, host: Doc<"profiles">): Promise<PublicCard[]> {
+  return host.kind === "venue" ? await lineupCards(ctx, event._id) : [];
+}
+
+/** A gig's unbanned bands in lineup order. Empty for events that aren't venue gigs. */
+export async function lineupCards(ctx: Ctx, eventId: Id<"events">): Promise<PublicCard[]> {
+  const rows = await ctx.db
+    .query("gigArtists")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .take(MAX_LINEUP);
+  const cards: PublicCard[] = [];
+  for (const row of rows) {
+    const band = await ctx.db.get(row.artistId);
+    if (band !== null && !band.banned) cards.push(toPublicCard(band));
+  }
+  return cards;
+}
+
+/**
+ * The checked lineup for a gig `me` hosts. Only venues may have one, every band
+ * must have accepted the venue's roster request, and none may be one that took
+ * itself off this gig.
+ */
+async function checkLineup(
+  ctx: MutationCtx,
+  me: Doc<"profiles">,
+  lineup: Id<"profiles">[],
+  optedOut: Id<"profiles">[],
+): Promise<Id<"profiles">[]> {
+  if (lineup.length === 0) return [];
+  if (me.kind !== "venue") throw new ConvexError("Only venues can add a lineup");
+  if (lineup.length > MAX_LINEUP) throw new ConvexError(`A lineup holds at most ${MAX_LINEUP} bands`);
+  const seen = new Set<Id<"profiles">>();
+  for (const id of lineup) {
+    if (seen.has(id) || optedOut.includes(id) || !(await isLinked(ctx, me._id, id))) {
+      throw new ConvexError("Only bands on your roster can play");
+    }
+    seen.add(id);
+  }
+  return lineup;
+}
+
+/** Replaces a gig's lineup rows. */
+async function writeLineup(ctx: MutationCtx, event: Doc<"events">, lineup: Id<"profiles">[]): Promise<void> {
+  const old = await ctx.db
+    .query("gigArtists")
+    .withIndex("by_event", (q) => q.eq("eventId", event._id))
+    .take(MAX_LINEUP * 2);
+  for (const row of old) await ctx.db.delete(row._id);
+  for (const [position, artistId] of lineup.entries()) {
+    await ctx.db.insert("gigArtists", {
+      eventId: event._id,
+      hostId: event.hostId,
+      artistId,
+      position,
+      startsAt: event.startsAt,
+    });
+  }
+}
+
+/** A venue's events are always at the venue: its name and the city on its profile. */
+function atVenue<A extends { venue: string; city: string }>(me: Doc<"profiles">, args: A): A {
+  if (me.kind !== "venue") return args;
+  if (me.location.trim() === "") throw new ConvexError("Add your city to your profile first");
+  return { ...args, venue: me.displayName, city: me.location };
+}
+
+function toEventItem(event: Doc<"events">, host: Doc<"profiles">, lineup: PublicCard[]): EventItem {
   return {
     kind: "event",
     id: event._id,
@@ -209,6 +285,7 @@ function toEventItem(event: Doc<"events">, host: Doc<"profiles">): EventItem {
     host: toPublicCard(host),
     going: event.goingCount,
     cancelled: event.cancelled,
+    lineup,
   };
 }
 
@@ -221,18 +298,21 @@ const eventArgs = {
   city: v.string(),
   description: v.string(),
   imageUrl: v.optional(v.string()),
+  /** Venues only: bands from the venue's roster, in playing order. */
+  lineup: v.optional(v.array(v.id("profiles"))),
 };
 
 /** Posts an event. Five a day; refused events cost no quota. */
 export const create = mutation({
   args: eventArgs,
   returns: v.id("events"),
-  handler: async (ctx, args) => {
+  handler: async (ctx, { lineup, ...args }) => {
     const me = await requireProfile(ctx);
-    const fields = checkEvent(me, args);
+    const fields = checkEvent(me, atVenue(me, args));
+    const bands = await checkLineup(ctx, me, lineup ?? [], []);
     const { ok } = await rateLimiter.limit(ctx, "eventCreate", { key: me._id });
     if (!ok) throw new ConvexError("Slow down");
-    return await ctx.db.insert("events", {
+    const id = await ctx.db.insert("events", {
       hostId: me._id,
       ...fields,
       cancelled: false,
@@ -240,6 +320,8 @@ export const create = mutation({
       goingCount: 0,
       maybeCount: 0,
     });
+    await writeLineup(ctx, (await ctx.db.get(id))!, bands);
+    return id;
   },
 });
 
@@ -247,13 +329,15 @@ export const create = mutation({
 export const update = mutation({
   args: { id: v.id("events"), ...eventArgs },
   returns: v.null(),
-  handler: async (ctx, { id, ...args }) => {
+  handler: async (ctx, { id, lineup, ...args }) => {
     const me = await requireProfile(ctx);
-    await ownEvent(ctx, me, id);
-    const fields = checkEvent(me, args);
+    const event = await ownEvent(ctx, me, id);
+    const fields = checkEvent(me, atVenue(me, args));
+    const bands = await checkLineup(ctx, me, lineup ?? [], event.optedOut ?? []);
     const { ok } = await rateLimiter.limit(ctx, "eventEdit", { key: me._id });
     if (!ok) throw new ConvexError("Slow down");
     await ctx.db.patch(id, fields);
+    await writeLineup(ctx, { ...event, ...fields }, bands);
     return null;
   },
 });
@@ -266,6 +350,32 @@ export const cancel = mutation({
     const me = await requireProfile(ctx);
     const event = await ownEvent(ctx, me, id);
     if (!event.cancelled) await ctx.db.patch(id, { cancelled: true });
+    return null;
+  },
+});
+
+/**
+ * A band takes itself off one gig's lineup. It stays on the venue's roster,
+ * and the venue can't add it back to this gig. Does nothing if it isn't on it.
+ * Throws once the gig has started.
+ */
+export const leaveLineup = mutation({
+  args: { eventId: v.id("events") },
+  returns: v.null(),
+  handler: async (ctx, { eventId }) => {
+    const me = await requireProfile(ctx);
+    const event = await ctx.db.get(eventId);
+    if (event === null) throw new ConvexError("Not found");
+    if (event.startsAt <= Date.now()) throw new ConvexError("Event has already started");
+    const rows = await ctx.db
+      .query("gigArtists")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .take(MAX_LINEUP * 2);
+    const mine = rows.filter((r) => r.artistId === me._id);
+    if (mine.length === 0) return null;
+    for (const row of mine) await ctx.db.delete(row._id);
+    const optedOut = event.optedOut ?? [];
+    if (!optedOut.includes(me._id)) await ctx.db.patch(eventId, { optedOut: [...optedOut, me._id] });
     return null;
   },
 });
@@ -333,6 +443,7 @@ export const get = query({
       imageUrl: v.optional(v.string()),
       cancelled: v.boolean(),
       host: cardValidator,
+      lineup: v.array(cardValidator),
       going: v.number(),
       maybe: v.number(),
       attendees: v.array(cardValidator),
@@ -384,6 +495,7 @@ export const get = query({
       ...(event.imageUrl ? { imageUrl: event.imageUrl } : {}),
       cancelled: event.cancelled,
       host: toPublicCard(host),
+      lineup: await lineupCards(ctx, event._id),
       going: event.goingCount,
       maybe: event.maybeCount,
       attendees,
@@ -471,7 +583,8 @@ export const upcoming = query({
       if (e.hidden) continue;
       const host = await profile(e.hostId);
       if (host === null) continue;
-      merged.push(toEventItem(e, host));
+      // The lineup is read below, only for events that make the page.
+      merged.push(toEventItem(e, host, []));
     }
     for (const s of showRows) {
       if (cityKey && cityKeyOf(s.city) !== cityKey) continue;
@@ -503,6 +616,9 @@ export const upcoming = query({
     });
 
     const items = ready.slice(0, PAGE_SIZE);
+    for (const item of items) {
+      if (item.kind === "event" && item.host.kind === "venue") item.lineup = await lineupCards(ctx, item.id);
+    }
     if (ready.length <= PAGE_SIZE) {
       if (limit === Infinity) return { items, nextCursor: null };
       // Everything before the cut is shown. An inclusive page moves past its instant.
@@ -538,7 +654,7 @@ export const myEvents = query({
       .withIndex("by_host", (q) => q.eq("hostId", me._id).gte("startsAt", now))
       .take(MY_HOSTED);
     for (const e of hosted) {
-      if (!e.hidden) out.set(e._id, { ...toEventItem(e, me), role: "host" });
+      if (!e.hidden) out.set(e._id, { ...toEventItem(e, me, await hostLineup(ctx, e, me)), role: "host" });
     }
     const answered = await ctx.db
       .query("rsvps")
@@ -549,7 +665,10 @@ export const myEvents = query({
       if (out.has(r.eventId)) continue;
       const found = await visibleEvent(ctx, r.eventId);
       if (found === null || found.event.startsAt < now) continue;
-      out.set(r.eventId, { ...toEventItem(found.event, found.host), role: r.status });
+      out.set(r.eventId, {
+        ...toEventItem(found.event, found.host, await hostLineup(ctx, found.event, found.host)),
+        role: r.status,
+      });
     }
     return [...out.values()].sort((a, b) => a.startsAt - b.startsAt);
   },

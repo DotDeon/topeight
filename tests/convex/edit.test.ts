@@ -211,3 +211,72 @@ describe("myTracks", () => {
     expect(rows[0].autoplay).toBe(true);
   });
 });
+
+describe("venue and label profiles", () => {
+  const details = {
+    displayName: "The Mercury",
+    headline: "",
+    location: "Cape Town",
+    aboutMe: "",
+    whoIdLikeToMeet: "",
+  };
+
+  test("a venue or label can save html and js", async () => {
+    const t = setup();
+    for (const kind of ["venue", "label"] as const) {
+      const id = await addProfile(t, kind, { kind });
+      await (await as(t, id)).mutation(api.profiles.updateCustomCode, { css: "a{}", html: "<b>x</b>", js: "1" });
+      const p = await t.run((ctx) => ctx.db.get(id));
+      expect(p!.customHtml).toBe("<b>x</b>");
+      expect(p!.customJs).toBe("1");
+    }
+  });
+
+  test("a venue keeps its address and drops band and interests", async () => {
+    const t = setup();
+    const id = await addProfile(t, "venue", { kind: "venue" });
+    const me = await as(t, id);
+    await me.mutation(api.profiles.updateDetails, {
+      ...details,
+      address: "  43 De Villiers St  ",
+      band: { members: "x", influences: "", soundsLike: "", recordLabel: "", labelType: "" },
+      interests: { general: "x", music: "", movies: "", television: "", books: "", heroes: "" },
+    });
+    const p = await t.run((ctx) => ctx.db.get(id));
+    expect(p!.address).toBe("43 De Villiers St");
+    expect(p!.band).toBeUndefined();
+    expect(p!.interests).toBeUndefined();
+    await expect(me.mutation(api.profiles.updateDetails, { ...details, address: "x".repeat(501) })).rejects.toThrow(
+      "Address is too long",
+    );
+  });
+
+  test("a label keeps genre and website, and the website must be a link", async () => {
+    const t = setup();
+    const id = await addProfile(t, "label", { kind: "label" });
+    const me = await as(t, id);
+    await me.mutation(api.profiles.updateDetails, { ...details, genre: "Punk", website: "https://example.com" });
+    let p = await t.run((ctx) => ctx.db.get(id));
+    expect(p!.genre).toBe("Punk");
+    expect(p!.website).toBe("https://example.com");
+    await me.mutation(api.profiles.updateDetails, { ...details, website: "" });
+    p = await t.run((ctx) => ctx.db.get(id));
+    expect(p!.website).toBe("");
+    await expect(
+      me.mutation(api.profiles.updateDetails, { ...details, website: "javascript:alert(1)" }),
+    ).rejects.toThrow("Website must start with http:// or https://");
+    await expect(
+      me.mutation(api.profiles.updateDetails, { ...details, website: "https://" + "x".repeat(200) }),
+    ).rejects.toThrow("Website is too long");
+  });
+
+  test("venues and labels can't switch to artist or go private", async () => {
+    const t = setup();
+    for (const kind of ["venue", "label"] as const) {
+      const id = await addProfile(t, kind, { kind });
+      const me = await as(t, id);
+      await expect(me.mutation(api.profiles.becomeArtist, {})).rejects.toThrow("Only fans can switch to artist");
+      await expect(me.mutation(api.profiles.setPrivate, { value: true })).rejects.toThrow();
+    }
+  });
+});

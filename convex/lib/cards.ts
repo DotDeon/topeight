@@ -1,4 +1,5 @@
 import type { Doc } from "../_generated/dataModel";
+import type { ProfileKind } from "./kinds";
 import type { QueryCtx } from "../_generated/server";
 import { photoUrl } from "./media";
 import { isOnline } from "./presence";
@@ -7,7 +8,7 @@ export type PublicCard = {
   username: string;
   displayName: string;
   photoUrl: string | null;
-  kind: "fan" | "artist";
+  kind: ProfileKind;
   /** Only on the Top 8, the friends page and Cool New People. */
   online?: boolean;
 };

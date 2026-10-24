@@ -373,7 +373,7 @@ describe("setPrivate", () => {
     const t = setup();
     const band = await as(t, await addProfile(t, "band", { kind: "artist" }));
     await expect(band.mutation(api.profiles.setPrivate, { value: true })).rejects.toThrow(
-      "Artists can't make their page private",
+      "Only fans can make their page private",
     );
     await expect(t.mutation(api.profiles.setPrivate, { value: true })).rejects.toThrow();
   });

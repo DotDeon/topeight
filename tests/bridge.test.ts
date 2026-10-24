@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { BRIDGE_ACTIONS } from "@/lib/bridge-protocol";
-import { clampFrameHeight, navigatePath, parseBridgeMessage } from "@/lib/bridge";
+import { clampFrameHeight, eventPath, navigatePath, parseBridgeMessage } from "@/lib/bridge";
 
 const frame = { name: "profile-frame" };
 const ev = (data: unknown, extra: Partial<{ origin: string; source: unknown }> = {}) => ({
@@ -208,6 +208,22 @@ describe("parseBridgeMessage: playVideo", () => {
     const msg = { type: "topeight:playVideo", videoId: "h9NE3zDQ6pg" };
     expect(parseBridgeMessage(ev(msg, { origin: "https://evil.example" }), frame)).toBeNull();
     expect(parseBridgeMessage(ev(msg, { source: { name: "other" } }), frame)).toBeNull();
+  });
+});
+
+describe("parseBridgeMessage: openEvent", () => {
+  test("accepts a lowercase alphanumeric event id and drops extra fields", () => {
+    expect(
+      parseBridgeMessage(ev({ type: "topeight:openEvent", eventId: "k57abc123", path: "/admin" }), frame),
+    ).toEqual({ type: "topeight:openEvent", eventId: "k57abc123" });
+  });
+
+  test.each(["", "../x", "K57", "a/b", "a".repeat(65), 5, null])("rejects event id %j", (eventId) => {
+    expect(parseBridgeMessage(ev({ type: "topeight:openEvent", eventId }), frame)).toBeNull();
+  });
+
+  test("eventPath points at the event page", () => {
+    expect(eventPath("k57abc")).toBe("/events/k57abc");
   });
 });
 

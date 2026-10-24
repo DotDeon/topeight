@@ -2,6 +2,7 @@ import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { moodIcon } from "./lib/moods";
+import { profileKind } from "./lib/kinds";
 
 export default defineSchema({
   ...authTables,
@@ -10,7 +11,7 @@ export default defineSchema({
     userId: v.id("users"),
     username: v.string(),
     displayName: v.string(),
-    kind: v.union(v.literal("fan"), v.literal("artist")),
+    kind: profileKind,
     birthDate: v.string(),
     headline: v.string(),
     location: v.string(),
@@ -37,6 +38,10 @@ export default defineSchema({
         labelType: v.string(),
       }),
     ),
+    /** Venues only: the street address. */
+    address: v.optional(v.string()),
+    /** Labels only: an http(s) link to the label's own site. */
+    website: v.optional(v.string()),
     photoKey: v.optional(v.string()),
     /** Kept in step with photoKey and the tracks table by syncMediaFlags. Rows from before the flags exist get them from migrations:backfillMediaFlags. */
     hasPhoto: v.optional(v.boolean()),
@@ -130,6 +135,23 @@ export default defineSchema({
     .index("by_to_status", ["to", "status"])
     .index("by_pair", ["from", "to"])
     .index("by_pair_status", ["from", "to", "status"]),
+
+  /**
+   * A venue's roster or a label's band. The venue or label (fromId) asks, the
+   * artist answers. Accepted links show on both profiles. A decline is kept,
+   * with respondedAt, so the sender waits 7 days before asking again. Removing
+   * an accepted link deletes the row. type matches the sender's kind.
+   */
+  links: defineTable({
+    fromId: v.id("profiles"),
+    artistId: v.id("profiles"),
+    type: v.union(v.literal("venue"), v.literal("label")),
+    status: v.union(v.literal("pending"), v.literal("accepted"), v.literal("declined")),
+    respondedAt: v.optional(v.number()),
+  })
+    .index("by_pair", ["fromId", "artistId"])
+    .index("by_artist_status", ["artistId", "status"])
+    .index("by_from_status", ["fromId", "status"]),
 
   /** One row per member who shares Online Now!, written only by presence.heartbeat. */
   presence: defineTable({
@@ -241,10 +263,28 @@ export default defineSchema({
     hidden: v.boolean(),
     goingCount: v.number(),
     maybeCount: v.number(),
+    /** Venue gigs: bands that took themselves off this lineup. The venue can't add them back. */
+    optedOut: v.optional(v.array(v.id("profiles"))),
   })
     .index("by_start", ["startsAt"])
     .index("by_city_start", ["cityKey", "startsAt"])
     .index("by_host", ["hostId", "startsAt"]),
+
+  /**
+   * A venue gig's lineup, one row per band, in position order. startsAt and
+   * hostId copy the event's, so a band's gigs and a venue's future gigs with a
+   * band are one index read. events.create and events.update rewrite the rows.
+   */
+  gigArtists: defineTable({
+    eventId: v.id("events"),
+    hostId: v.id("profiles"),
+    artistId: v.id("profiles"),
+    position: v.number(),
+    startsAt: v.number(),
+  })
+    .index("by_event", ["eventId", "position"])
+    .index("by_artist_start", ["artistId", "startsAt"])
+    .index("by_host_artist", ["hostId", "artistId", "startsAt"]),
 
   /** One row per member and event they answered. Clearing an answer deletes the row. */
   rsvps: defineTable({

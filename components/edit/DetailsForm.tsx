@@ -27,6 +27,8 @@ export type DetailsArgs = {
   genre?: string;
   interests?: NonNullable<Doc<"profiles">["interests"]>;
   band?: Doc<"profiles">["band"];
+  address?: string;
+  website?: string;
 };
 
 /** What the profile holds now, so one section can save without clearing another. */
@@ -41,13 +43,15 @@ export function currentDetails(me: Doc<"profiles">): DetailsArgs {
     genre: me.genre,
     interests: me.interests,
     band: me.band,
+    address: me.address,
+    website: me.website,
   };
 }
 
 export function DetailsForm({ me }: { me: Doc<"profiles"> }) {
   const update = useMutation(api.profiles.updateDetails);
   const { status, busy, run } = useSaver();
-  const artist = me.kind === "artist";
+  const kind = me.kind;
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -61,8 +65,12 @@ export function DetailsForm({ me }: { me: Doc<"profiles"> }) {
       aboutMe: get("aboutMe"),
       whoIdLikeToMeet: get("whoIdLikeToMeet"),
     };
-    if (artist) args.genre = get("genre");
-    else {
+    if (kind === "artist") args.genre = get("genre");
+    else if (kind === "venue") args.address = get("address");
+    else if (kind === "label") {
+      args.genre = get("genre");
+      args.website = get("website");
+    } else {
       args.gender = get("gender");
       args.interests = {
         general: get("general"),
@@ -103,11 +111,14 @@ export function DetailsForm({ me }: { me: Doc<"profiles"> }) {
           </div>
         </div>
         {text("headline", "Headline", me.headline, 100)}
-        {text("location", "Location", me.location, 100)}
-        {artist ? text("genre", "Genre", me.genre ?? "", 50) : text("gender", "Gender", me.gender ?? "", 50)}
+        {text("location", kind === "venue" ? "City" : "Location", me.location, 100)}
+        {kind === "fan" && text("gender", "Gender", me.gender ?? "", 50)}
+        {(kind === "artist" || kind === "label") && text("genre", kind === "label" ? "Genres" : "Genre", me.genre ?? "", 50)}
+        {kind === "venue" && area("address", "Address", me.address ?? "", 500, 2)}
+        {kind === "label" && text("website", "Website", me.website ?? "", 200)}
         {area("aboutMe", "About Me", me.aboutMe, 5000)}
         {area("whoIdLikeToMeet", "Who I'd like to meet", me.whoIdLikeToMeet, 5000)}
-        {!artist &&
+        {kind === "fan" &&
           INTERESTS.map(([key, label]) => area(key, label, me.interests?.[key] ?? "", 500, 2))}
         <div className={styles.actions}>
           <button type="submit" disabled={busy}>Save Details</button>

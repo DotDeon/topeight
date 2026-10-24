@@ -30,6 +30,9 @@ export const MAX_TRACK_ID_LENGTH = 64;
 /** A YouTube video id: exactly 11 characters from YouTube's URL-safe alphabet. */
 export const YOUTUBE_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
 
+/** A Convex event id as the frame may send it: lowercase letters and digits. */
+export const EVENT_ID_PATTERN = /^[a-z0-9]{1,64}$/;
+
 export type BridgeMessage =
   | { type: "topeight:action"; action: BridgeAction }
   | { type: "topeight:navigate"; username: string; page?: BridgePage }
@@ -50,4 +53,6 @@ export type BridgeMessage =
    * sends no referrer and YouTube refuses with error 153. So the parent plays it
    * in its own dialog, and only straight after a click.
    */
-  | { type: "topeight:playVideo"; videoId: string };
+  | { type: "topeight:playVideo"; videoId: string }
+  /** Open an event page, from a gig guide or a band's show. The event page checks the id. */
+  | { type: "topeight:openEvent"; eventId: string };

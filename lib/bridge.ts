@@ -7,6 +7,7 @@ import {
   BRIDGE_ACTIONS,
   BRIDGE_PAGES,
   MAX_TRACK_ID_LENGTH,
+  EVENT_ID_PATTERN,
   YOUTUBE_ID_PATTERN,
   type BridgeMessage,
 } from "@/lib/bridge-protocol";
@@ -75,6 +76,12 @@ export function parseBridgeMessage(
       return { type: "topeight:playVideo", videoId: id };
     }
 
+    case "topeight:openEvent": {
+      const id = msg.eventId;
+      if (typeof id !== "string" || !EVENT_ID_PATTERN.test(id)) return null;
+      return { type: "topeight:openEvent", eventId: id };
+    }
+
     default:
       return null;
   }
@@ -83,6 +90,11 @@ export function parseBridgeMessage(
 /** Frame height in CSS pixels, kept between 150 and 20000. */
 export function clampFrameHeight(height: number): number {
   return Math.min(MAX_FRAME_HEIGHT, Math.max(MIN_FRAME_HEIGHT, Math.ceil(height)));
+}
+
+/** Main-origin path for an openEvent message. */
+export function eventPath(eventId: string): string {
+  return `/events/${eventId}`;
 }
 
 /** Main-origin path for a navigate message: `/<username>` or `/<username>/<page>`. */

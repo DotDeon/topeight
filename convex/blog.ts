@@ -9,6 +9,7 @@ import { recentFriendIds } from "./lib/friendships";
 import { rateLimiter } from "./lib/limits";
 import { moodIcon } from "./lib/moods";
 import { MAX_BLOG_BODY, MAX_BLOG_TITLE, MAX_COMMENT, checkBody, checkLinks } from "./lib/posting";
+import { profileKind } from "./lib/kinds";
 
 const POSTS_PER_PAGE = 10;
 const COMMENTS_PER_PAGE = 50;
@@ -35,7 +36,7 @@ const cardValidator = v.object({
   username: v.string(),
   displayName: v.string(),
   photoUrl: v.union(v.string(), v.null()),
-  kind: v.union(v.literal("fan"), v.literal("artist")),
+  kind: profileKind,
 });
 const summaryFields = {
   id: v.id("blogPosts"),

@@ -1,4 +1,11 @@
-import { BRIDGE_ACTIONS, BRIDGE_PAGES, MAX_TRACK_ID_LENGTH, YOUTUBE_ID_PATTERN, type BridgePage } from "@/lib/bridge-protocol";
+import {
+  BRIDGE_ACTIONS,
+  BRIDGE_PAGES,
+  EVENT_ID_PATTERN,
+  MAX_TRACK_ID_LENGTH,
+  YOUTUBE_ID_PATTERN,
+  type BridgePage,
+} from "@/lib/bridge-protocol";
 import { tokenizeComment } from "@/lib/validation";
 import { moodLabel, moodSvg } from "@/lib/moodSvg";
 import { MOOD_ICONS } from "@/lib/moods";
@@ -127,6 +134,23 @@ function navLink(username: string, label: string, page?: BridgePage): string {
   return `<a href="#" data-topeight-navigate="${escapeHtml(username)}"${pageAttr}>${label}</a>`;
 }
 
+/** A link to an event page on the main site. `label` is HTML. */
+function eventLink(eventId: string, label: string): string {
+  return `<a href="#" data-topeight-event="${escapeHtml(eventId)}">${label}</a>`;
+}
+
+/** Profile links separated by commas. */
+function cardLinks(cards: readonly PublicCard[]): string {
+  return cards.map((c) => navLink(c.username, escapeHtml(c.displayName))).join(", ");
+}
+
+/** A grid of photos with names, like the Friend Space. */
+function cardGrid(cards: readonly PublicCard[]): string {
+  return cards
+    .map((c) => `<div class="top8-friend">${navLink(c.username, `${photo(c.photoUrl, "photo")}${escapeHtml(c.displayName)}`)}</div>`)
+    .join("");
+}
+
 function actionLink(action: string, label: string): string {
   return `<a href="#" data-topeight-action="${action}">${label}</a>`;
 }
@@ -141,6 +165,20 @@ function richText(body: string): string {
       return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
     })
     .join("");
+}
+
+/** Artists, venues and labels get custom HTML and JS. Fans get CSS only. */
+function canUseCode(kind: PublicProfile["kind"]): boolean {
+  return kind !== "fan";
+}
+
+/** An http(s) link that opens outside the frame, or the text alone when it isn't one. */
+function outsideLink(url: string | undefined): string {
+  const value = url?.trim() ?? "";
+  if (!value) return "";
+  const href = /^https?:\/\/\S+$/i.test(value) ? safeUrl(value) : null;
+  if (!href) return escapeHtml(value);
+  return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(value)}</a>`;
 }
 
 function detailsRows(rows: Array<[string, string | undefined]>): string {
@@ -213,9 +251,11 @@ function renderLeft(p: PublicProfile, opts: RenderOptions): string {
   const name = escapeHtml(p.displayName);
   const isArtist = p.kind === "artist";
   // Fans: gender, age and location on their own lines in one block, as in 2006.
-  const who = isArtist
+  const who = isArtist || p.kind === "label"
     ? [escapeHtml(p.genre ?? ""), textHtml(p.location)]
-    : [
+    : p.kind === "venue"
+      ? [textHtml(p.location)]
+      : [
         [
           escapeHtml(p.gender?.trim() ?? ""),
           p.age !== undefined ? `${formatCount(p.age)} years old` : "",
@@ -247,7 +287,17 @@ function renderLeft(p: PublicProfile, opts: RenderOptions): string {
         ["Sounds Like", p.band?.soundsLike],
         ["Record Label", p.band?.recordLabel],
         ["Type of Label", p.band?.labelType],
-      ])}</table></div>`
+      ])}${p.labels && p.labels.length > 0 ? `<tr><td class="k">Labels</td><td class="v">${cardLinks(p.labels)}</td></tr>` : ""}</table></div>`
+    : p.kind === "venue"
+      ? `<div class="details"><h5>${name}'s General Info</h5><table>${detailsRows([
+          ["Member Since", formatDay(p.memberSince)],
+          ["Address", p.address],
+        ])}</table></div>`
+    : p.kind === "label"
+      ? `<div class="details"><h5>${name}'s General Info</h5><table>${detailsRows([
+          ["Member Since", formatDay(p.memberSince)],
+          ["Genres", p.genre],
+        ])}${p.website?.trim() ? `<tr><td class="k">Website</td><td class="v">${outsideLink(p.website)}</td></tr>` : ""}</table></div>`
     : `<div class="details"><h5>${name}'s Interests</h5><table>${detailsRows([
         ["Member Since", formatDay(p.memberSince)],
         ["General", p.interests?.general],
@@ -278,12 +328,24 @@ function renderRight(p: PublicProfile): string {
   const isArtist = p.kind === "artist";
   const parts: string[] = [`<div class="extended">${name} is in your extended network</div>`];
 
+  if (p.kind === "venue" && p.gigs && p.gigs.length > 0) {
+    const rows = p.gigs
+      .map((g) => {
+        const lineup = g.lineup.length > 0 ? `<br>with ${cardLinks(g.lineup)}` : "";
+        const cancelled = g.cancelled ? ` <b class="cancelled">Cancelled</b>` : "";
+        return `<tr><td>${escapeHtml(formatShowDate(g.date))}<br>${escapeHtml(g.time)}</td><td>${eventLink(g.eventId, `<b>${escapeHtml(g.title)}</b>`)}${cancelled}${lineup}</td></tr>`;
+      })
+      .join("");
+    parts.push(`<div class="section-title">${name}'s Gig Guide</div><div class="blurb shows gigs"><table>${rows}</table></div>`);
+  }
+
   if (isArtist && p.shows.length > 0) {
     const rows = p.shows
-      .map(
-        (s) =>
-          `<tr><td>${escapeHtml(formatShowDate(s.date))}</td><td>${escapeHtml(s.venue)}</td><td>${escapeHtml(s.city)}</td></tr>`,
-      )
+      .map((s) => {
+        const date = escapeHtml(formatShowDate(s.date));
+        const venue = escapeHtml(s.venue);
+        return `<tr><td>${s.eventId ? eventLink(s.eventId, date) : date}</td><td>${s.venueUser ? navLink(s.venueUser.username, venue) : venue}</td><td>${escapeHtml(s.city)}</td></tr>`;
+      })
       .join("");
     parts.push(
       `<div class="section-title">Upcoming Shows</div><div class="blurb shows"><table>${rows}</table></div>`,
@@ -296,12 +358,18 @@ function renderRight(p: PublicProfile): string {
     );
   }
 
-  const customHtml = isArtist ? p.custom.html : "";
+  const customHtml = canUseCode(p.kind) ? p.custom.html : "";
   let blurbs = `<b>About me:</b><br>${textHtml(p.aboutMe)}${customHtml}`;
-  if (!isArtist || p.whoIdLikeToMeet.trim()) {
+  if (p.kind === "fan" || p.whoIdLikeToMeet.trim()) {
     blurbs += `<br><br><b>Who I'd like to meet:</b><br>${textHtml(p.whoIdLikeToMeet)}`;
   }
   parts.push(`<div class="section-title">${name}'s Blurbs</div><div class="blurb about">${blurbs}</div>`);
+
+  if ((p.kind === "venue" || p.kind === "label") && p.roster && p.roster.length > 0) {
+    parts.push(
+      `<div class="section-title">${name}'s Bands</div><div class="top8 roster"><div class="top8-count"><b>${name} has ${formatCount(p.roster.length)} ${p.roster.length === 1 ? "band" : "bands"}.</b></div>${cardGrid(p.roster)}</div>`,
+    );
+  }
 
   const friends = p.top8
     .slice(0, 8)
@@ -342,6 +410,7 @@ export function bridgeScript(mainOrigin: string): string {
   var PAGES = ${scriptJson(BRIDGE_PAGES)};
   var MAX_TRACK_ID = ${MAX_TRACK_ID_LENGTH};
   var YOUTUBE_ID = new RegExp(${scriptJson(YOUTUBE_ID_PATTERN.source)});
+  var EVENT_ID = new RegExp(${scriptJson(EVENT_ID_PATTERN.source)});
   function post(msg) { try { window.parent.postMessage(msg, ORIGIN); } catch (e) {} }
   function request(action) {
     if (ACTIONS.indexOf(action) === -1) return;
@@ -367,21 +436,27 @@ export function bridgeScript(mainOrigin: string): string {
     if (typeof videoId !== "string" || !YOUTUBE_ID.test(videoId)) return;
     post({ type: "topeight:playVideo", videoId: videoId });
   }
-  window.topeight = { request: request, navigate: navigate, reportTrack: reportTrack, pickSong: pickSong, playVideo: playVideo };
+  function openEvent(eventId) {
+    if (typeof eventId !== "string" || !EVENT_ID.test(eventId)) return;
+    post({ type: "topeight:openEvent", eventId: eventId });
+  }
+  window.topeight = { request: request, navigate: navigate, reportTrack: reportTrack, pickSong: pickSong, playVideo: playVideo, openEvent: openEvent };
   document.addEventListener("click", function (e) {
     var t = e.target;
     if (!(t instanceof Element)) return;
-    var el = t.closest("[data-topeight-action],[data-topeight-navigate],[data-topeight-report-track],[data-topeight-pick-track],[data-topeight-youtube]");
+    var el = t.closest("[data-topeight-action],[data-topeight-navigate],[data-topeight-report-track],[data-topeight-pick-track],[data-topeight-youtube],[data-topeight-event]");
     if (!el) return;
     e.preventDefault();
     var action = el.getAttribute("data-topeight-action");
     var track = el.getAttribute("data-topeight-report-track");
     var pick = el.getAttribute("data-topeight-pick-track");
     var video = el.getAttribute("data-topeight-youtube");
+    var event = el.getAttribute("data-topeight-event");
     if (action !== null) request(action);
     else if (track !== null) reportTrack(track);
     else if (pick !== null) pickSong(pick);
     else if (video !== null) playVideo(video);
+    else if (event !== null) openEvent(event);
     else navigate(el.getAttribute("data-topeight-navigate"), el.getAttribute("data-topeight-page"));
   });
 
@@ -556,8 +631,7 @@ export const playerScript = `document.addEventListener("DOMContentLoaded", funct
  * body cannot swallow them. Fans get custom CSS only.
  */
 export function renderProfileDocument(p: PublicProfile, opts: RenderOptions): string {
-  const isArtist = p.kind === "artist";
-  const customJs = isArtist ? p.custom.js : "";
+  const customJs = canUseCode(p.kind) ? p.custom.js : "";
   // custom is left out: it is already in the document and can be 100 KB.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { custom, ...data } = p;
