@@ -69,11 +69,12 @@ afterEach(() => {
 });
 
 describe("coolNewPeople", () => {
-  test("excludes banned, house, venues and labels; max 5 newest first", async () => {
+  test("excludes banned, house, artists, venues and labels; max 5 newest first", async () => {
     const t = setup();
     for (let i = 1; i <= 7; i++) await addProfile(t, `fan${i}`);
     await addProfile(t, "banned", { banned: true });
     await addProfile(t, "house", { isHouse: true });
+    await addProfile(t, "band", { kind: "artist" });
     await addProfile(t, "venue", { kind: "venue" });
     await addProfile(t, "label", { kind: "label" });
     const cards = await t.query(api.home.coolNewPeople, {});
@@ -85,15 +86,6 @@ describe("coolNewPeople", () => {
       kind: "fan",
       online: false,
     });
-  });
-
-  test("includes artists alongside fans, newest first", async () => {
-    const t = setup();
-    await addProfile(t, "fan1");
-    await addProfile(t, "band", { kind: "artist" });
-    await addProfile(t, "fan2");
-    const cards = await t.query(api.home.coolNewPeople, {});
-    expect(cards.map((c) => c.username)).toEqual(["fan2", "band", "fan1"]);
   });
 
   test("puts people with a photo first, then fills with the newest photoless", async () => {
@@ -120,7 +112,7 @@ describe("coolNewPeople", () => {
 });
 
 describe("coolNewMusic", () => {
-  test("only unbanned artists with a track, newest first, max 5", async () => {
+  test("only unbanned artists, with a track first, newest first, max 5", async () => {
     const t = setup();
     const withTrack = async (name: string, extra = {}) => {
       const id = await addProfile(t, name, { kind: "artist", hasTracks: true, ...extra });
@@ -137,16 +129,18 @@ describe("coolNewMusic", () => {
     expect(cards.map((c) => c.username)).toEqual(["band6", "band5", "band4", "band3", "band2"]);
   });
 
-  test("finds an artist with tracks created before 500 trackless artists", async () => {
+  test("puts artists with tracks first, then fills with the newest trackless", async () => {
     const t = setup();
     const track = (profileId: Id<"profiles">) =>
       t.run((ctx) =>
         ctx.db.insert("tracks", { profileId, title: "x", key: "k.mp3", size: 1, order: 0, autoplay: false }),
       );
     await track(await addProfile(t, "old", { kind: "artist", hasTracks: true }));
-    for (let i = 0; i < 500; i++) await addProfile(t, `x${i}`, { kind: "artist" });
+    for (let i = 0; i < 500; i++) await addProfile(t, `x${i}`, { kind: "artist", hasTracks: false });
+    await addProfile(t, "fan");
+    await addProfile(t, "unflagged", { kind: "artist" });
     const cards = await t.query(api.home.coolNewMusic, {});
-    expect(cards.map((c) => c.username)).toEqual(["old"]);
+    expect(cards.map((c) => c.username)).toEqual(["old", "unflagged", "x499", "x498", "x497"]);
   });
 
   test("allows artists without a photo", async () => {
