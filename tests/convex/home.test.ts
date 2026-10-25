@@ -69,13 +69,13 @@ afterEach(() => {
 });
 
 describe("coolNewPeople", () => {
-  test("excludes banned, house, artists and photoless; max 5 newest first", async () => {
+  test("excludes banned, house, venues and labels; max 5 newest first", async () => {
     const t = setup();
     for (let i = 1; i <= 7; i++) await addProfile(t, `fan${i}`);
     await addProfile(t, "banned", { banned: true });
     await addProfile(t, "house", { isHouse: true });
-    await addProfile(t, "band", { kind: "artist" });
-    await addProfile(t, "nophoto", { photoKey: undefined, hasPhoto: false });
+    await addProfile(t, "venue", { kind: "venue" });
+    await addProfile(t, "label", { kind: "label" });
     const cards = await t.query(api.home.coolNewPeople, {});
     expect(cards.map((c) => c.username)).toEqual(["fan7", "fan6", "fan5", "fan4", "fan3"]);
     expect(cards[0]).toEqual({
@@ -87,12 +87,22 @@ describe("coolNewPeople", () => {
     });
   });
 
-  test("finds a fan with a photo created before 500 photoless fans", async () => {
+  test("includes artists alongside fans, newest first", async () => {
+    const t = setup();
+    await addProfile(t, "fan1");
+    await addProfile(t, "band", { kind: "artist" });
+    await addProfile(t, "fan2");
+    const cards = await t.query(api.home.coolNewPeople, {});
+    expect(cards.map((c) => c.username)).toEqual(["fan2", "band", "fan1"]);
+  });
+
+  test("puts people with a photo first, then fills with the newest photoless", async () => {
     const t = setup();
     await addProfile(t, "old");
     for (let i = 0; i < 500; i++) await addProfile(t, `x${i}`, { photoKey: undefined, hasPhoto: false });
     const cards = await t.query(api.home.coolNewPeople, {});
-    expect(cards.map((c) => c.username)).toEqual(["old"]);
+    expect(cards.map((c) => c.username)).toEqual(["old", "x499", "x498", "x497", "x496"]);
+    expect(cards[1].photoUrl).toBeNull();
   });
 
   test("gives up after 55 rows when the newest are all banned", async () => {
@@ -102,10 +112,10 @@ describe("coolNewPeople", () => {
     expect(await t.query(api.home.coolNewPeople, {})).toEqual([]);
   });
 
-  test("returns [] when nobody has a photo", async () => {
+  test("shows photoless people when nobody has a photo", async () => {
     const t = setup();
     await addProfile(t, "nophoto", { photoKey: undefined, hasPhoto: false });
-    expect(await t.query(api.home.coolNewPeople, {})).toEqual([]);
+    expect((await t.query(api.home.coolNewPeople, {})).map((c) => c.username)).toEqual(["nophoto"]);
   });
 });
 
