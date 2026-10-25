@@ -1,7 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
-import { query } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import { query, type QueryCtx } from "./_generated/server";
 import { profileForUser } from "./lib/access";
 import { friendBulletins } from "./lib/bulletins";
 import { toPublicCard, toPublicCardOnline, type PublicCard } from "./lib/cards";
@@ -12,27 +12,38 @@ const DASHBOARD_BULLETINS = 5;
 /** Rows read per box: the cards plus room to skip banned and house accounts. */
 const SCAN_LIMIT = CARD_COUNT + 50;
 
+/** Kinds that count as people on the homepage. Venues and labels are left out. */
+const PEOPLE_KINDS = ["fan", "artist"] as const;
+
 /**
- * The 5 newest unbanned fans with a photo. The house account is left out.
+ * The newest unbanned, non-house fans and artists with or without a photo,
+ * newest first. Reads at most SCAN_LIMIT rows per kind.
+ */
+async function newestPeople(ctx: QueryCtx, hasPhoto: boolean, limit: number): Promise<Doc<"profiles">[]> {
+  const rows: Doc<"profiles">[] = [];
+  for (const kind of PEOPLE_KINDS) {
+    const page = await ctx.db
+      .query("profiles")
+      .withIndex("by_kind_photo", (q) => q.eq("kind", kind).eq("hasPhoto", hasPhoto))
+      .order("desc")
+      .take(SCAN_LIMIT);
+    rows.push(...page.filter((p) => !p.banned && !p.isHouse));
+  }
+  return rows.sort((a, b) => b._creationTime - a._creationTime).slice(0, limit);
+}
+
+/**
+ * The 5 newest unbanned fans and artists. People with a photo come first;
+ * photoless people fill any slots left over. The house account is left out.
  * `asOf` is the caller's current minute, for the online flags only.
  */
 export const coolNewPeople = query({
   args: { asOf: v.optional(v.number()) },
   handler: async (ctx, { asOf }): Promise<PublicCard[]> => {
-    const cards: PublicCard[] = [];
     const now = onlineAsOf(asOf);
-    const fans = ctx.db
-      .query("profiles")
-      .withIndex("by_kind_photo", (q) => q.eq("kind", "fan").eq("hasPhoto", true))
-      .order("desc");
-    let scanned = 0;
-    for await (const p of fans) {
-      if (++scanned > SCAN_LIMIT) break;
-      if (p.banned || p.isHouse) continue;
-      cards.push(await toPublicCardOnline(ctx, p, now));
-      if (cards.length === CARD_COUNT) break;
-    }
-    return cards;
+    const people = await newestPeople(ctx, true, CARD_COUNT);
+    if (people.length < CARD_COUNT) people.push(...(await newestPeople(ctx, false, CARD_COUNT - people.length)));
+    return await Promise.all(people.map((p) => toPublicCardOnline(ctx, p, now)));
   },
 });
 
