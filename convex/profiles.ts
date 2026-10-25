@@ -42,6 +42,8 @@ function blankProfileFields() {
     customHtml: "",
     customJs: "",
     banned: false,
+    hasPhoto: false,
+    hasTracks: false,
   };
 }
 

@@ -12,58 +12,66 @@ const DASHBOARD_BULLETINS = 5;
 /** Rows read per box: the cards plus room to skip banned and house accounts. */
 const SCAN_LIMIT = CARD_COUNT + 50;
 
-/** Kinds that count as people on the homepage. Venues and labels are left out. */
-const PEOPLE_KINDS = ["fan", "artist"] as const;
-
 /**
- * The newest unbanned, non-house fans and artists with or without a photo,
- * newest first. Reads at most SCAN_LIMIT rows per kind.
+ * The newest unbanned, non-house profiles of one kind with the flag set or unset,
+ * newest first. Reads at most SCAN_LIMIT rows per index range. An unset flag also
+ * matches rows where the flag was never written.
  */
-async function newestPeople(ctx: QueryCtx, hasPhoto: boolean, limit: number): Promise<Doc<"profiles">[]> {
-  const rows: Doc<"profiles">[] = [];
-  for (const kind of PEOPLE_KINDS) {
-    const page = await ctx.db
-      .query("profiles")
-      .withIndex("by_kind_photo", (q) => q.eq("kind", kind).eq("hasPhoto", hasPhoto))
+async function newest(
+  ctx: QueryCtx,
+  kind: "fan" | "artist",
+  flag: "hasPhoto" | "hasTracks",
+  value: boolean,
+  limit: number,
+): Promise<Doc<"profiles">[]> {
+  const read = (v: boolean | undefined) =>
+    (flag === "hasPhoto"
+      ? ctx.db.query("profiles").withIndex("by_kind_photo", (q) => q.eq("kind", kind).eq("hasPhoto", v))
+      : ctx.db.query("profiles").withIndex("by_kind_tracks", (q) => q.eq("kind", kind).eq("hasTracks", v))
+    )
       .order("desc")
       .take(SCAN_LIMIT);
-    rows.push(...page.filter((p) => !p.banned && !p.isHouse));
-  }
-  return rows.sort((a, b) => b._creationTime - a._creationTime).slice(0, limit);
+  const rows = value ? await read(true) : [...(await read(false)), ...(await read(undefined))];
+  return rows
+    .filter((p) => !p.banned && !p.isHouse)
+    .sort((a, b) => b._creationTime - a._creationTime)
+    .slice(0, limit);
+}
+
+/** Up to 5 profiles with the flag set, then the newest without it to fill the rest. */
+async function newestFilled(
+  ctx: QueryCtx,
+  kind: "fan" | "artist",
+  flag: "hasPhoto" | "hasTracks",
+): Promise<Doc<"profiles">[]> {
+  const rows = await newest(ctx, kind, flag, true, CARD_COUNT);
+  if (rows.length < CARD_COUNT) rows.push(...(await newest(ctx, kind, flag, false, CARD_COUNT - rows.length)));
+  return rows;
 }
 
 /**
- * The 5 newest unbanned fans and artists. People with a photo come first;
- * photoless people fill any slots left over. The house account is left out.
+ * The 5 newest unbanned fans. Fans with a photo come first; photoless fans
+ * fill any slots left over. The house account is left out.
  * `asOf` is the caller's current minute, for the online flags only.
  */
 export const coolNewPeople = query({
   args: { asOf: v.optional(v.number()) },
   handler: async (ctx, { asOf }): Promise<PublicCard[]> => {
     const now = onlineAsOf(asOf);
-    const people = await newestPeople(ctx, true, CARD_COUNT);
-    if (people.length < CARD_COUNT) people.push(...(await newestPeople(ctx, false, CARD_COUNT - people.length)));
-    return await Promise.all(people.map((p) => toPublicCardOnline(ctx, p, now)));
+    const fans = await newestFilled(ctx, "fan", "hasPhoto");
+    return await Promise.all(fans.map((p) => toPublicCardOnline(ctx, p, now)));
   },
 });
 
-/** The 5 newest unbanned artists with at least one track. */
+/**
+ * The 5 newest unbanned artists. Artists with at least one track come first;
+ * artists without tracks fill any slots left over.
+ */
 export const coolNewMusic = query({
   args: {},
   handler: async (ctx): Promise<PublicCard[]> => {
-    const cards: PublicCard[] = [];
-    const artists = ctx.db
-      .query("profiles")
-      .withIndex("by_kind_tracks", (q) => q.eq("kind", "artist").eq("hasTracks", true))
-      .order("desc");
-    let scanned = 0;
-    for await (const p of artists) {
-      if (++scanned > SCAN_LIMIT) break;
-      if (p.banned || p.isHouse) continue;
-      cards.push(toPublicCard(p));
-      if (cards.length === CARD_COUNT) break;
-    }
-    return cards;
+    const artists = await newestFilled(ctx, "artist", "hasTracks");
+    return artists.map(toPublicCard);
   },
 });
 
