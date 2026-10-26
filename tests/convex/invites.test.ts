@@ -144,6 +144,28 @@ describe("delivery", () => {
     expect(await t.query(internal.invites.forDelivery, { inviteId: row!._id })).toBeNull();
   });
 
+  test("a failed send removes the invite so it doesn't use up a slot or the 30-day wait", async () => {
+    const t = setup();
+    const alice = await addProfile(t, "alice");
+    await invite(t, alice, "dan@example.com");
+    const row = await t.run((ctx) => ctx.db.query("invites").first());
+    vi.stubEnv("AUTH_RESEND_KEY", "re_test");
+    vi.stubEnv("AUTH_EMAIL_FROM", "TopEight <hi@topeight.app>");
+    vi.stubEnv("SITE_URL", "");
+    await expect(t.action(internal.invites.deliver, { inviteId: row!._id })).rejects.toThrow(/SITE_URL/);
+
+    vi.stubEnv("SITE_URL", "https://topeight.app");
+    await t.run((ctx) => ctx.db.insert("invites", { inviterId: alice, email: "eve@example.com", token: "tok" }));
+    const eveRow = await t.run(async (ctx) => (await ctx.db.query("invites").collect()).find((r) => r.email === "eve@example.com"));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("bad", { status: 500 })));
+    await expect(t.action(internal.invites.deliver, { inviteId: eveRow!._id })).rejects.toThrow(/500/);
+    vi.unstubAllGlobals();
+
+    expect(await t.run((ctx) => ctx.db.query("invites").collect())).toHaveLength(0);
+    expect((await (await as(t, alice)).query(api.invites.mine, {}))!.left).toBe(20);
+    expect((await invite(t, alice, "dan@example.com"))[0].status).toBe("sent");
+  });
+
   test("the one-click endpoint opts the address out", async () => {
     const t = setup();
     const alice = await addProfile(t, "alice");

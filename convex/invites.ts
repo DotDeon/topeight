@@ -153,22 +153,66 @@ export const oneClickOptOut = httpAction(async (ctx, req) => {
   return new Response(null, { status: 200 });
 });
 
+async function forDeliveryHandler(ctx: QueryCtx, { inviteId }: { inviteId: Id<"invites"> }) {
+  const invite = await ctx.db.get(inviteId);
+  if (invite === null) return null;
+  const inviter = await ctx.db.get(invite.inviterId);
+  if (inviter === null || inviter.banned) return null;
+  return {
+    email: invite.email,
+    token: invite.token,
+    message: invite.message,
+    inviterName: inviter.displayName,
+    photoUrl: photoUrl(inviter.photoKey),
+  };
+}
+
 export const forDelivery = internalQuery({
   args: { inviteId: v.id("invites") },
+  handler: forDeliveryHandler,
+});
+
+/** Removes an invite whose email never went out, so it doesn't use up a daily slot or the 30-day wait. */
+export const dropUnsent = internalMutation({
+  args: { inviteId: v.id("invites") },
+  returns: v.null(),
   handler: async (ctx, { inviteId }) => {
     const invite = await ctx.db.get(inviteId);
-    if (invite === null) return null;
-    const inviter = await ctx.db.get(invite.inviterId);
-    if (inviter === null || inviter.banned) return null;
-    return {
-      email: invite.email,
-      token: invite.token,
-      message: invite.message,
-      inviterName: inviter.displayName,
-      photoUrl: photoUrl(inviter.photoKey),
-    };
+    if (invite !== null && invite.acceptedBy === undefined) await ctx.db.delete(inviteId);
+    return null;
   },
 });
+
+/** Sends one invite through Resend. Throws for missing settings or a failed send. */
+async function sendInvite(data: NonNullable<Awaited<ReturnType<typeof forDeliveryHandler>>>, apiKey: string) {
+  const from = process.env.AUTH_EMAIL_FROM;
+  if (!from) throw new Error("AUTH_EMAIL_FROM must be set when AUTH_RESEND_KEY is set");
+  const site = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
+  if (!site) throw new Error("SITE_URL must be set when AUTH_RESEND_KEY is set");
+  const token = encodeURIComponent(data.token);
+  const { subject, text, html } = inviteEmail({
+    ...data,
+    joinUrl: `${site}/signup?invite=${token}`,
+    stopUrl: `${site}/invite/stop?t=${token}`,
+  });
+  const oneClick = `${process.env.CONVEX_SITE_URL}/invites/unsubscribe?t=${token}`;
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from,
+      to: [data.email],
+      subject,
+      text,
+      html,
+      headers: {
+        "List-Unsubscribe": `<${oneClick}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
+    }),
+  });
+  if (!res.ok) throw new Error(`Could not send invite (${res.status}): ${await res.text()}`);
+}
 
 export const deliver = internalAction({
   args: { inviteId: v.id("invites") },
@@ -176,37 +220,19 @@ export const deliver = internalAction({
   handler: async (ctx, { inviteId }) => {
     const data = await ctx.runQuery(internal.invites.forDelivery, { inviteId });
     if (data === null) return null;
-    const site = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
-    const token = encodeURIComponent(data.token);
-    const joinUrl = `${site}/signup?invite=${token}`;
-    const stopUrl = `${site}/invite/stop?t=${token}`;
-    const { subject, text, html } = inviteEmail({ ...data, joinUrl, stopUrl });
-
     const apiKey = process.env.AUTH_RESEND_KEY;
     if (!apiKey) {
       // Local development without email: read the link from the Convex logs.
-      console.log(`[TopEight] Invite for ${data.email}: ${joinUrl}`);
+      const site = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
+      console.log(`[TopEight] Invite for ${data.email}: ${site}/signup?invite=${encodeURIComponent(data.token)}`);
       return null;
     }
-    const from = process.env.AUTH_EMAIL_FROM;
-    if (!from) throw new Error("AUTH_EMAIL_FROM must be set when AUTH_RESEND_KEY is set");
-    const oneClick = `${process.env.CONVEX_SITE_URL}/invites/unsubscribe?t=${token}`;
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from,
-        to: [data.email],
-        subject,
-        text,
-        html,
-        headers: {
-          "List-Unsubscribe": `<${oneClick}>`,
-          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        },
-      }),
-    });
-    if (!res.ok) throw new Error(`Could not send invite (${res.status}): ${await res.text()}`);
+    try {
+      await sendInvite(data, apiKey);
+    } catch (err) {
+      await ctx.runMutation(internal.invites.dropUnsent, { inviteId });
+      throw err;
+    }
     return null;
   },
 });
