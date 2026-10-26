@@ -354,6 +354,28 @@ export default defineSchema({
     hidden: v.boolean(),
   }).index("by_topic", ["topicId"]),
 
+  /**
+   * An email invite. The token is the secret in the join link and the
+   * unsubscribe link. It works once: acceptedBy is set when someone joins with it.
+   */
+  invites: defineTable({
+    inviterId: v.id("profiles"),
+    /** Trimmed and lowercased. */
+    email: v.string(),
+    token: v.string(),
+    message: v.optional(v.string()),
+    acceptedBy: v.optional(v.id("profiles")),
+    acceptedAt: v.optional(v.number()),
+  })
+    .index("by_token", ["token"])
+    .index("by_email", ["email"])
+    .index("by_inviter", ["inviterId"]),
+
+  /** Addresses that asked never to get another invite. */
+  inviteOptOuts: defineTable({
+    email: v.string(),
+  }).index("by_email", ["email"]),
+
   blocks: defineTable({
     blocker: v.id("profiles"),
     blocked: v.id("profiles"),

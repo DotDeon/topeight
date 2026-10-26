@@ -22,6 +22,7 @@ import { MAX_SCAN, rateLimiter } from "./lib/limits";
 import { isOnline, onlineAsOf } from "./lib/presence";
 import { moodIcon } from "./lib/moods";
 import { MAX_TRACKS, photoUrl, syncMediaFlags } from "./lib/media";
+import { acceptInvite } from "./lib/invites";
 import { acceptedLinks } from "./lib/links";
 import { profileSongFor } from "./lib/profileSongs";
 import { lineupCards } from "./events";
@@ -90,6 +91,8 @@ export const createMyProfile = mutation({
     displayName: v.string(),
     kind: profileKind,
     birthDate: v.string(),
+    /** The token from an invite link. The new member and the inviter become friends. */
+    invite: v.optional(v.string()),
   },
   returns: v.id("profiles"),
   handler: async (ctx, args) => {
@@ -135,6 +138,7 @@ export const createMyProfile = mutation({
       isHouse: false,
     });
     await ctx.db.insert("friendships", friendshipPair(profileId, houseId));
+    if (args.invite !== undefined) await acceptInvite(ctx, args.invite, profileId);
     return profileId;
   },
 });

@@ -27,7 +27,8 @@ TopEight is an open source rebuild of 2006-era MySpace. It has the classic 800 p
 - An Online Now! badge on profiles and friend cards while a member is active. Members can turn it off.
 - A profile song. Any member can put an artist's track on their profile, and artists can turn sharing off.
 - Private profiles. Only friends see the full page. Everyone else gets a small card with the name, photo, age, location and mood.
-- Invite and Forum are not built yet. Their nav items link to a coming soon page.
+- Email invites. A friend who joins from your invite becomes your friend straight away. Each member can send 20 a day, an address gets at most one invite every 30 days, and every invite has a link to stop them for good.
+- Forum is not built yet. Groups' discussion boards cover most of what it would do.
 
 ## How the artist sandbox works
 

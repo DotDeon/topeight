@@ -2,7 +2,6 @@ import { Box } from "@/components/Box";
 
 // Only these names are ever shown. Anything else gets the generic line.
 const FEATURES: Record<string, string> = {
-  invite: "Invite",
   mail: "Mail",
   blog: "Blog",
   favorites: "Favorites",
