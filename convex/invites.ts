@@ -158,6 +158,12 @@ async function forDeliveryHandler(ctx: QueryCtx, { inviteId }: { inviteId: Id<"i
   if (invite === null) return null;
   const inviter = await ctx.db.get(invite.inviterId);
   if (inviter === null || inviter.banned) return null;
+  // The address may have opted out after the invite was queued.
+  const optedOut = await ctx.db
+    .query("inviteOptOuts")
+    .withIndex("by_email", (q) => q.eq("email", invite.email))
+    .first();
+  if (optedOut !== null) return null;
   return {
     email: invite.email,
     token: invite.token,
@@ -183,12 +189,19 @@ export const dropUnsent = internalMutation({
   },
 });
 
-/** Sends one invite through Resend. Throws for missing settings or a failed send. */
+/** Thrown when the email certainly didn't go out: bad settings or Resend said no. */
+class NotSent extends Error {}
+
+/**
+ * Sends one invite through Resend. Throws NotSent when the email certainly
+ * didn't go out. A network error throws something else, because Resend may
+ * have sent it anyway.
+ */
 async function sendInvite(data: NonNullable<Awaited<ReturnType<typeof forDeliveryHandler>>>, apiKey: string) {
   const from = process.env.AUTH_EMAIL_FROM;
-  if (!from) throw new Error("AUTH_EMAIL_FROM must be set when AUTH_RESEND_KEY is set");
+  if (!from) throw new NotSent("AUTH_EMAIL_FROM must be set when AUTH_RESEND_KEY is set");
   const site = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
-  if (!site) throw new Error("SITE_URL must be set when AUTH_RESEND_KEY is set");
+  if (!site) throw new NotSent("SITE_URL must be set when AUTH_RESEND_KEY is set");
   const token = encodeURIComponent(data.token);
   const { subject, text, html } = inviteEmail({
     ...data,
@@ -198,7 +211,12 @@ async function sendInvite(data: NonNullable<Awaited<ReturnType<typeof forDeliver
   const oneClick = `${process.env.CONVEX_SITE_URL}/invites/unsubscribe?t=${token}`;
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      // A retry of the same invite never sends a second email.
+      "Idempotency-Key": `invite-${data.token}`,
+    },
     body: JSON.stringify({
       from,
       to: [data.email],
@@ -211,7 +229,7 @@ async function sendInvite(data: NonNullable<Awaited<ReturnType<typeof forDeliver
       },
     }),
   });
-  if (!res.ok) throw new Error(`Could not send invite (${res.status}): ${await res.text()}`);
+  if (!res.ok) throw new NotSent(`Could not send invite (${res.status}): ${await res.text()}`);
 }
 
 export const deliver = internalAction({
@@ -230,7 +248,7 @@ export const deliver = internalAction({
     try {
       await sendInvite(data, apiKey);
     } catch (err) {
-      await ctx.runMutation(internal.invites.dropUnsent, { inviteId });
+      if (err instanceof NotSent) await ctx.runMutation(internal.invites.dropUnsent, { inviteId });
       throw err;
     }
     return null;

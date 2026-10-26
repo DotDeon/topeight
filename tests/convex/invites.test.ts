@@ -166,6 +166,37 @@ describe("delivery", () => {
     expect((await invite(t, alice, "dan@example.com"))[0].status).toBe("sent");
   });
 
+  test("a network error keeps the invite, since the email may have gone out", async () => {
+    const t = setup();
+    const alice = await addProfile(t, "alice");
+    await invite(t, alice, "dan@example.com");
+    const row = await t.run((ctx) => ctx.db.query("invites").first());
+    vi.stubEnv("AUTH_RESEND_KEY", "re_test");
+    vi.stubEnv("AUTH_EMAIL_FROM", "TopEight <hi@topeight.app>");
+    vi.stubEnv("SITE_URL", "https://topeight.app");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("network down"); }));
+    await expect(t.action(internal.invites.deliver, { inviteId: row!._id })).rejects.toThrow(/network/);
+    vi.unstubAllGlobals();
+    expect(await t.run((ctx) => ctx.db.query("invites").collect())).toHaveLength(1);
+  });
+
+  test("an address that opts out before delivery gets no email", async () => {
+    const t = setup();
+    const alice = await addProfile(t, "alice");
+    await invite(t, alice, "dan@example.com");
+    const token = await tokenFor(t, "dan@example.com");
+    await t.mutation(api.invites.optOut, { token });
+    const row = await t.run((ctx) => ctx.db.query("invites").first());
+    vi.stubEnv("AUTH_RESEND_KEY", "re_test");
+    vi.stubEnv("AUTH_EMAIL_FROM", "TopEight <hi@topeight.app>");
+    vi.stubEnv("SITE_URL", "https://topeight.app");
+    const fetchSpy = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    await t.action(internal.invites.deliver, { inviteId: row!._id });
+    vi.unstubAllGlobals();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   test("the one-click endpoint opts the address out", async () => {
     const t = setup();
     const alice = await addProfile(t, "alice");
