@@ -1,13 +1,11 @@
 import Link from "next/link";
 import styles from "./NavBar.module.css";
 
-const soon = (name: string) => `/coming-soon?f=${name.toLowerCase()}`;
-
 export const NAV_LINKS: { label: string; href: string }[] = [
   { label: "Home", href: "/" },
   { label: "Browse", href: "/browse" },
   { label: "Search", href: "/search" },
-  { label: "Invite", href: soon("Invite") },
+  { label: "Invite", href: "/invite" },
   { label: "Mail", href: "/mail" },
   { label: "Blog", href: "/blog" },
   { label: "Favorites", href: "/favorites" },

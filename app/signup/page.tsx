@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { errorText } from "@/lib/errorText";
 import { AuthBox, authStyles as s, normalizeEmail } from "@/components/AuthBox";
+import { InviteBanner, clearInviteToken, useInviteToken } from "@/components/invite/InviteBanner";
 import { api } from "@/convex/_generated/api";
 
 type Step = "account" | "verify";
@@ -24,6 +25,7 @@ export default function SignupPage() {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const me = useQuery(api.profiles.me, isAuthenticated ? {} : "skip");
   const createMyProfile = useMutation(api.profiles.createMyProfile);
+  const invite = useInviteToken();
 
   const [step, setStep] = useState<Step>("account");
   const [email, setEmail] = useState("");
@@ -85,7 +87,9 @@ export default function SignupPage() {
         displayName: String(form.get("displayName")),
         kind: signupKind(form.get("kind")),
         birthDate: String(form.get("birthDate")),
+        ...(invite ? { invite } : {}),
       });
+      clearInviteToken();
       router.replace("/");
     } catch (err) {
       setError(errorText(err, "Could not create your profile."));
@@ -94,7 +98,12 @@ export default function SignupPage() {
     }
   }
 
-  const errorLine = error ? <p className={s.error}>{error}</p> : null;
+  const errorLine = (
+    <>
+      {invite && <InviteBanner token={invite} />}
+      {error && <p className={s.error}>{error}</p>}
+    </>
+  );
 
   if (isLoading || (isAuthenticated && me === undefined) || me) {
     return <AuthBox title="Sign Up">Loading...</AuthBox>;

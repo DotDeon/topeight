@@ -23,6 +23,7 @@ export const RESERVED_USERNAMES: ReadonlySet<string> = new Set([
   "friends",
   "mail",
   "favorites",
+  "invite",
   "blog",
   "events",
   "groups",
